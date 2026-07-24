@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from statsmodels.tsa.seasonal import STL as _StatsmodelsSTL
 
-from Ts.TsModels._base import _resolve_missing_rows
+from ._validation import _resolve_missing_rows
 
 
 @dataclass

@@ -1,0 +1,129 @@
+# Ts/TsUtils
+
+时间序列预处理工具包。当前提供两类能力：
+
+- STL（Seasonal-Trend decomposition using LOESS）分解；
+- 缺失值内插及可审计的填补结果。
+
+`TsUtils` 只负责进入模型前的数据处理，不估计预测模型。本版本不提供
+X-12/X-13 或其他季节调整接口；STL 只做分解，不等同于官方统计口径的季节调整。
+
+## 公共接口
+
+```python
+from Ts.TsUtils import (
+    STL,
+    STLResult,
+    interpolate_missing,
+    InterpolationResult,
+)
+```
+
+这些符号也可以从 `Ts` 顶层导入。
+
+## STL 分解
+
+```python
+import numpy as np
+from Ts.TsUtils import STL
+
+time = np.arange(120)
+monthly = 10 + 0.05 * time + 2 * np.sin(2 * np.pi * time / 12)
+
+result = STL(monthly, period=12, robust=True).fit()
+print(result.summary())
+result.plot()
+```
+
+`STLResult` 提供：
+
+- `observed`：进入分解的观测序列；
+- `trend`：趋势项；
+- `seasonal`：季节项；
+- `residuals`：残差；
+- `weights`：稳健分解权重；
+- `fitted_values`：`trend + seasonal`。
+
+默认 `missing="raise"`，遇到 `NaN` 或无穷值立即报错。显式设置
+`missing="drop"` 才会删除相应位置，并在分解器的 `dropped_positions`
+中记录原始零基位置。删除会改变时间间隔，因此规则时间序列通常应先插值，而不是
+在 STL 中删行。
+
+## 缺失值插值
+
+```python
+import numpy as np
+from Ts.TsUtils import interpolate_missing
+
+data = np.array([1.0, np.nan, 3.0, np.nan, np.nan, 6.0])
+result = interpolate_missing(
+    data,
+    method="linear",
+    max_gap=2,
+    edge="keep",
+)
+
+filled = result.data
+print(result.summary())
+```
+
+### 支持的输入
+
+- 一维或二维 NumPy 数组；
+- `pandas.Series`；
+- `pandas.DataFrame`。
+
+二维数据按列独立插值。返回数据保持原容器类型和逻辑形状；Series 名称、索引以及
+DataFrame 索引、列名均会保留。调用方数据不会被原地修改。
+
+### 插值方法
+
+| `method` | 含义 | 约束 |
+|---|---|---|
+| `"linear"` | 按观测位置线性插值 | 默认方法 |
+| `"time"` | 按实际时间间隔线性插值 | 需要唯一、递增的 `DatetimeIndex` 或 `TimedeltaIndex` |
+| `"nearest"` | 最近邻插值 | 依赖 SciPy |
+| `"cubic"` | 三次插值 | 依赖 SciPy；需要足够的有效观测，可能产生过冲 |
+
+`NaN` 和 `pd.NA` 视为缺失。正负无穷通常代表计算溢出或数据错误，因此不会被静默
+插补，而是直接报错。
+
+### 长缺口和边界
+
+`max_gap` 是允许填补的最大连续缺失长度。超过该长度的缺口会完整保留，不会从两端
+部分填补：
+
+```python
+result = interpolate_missing(data, max_gap=2)
+```
+
+默认 `edge="keep"`，只做真正的内插，序列首尾缺失保持不变。若业务上确认可以使用
+最近观测延伸边界，可显式设置：
+
+```python
+result = interpolate_missing(data, edge="nearest")
+```
+
+边界填补同样受 `max_gap` 限制。全缺失序列不会被人为赋予水平。
+
+### 审计信息
+
+`InterpolationResult` 提供：
+
+- `missing_mask`：原始缺失位置；
+- `filled_mask`：本次成功填补的位置；
+- `remaining_mask`：仍然缺失的位置；
+- `n_missing`、`n_filled`、`n_remaining`；
+- `complete`：是否已填补全部原始缺失值；
+- `summary()`：方法、限制和数量摘要。
+
+插值是确定性预处理，不提供插补不确定性。长缺口、结构突变或需要推断标准误的场景，
+应使用状态空间模型、多重插补或其他与数据生成过程匹配的方法。
+
+## 运行测试
+
+从 `Ts` 的父目录运行：
+
+```powershell
+python -m pytest Ts/TsUtils/tests -p no:cacheprovider -q
+```

@@ -1,8 +1,8 @@
 # ruff: noqa: N999
 """TsModels — Time series model estimation toolkit.
 
-This package provides STL decomposition plus unified interfaces for estimating
-SARIMA, GARCH, VAR, SVAR, and VECM models. Result objects integrate with
+This package provides unified interfaces for estimating SARIMA, GARCH, VAR,
+SVAR, and VECM models. Result objects integrate with
 TsPlots for plotting and, where applicable, TsTests for diagnostics.
 
 Main interfaces
@@ -12,8 +12,6 @@ SARIMA
 GARCH
     GARCH(p,q) model estimation via the ``arch`` library.  Handles both
     pure ARCH (q = 0) and GARCH (q >= 1) volatility models.
-STL
-    Seasonal-Trend decomposition using LOESS via statsmodels.
 VAR
     Vector Autoregression estimation via statsmodels VAR.
 VECM
@@ -32,16 +30,13 @@ GARCHResult
     Container for GARCH estimation output. Provides ``.summary()``,
     ``.predict()``, ``.plot_fit()``, ``.plot_diagnostics()``,
     ``.test_residuals()``, ``.conditional_volatility``.
-STLResult
-    Container for observed, trend, seasonal, residual, and robust-weight
-    components. Provides ``.summary()`` and ``.plot()``.
 SVARResult
     Container for SVAR estimation output (extends VARResult). Provides
     ``.A``, ``.B``, ``.sirf()``, ``.structural_residuals``.
 
 Quick start
 -----------
->>> from Ts.TsModels import SARIMA, GARCH, STL
+>>> from Ts.TsModels import SARIMA, GARCH
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
 
 >>> # AR(1) estimation
@@ -71,7 +66,6 @@ from ._garch import GARCH
 from ._garch_result import GARCHResult
 from ._intervention import EventSpec, PolicyEffectResult
 from ._sarima import SARIMA, SARIMAResult, ScenarioForecastResult
-from ._stl import STL, STLResult
 from ._svar import SVAR, SVARResult
 from ._var import (
     VAR,
@@ -111,8 +105,6 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "VECMOrderResult",
     "SVAR",
     "SVARResult",
-    "STL",
-    "STLResult",
     "AutoSARIMA",
     "AutoGARCH",
     "AutoModelResult",

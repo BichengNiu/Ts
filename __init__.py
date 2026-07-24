@@ -1,19 +1,21 @@
 # ruff: noqa: I001, N999
 """Ts — Time Series Econometrics Toolkit.
 
-This package consolidates five sub-packages under a unified namespace.
+This package consolidates six sub-packages under a unified namespace.
 
 - :mod:`Ts.TsPlots`  — shared plotting (series, scatter, ACF/PACF)
 - :mod:`Ts.TsSims`   — synthetic data generation (SARIMA, GARCH, TS/DS)
+- :mod:`Ts.TsUtils`  — preprocessing (STL, missing-value interpolation)
 - :mod:`Ts.TsModels` — model estimation (SARIMA, GARCH)
 - :mod:`Ts.TsMetrics` — forecast metrics and leakage-free evaluation
 - :mod:`Ts.TsTests`  — statistical tests (unit root, structural break, ARCH)
 
 Quick start
 -----------
->>> from Ts import plot_series, simulate_sarima, SARIMA, AutoSARIMA, ADFTest
+>>> from Ts import STL, interpolate_missing, SARIMA, AutoSARIMA, ADFTest
 >>> from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
+>>> from Ts.TsUtils import STL, interpolate_missing
 >>> from Ts.TsModels import SARIMA, GARCH, AutoSARIMA, AutoGARCH
 >>> from Ts.TsMetrics import rmse, oos, backtest, compare_forecasts
 >>> from Ts.TsTests import ADFTest, KPSSTest, LjungBoxTest
@@ -23,6 +25,11 @@ Quick start
 # TsPlots — plotting
 # ---------------------------------------------------------------------------
 from .TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
+
+# ---------------------------------------------------------------------------
+# TsUtils — preprocessing
+# ---------------------------------------------------------------------------
+from .TsUtils import InterpolationResult, STL, STLResult, interpolate_missing
 
 # ---------------------------------------------------------------------------
 # TsSims — simulation
@@ -110,6 +117,11 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "plot_scatter",
     "plot_acf",
     "plot_pacf",
+    # TsUtils
+    "STL",
+    "STLResult",
+    "interpolate_missing",
+    "InterpolationResult",
     # TsSims — base
     "BaseSimResult",
     # TsSims — result classes

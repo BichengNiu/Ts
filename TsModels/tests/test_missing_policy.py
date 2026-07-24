@@ -6,7 +6,6 @@ import pytest
 from Ts.TsModels import (
     GARCH,
     SARIMA,
-    STL,
     SVAR,
     VAR,
     VECM,
@@ -61,10 +60,6 @@ UNIVARIATE_FACTORIES = [
             missing=missing,
         ),
         id="auto-garch",
-    ),
-    pytest.param(
-        lambda data, missing: STL(data, period=12, missing=missing),
-        id="stl",
     ),
 ]
 
@@ -131,7 +126,7 @@ def test_multivariate_models_drop_complete_rows_and_record_positions(factory):
     assert np.all(np.isfinite(model.data))
 
 
-@pytest.mark.parametrize("model_class", [SARIMA, GARCH, VAR, VECM, STL])
+@pytest.mark.parametrize("model_class", [SARIMA, GARCH, VAR, VECM])
 def test_unknown_missing_policy_is_rejected(model_class):
     """The shared contract accepts only raise and drop."""
     data = _multivariate_data() if model_class in {VAR, VECM} else _univariate_data()
@@ -142,8 +137,6 @@ def test_unknown_missing_policy_is_rejected(model_class):
         kwargs = {"lags": 1}
     elif model_class is VECM:
         kwargs = {"lags": 2, "coint_rank": 1}
-    elif model_class is STL:
-        kwargs = {"period": 12}
 
     with pytest.raises(ValueError, match="missing must be"):
         model_class(data, missing="omit", **kwargs)

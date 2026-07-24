@@ -1,12 +1,12 @@
-"""Tests for Ts.TsModels._stl — STL decomposition and STLResult."""
+"""Tests for Ts.TsUtils._stl — STL decomposition and STLResult."""
 
 import matplotlib
 
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-import matplotlib.pyplot as plt
 
 
 @pytest.fixture
@@ -28,16 +28,16 @@ def outlier_data(seasonal_data):
 def test_stl_construction_is_public(seasonal_data):
     """STL is publicly importable and stores its construction contract.
 
-    covers: TsModels/_stl.py [module]
-    covers: TsModels/_stl.py::STL [class]
-    covers: TsModels/_stl.py::STL.__init__ [function]
-    covers: TsModels/__init__.py [module]
+    covers: TsUtils/_stl.py [module]
+    covers: TsUtils/_stl.py::STL [class]
+    covers: TsUtils/_stl.py::STL.__init__ [function]
+    covers: TsUtils/__init__.py [module]
     covers: TsPlots/__init__.py [module]
     covers: TsSims/__init__.py [module]
     covers: TsTests/__init__.py [module]
     covers: __init__.py [module]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     model = STL(seasonal_data, period=12)
 
@@ -48,9 +48,9 @@ def test_stl_construction_is_public(seasonal_data):
 def test_stl_rejects_non_1d_data(seasonal_data):
     """STL rejects data that are not one-dimensional.
 
-    covers: TsModels/_stl.py::STL.__init__ [function]
+    covers: TsUtils/_stl.py::STL.__init__ [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     with pytest.raises(ValueError, match="one-dimensional"):
         STL(seasonal_data.reshape(-1, 1), period=12)
@@ -59,9 +59,9 @@ def test_stl_rejects_non_1d_data(seasonal_data):
 def test_stl_rejects_non_finite_data(seasonal_data):
     """STL rejects NaN and infinite observations.
 
-    covers: TsModels/_stl.py::STL.__init__ [function]
+    covers: TsUtils/_stl.py::STL.__init__ [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     invalid = seasonal_data.copy()
     invalid[5] = np.nan
@@ -73,9 +73,9 @@ def test_stl_rejects_non_finite_data(seasonal_data):
 def test_stl_rejects_invalid_period(seasonal_data, period):
     """STL requires a non-boolean integer period of at least two.
 
-    covers: TsModels/_stl.py::STL.__init__ [function]
+    covers: TsUtils/_stl.py::STL.__init__ [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     with pytest.raises(ValueError, match="period"):
         STL(seasonal_data, period=period)
@@ -84,9 +84,9 @@ def test_stl_rejects_invalid_period(seasonal_data, period):
 def test_stl_rejects_less_than_two_cycles(seasonal_data):
     """STL requires at least two complete seasonal cycles.
 
-    covers: TsModels/_stl.py::STL.__init__ [function]
+    covers: TsUtils/_stl.py::STL.__init__ [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     with pytest.raises(ValueError, match="two complete cycles"):
         STL(seasonal_data[:23], period=12)
@@ -95,9 +95,9 @@ def test_stl_rejects_less_than_two_cycles(seasonal_data):
 def test_stl_exposes_resolved_configuration(seasonal_data):
     """STL delegates and exposes all smoothing configuration.
 
-    covers: TsModels/_stl.py::STL.__init__ [function]
+    covers: TsUtils/_stl.py::STL.__init__ [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     model = STL(
         seasonal_data,
@@ -132,10 +132,10 @@ def test_stl_exposes_resolved_configuration(seasonal_data):
 def test_stl_fit_returns_public_result(seasonal_data):
     """fit returns STLResult and stores it on the model.
 
-    covers: TsModels/_stl.py::STL.fit [function]
-    covers: TsModels/_stl.py::STLResult [class]
+    covers: TsUtils/_stl.py::STL.fit [function]
+    covers: TsUtils/_stl.py::STLResult [class]
     """
-    from Ts.TsModels import STL, STLResult
+    from Ts.TsUtils import STL, STLResult
 
     model = STL(seasonal_data, period=12)
     result = model.fit()
@@ -147,10 +147,10 @@ def test_stl_fit_returns_public_result(seasonal_data):
 def test_stl_result_reconstructs_observed_series(seasonal_data):
     """STLResult exposes aligned components that reconstruct observations.
 
-    covers: TsModels/_stl.py::STLResult.nobs [function]
-    covers: TsModels/_stl.py::STLResult.fitted_values [function]
+    covers: TsUtils/_stl.py::STLResult.nobs [function]
+    covers: TsUtils/_stl.py::STLResult.fitted_values [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     result = STL(seasonal_data, period=12).fit()
 
@@ -169,9 +169,9 @@ def test_stl_result_reconstructs_observed_series(seasonal_data):
 def test_stl_result_summary_reports_robust_fit(outlier_data):
     """Result summary reports configuration and robust fit downweights outliers.
 
-    covers: TsModels/_stl.py::STLResult.summary [function]
+    covers: TsUtils/_stl.py::STLResult.summary [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     result = STL(outlier_data, period=12, robust=True).fit()
     text = result.summary()
@@ -186,9 +186,9 @@ def test_stl_result_summary_reports_robust_fit(outlier_data):
 def test_stl_result_summary_uses_real_lines(seasonal_data):
     """Result summary separates fields with real newline characters.
 
-    covers: TsModels/_stl.py::STLResult.summary [function]
+    covers: TsUtils/_stl.py::STLResult.summary [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     text = STL(seasonal_data, period=12).fit().summary()
 
@@ -198,9 +198,9 @@ def test_stl_result_summary_uses_real_lines(seasonal_data):
 def test_stl_summary_fits_automatically(seasonal_data):
     """Model summary fits once and delegates to STLResult.summary.
 
-    covers: TsModels/_stl.py::STL.summary [function]
+    covers: TsUtils/_stl.py::STL.summary [function]
     """
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     model = STL(seasonal_data, period=12)
     text = model.summary()
@@ -212,11 +212,11 @@ def test_stl_summary_fits_automatically(seasonal_data):
 def test_stl_result_plot_returns_four_panels(seasonal_data):
     """plot returns a figure with observed, trend, seasonal, and residual panels.
 
-    covers: TsModels/_stl.py::STLResult.plot [function]
+    covers: TsUtils/_stl.py::STLResult.plot [function]
     """
     from matplotlib.figure import Figure
 
-    from Ts.TsModels import STL
+    from Ts.TsUtils import STL
 
     result = STL(seasonal_data, period=12).fit()
     fig, axes = result.plot()
@@ -235,14 +235,14 @@ def test_stl_result_plot_returns_four_panels(seasonal_data):
 def test_stl_result_plot_uses_tsplots_style(seasonal_data):
     """plot uses the shared TsPlots title, label, palette, and axis style.
 
-    covers: TsModels/_stl.py::STLResult.plot [function]
+    covers: TsUtils/_stl.py::STLResult.plot [function]
     """
-    from Ts.TsModels import STL
     from Ts.TsPlots.style import (
         AXIS_LABEL_FONTSIZE,
         DEFAULT_PALETTE,
         TITLE_FONTSIZE,
     )
+    from Ts.TsUtils import STL
 
     result = STL(seasonal_data, period=12).fit()
     fig, axes = result.plot(title="Styled STL")
@@ -264,9 +264,9 @@ class TestSTLClassCoverage:
     def test_stl_class_contract(self, seasonal_data):
         """STL exposes the expected model state.
 
-        covers: TsModels/_stl.py::STL [class]
+        covers: TsUtils/_stl.py::STL [class]
         """
-        from Ts.TsModels import STL
+        from Ts.TsUtils import STL
 
         model = STL(seasonal_data, period=12)
 
@@ -279,9 +279,9 @@ class TestSTLResultClassCoverage:
     def test_stl_result_class_contract(self, seasonal_data):
         """STLResult exposes all decomposition arrays.
 
-        covers: TsModels/_stl.py::STLResult [class]
+        covers: TsUtils/_stl.py::STLResult [class]
         """
-        from Ts.TsModels import STL
+        from Ts.TsUtils import STL
 
         result = STL(seasonal_data, period=12).fit()
 

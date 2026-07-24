@@ -1,6 +1,6 @@
 # Ts/TsModels
 
-时间序列分解与模型估计工具包。提供 STL 分解及 SARIMA、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsTests 包衔接。
+时间序列模型估计工具包。提供 SARIMA、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsMetrics、TsTests 衔接。
 
 ## Missing-data contract
 
@@ -23,7 +23,6 @@ complete rows. No model imputes raw observations.
 TsModels/
 ├── __init__.py         # 统一导出接口
 ├── _base.py            # BaseModel (ABC) + BaseModelResult + ResidualTestResults (dataclass)
-├── _stl.py             # STL + STLResult — 基于 LOESS 的季节趋势分解
 ├── _sarima.py          # SARIMA + SARIMAResult
 ├── _garch_result.py    # GARCHResult (dataclass) + 参数缩放辅助函数
 ├── _garch_base.py      # _BaseVolModel — 参数验证 + fit 调度 + IGARCH MLE
@@ -36,7 +35,6 @@ TsModels/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_base.py
-│   ├── test_stl.py
 │   ├── test_sarima.py
 │   ├── test_garch.py
 │   ├── test_auto.py
@@ -53,14 +51,8 @@ TsModels/
 ```python
 import numpy as np
 
-from Ts.TsModels import STL, SARIMA, GARCH, VAR
+from Ts.TsModels import SARIMA, GARCH, VAR
 from Ts.TsSims import simulate_sarima, simulate_garch
-
-# 月度序列 STL 分解
-time = np.arange(120, dtype=float)
-monthly = 10 + 0.05 * time + 2 * np.sin(2 * np.pi * time / 12)
-decomposition = STL(monthly, period=12, robust=True).fit()
-decomposition.plot()
 
 # AR(1) 估计
 data = simulate_sarima(n=200, order=(1, 0, 0), ar=[0.7], seed=42).data
@@ -83,7 +75,7 @@ result.test_residuals(lags=10)
 
 ## 统一接口
 
-估计模型继承 `BaseModel`；STL 是分解器，不伪造 AIC、BIC、似然或参数显著性，因此使用独立的 `STLResult`。两类对象都遵循相同的操作契约：
+估计模型继承 `BaseModel`，并通过结构化 Result 对象提供统一的拟合、预测和诊断接口：
 
 | 方法/属性 | 说明 |
 |-----------|------|
@@ -110,10 +102,6 @@ result.test_residuals(lags=10)
 
 | 模型 | 方法 | 说明 |
 |------|------|------|
-| `STL` / `STLResult` | `.fit(inner_iter, outer_iter)` | 执行 LOESS 分解，返回趋势、季节项、残差和稳健权重 |
-| | `.fitted_values` | 趋势项与季节项之和 |
-| | `.summary()` | 分解周期、平滑窗口、稳健模式和残差标准差 |
-| | `.plot(title)` | Observed / Trend / Seasonal / Residual 四面板图 |
 | `SARIMA` / `SARIMAResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
 | | `.arroots` | AR 多项式特征根 (ndarray) |
 | | `.maroots` | MA 多项式特征根 (ndarray) |
@@ -185,7 +173,7 @@ evaluation = model.oos(
 不存在弃用期或兼容路径。`predict(oos_start=...)` 伪样本外路径同样不存在。
 
 所有继承 `BaseModel` 的预测模型（SARIMA、GARCH、VAR、VECM、SVAR 及 Auto 模型）
-共享该接口。STL 是分解器，不提供预测和验证期接口。
+共享该接口。
 
 ```python
 model.oos(estimation_period, validation_period, alpha=0.05)
@@ -257,36 +245,11 @@ print(backcast.mean)
 
 | 方向 | 衔接方式 |
 |------|----------|
-| TsModels -> TsPlots | STL `.plot()` 和估计模型 `.plot_fit()` 调用 `plot_series()`；`.plot_diagnostics()` 调用 `plot_series()`, `plot_acf()`, `plot_pacf()` |
+| TsModels -> TsPlots | 估计模型 `.plot_fit()` 调用 `plot_series()`；`.plot_diagnostics()` 调用 `plot_series()`, `plot_acf()`, `plot_pacf()` |
 | TsModels -> TsTests | `test_residuals()` 自动运行 4 项检验：白噪音 (Ljung-Box raw) + 正态性 (Jarque-Bera) + ARCH (Ljung-Box squared) + ARCH (Engle LM) |
 | TsSims -> TsModels | 验证脚本：TsSims 生成数据 -> TsModels 估计 -> 比较真实参数 |
 
 ## 模型参数
-
-### STL
-
-```python
-STL(data, period, seasonal=7, trend=None, low_pass=None,
-    seasonal_deg=1, trend_deg=1, low_pass_deg=1, robust=False,
-    seasonal_jump=1, trend_jump=1, low_pass_jump=1)
-```
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `data` | array-like | — | 一维、全部为有限值的时间序列；至少包含两个完整周期 |
-| `period` | int | — | 季节周期，必须大于等于 2 |
-| `seasonal` | int | `7` | 季节平滑窗口，奇数 |
-| `trend` | int/None | `None` | 趋势平滑窗口；None 时由 statsmodels 计算 |
-| `low_pass` | int/None | `None` | 低通滤波窗口；None 时由 statsmodels 计算 |
-| `seasonal_deg`, `trend_deg`, `low_pass_deg` | int | `1` | LOESS 阶数，取 0 或 1 |
-| `robust` | bool | `False` | 使用稳健权重降低异常值影响 |
-| `seasonal_jump`, `trend_jump`, `low_pass_jump` | int | `1` | LOESS 计算步长；增大可降低计算量 |
-
-结果字段为 `observed`、`trend`、`seasonal`、`residuals`、`weights`，并满足：
-
-```python
-result.observed == result.trend + result.seasonal + result.residuals
-```
 
 ### SARIMA
 
@@ -711,7 +674,7 @@ result.test_residuals(lags=10)
 ## 依赖
 
 - `numpy`, `pandas`, `scipy`, `matplotlib`
-- `statsmodels` (STL 分解及 SARIMA / VAR / VECM 估计)
+- `statsmodels` (SARIMA / VAR / VECM 估计)
 - `arch` (GARCH 估计)
 - `TsPlots` (绘图风格)
 - `TsTests` (残差诊断检验)
@@ -727,7 +690,7 @@ python -m pytest TsModels/tests -v
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path ..)
-python -c "from Ts.TsModels import STL, STLResult; print(STL, STLResult)"
+python -c "from Ts.TsModels import SARIMA, GARCH, VAR; print(SARIMA, GARCH, VAR)"
 ```
 
 ## ARIMAX、事件与政策效果
