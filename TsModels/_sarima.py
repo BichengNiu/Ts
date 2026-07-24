@@ -18,7 +18,12 @@ from Ts.TsModels._base import (
     _resolve_prediction_window,
     _validate_prediction_alpha,
 )
-from Ts.TsModels._intervention import _validate_datetime_index
+from Ts.TsModels._intervention import (
+    EventColumns,
+    EventSpec,
+    _validate_datetime_index,
+    build_event_matrix,
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +55,8 @@ def _normalise_exog_names(names, width):
     names = tuple(name.strip() for name in names)
     if len(set(names)) != len(names):
         raise ValueError("exog_names must be unique")
+    if any(name.startswith("event__") for name in names):
+        raise ValueError("ordinary exog names must not use the event__ namespace")
     return names
 
 
@@ -200,6 +207,64 @@ def _normalise_sarima_inputs(
     )
 
 
+def _validate_events(events, dates):
+    event_specs = tuple(events or ())
+    if any(not isinstance(event, EventSpec) for event in event_specs):
+        raise TypeError("events must contain only EventSpec instances")
+    if event_specs and dates is None:
+        raise ValueError("events require dated data")
+    return event_specs
+
+
+def _validate_design_matrix(frame, trend):
+    if frame is None:
+        return
+    values = frame.to_numpy(dtype=float)
+    for index, name in enumerate(frame.columns):
+        column = values[:, index]
+        if np.all(column == 0.0):
+            raise ValueError(f"all-zero design column is not identified: {name}")
+        if np.all(column == column[0]) and "c" in trend:
+            raise ValueError(
+                f"constant exog column {name!r} conflicts with trend={trend!r}"
+            )
+    rank = np.linalg.matrix_rank(values)
+    if rank < values.shape[1]:
+        raise ValueError(
+            "combined exogenous design matrix is rank deficient: "
+            f"rank {rank} for {values.shape[1]} columns"
+        )
+
+
+def _combined_design(inputs, events, trend):
+    index = (
+        inputs.dates
+        if inputs.dates is not None
+        else pd.RangeIndex(len(inputs.endog))
+    )
+    frames = []
+    if inputs.exog is not None:
+        frames.append(
+            pd.DataFrame(
+                inputs.exog,
+                index=index,
+                columns=inputs.exog_names,
+            )
+        )
+    event_metadata: dict[str, EventColumns] = {}
+    event_frame = None
+    if events:
+        event_frame, event_metadata = build_event_matrix(
+            inputs.dates,
+            events,
+            reserved_names=inputs.exog_names,
+        )
+        frames.append(event_frame)
+    design = pd.concat(frames, axis=1) if frames else None
+    _validate_design_matrix(design, trend)
+    return design, event_frame, event_metadata
+
+
 @dataclass
 class SARIMAResult(BaseModelResult):
     """Result container for SARIMA model estimation.
@@ -222,6 +287,35 @@ class SARIMAResult(BaseModelResult):
     _seasonal_order: tuple | None = None
     _statsmodels_result: object = None
     _trend: str = "c"
+    _dates: pd.DatetimeIndex | None = None
+    _ordinary_exog: np.ndarray | None = None
+    _ordinary_exog_names: tuple[str, ...] = ()
+    _event_specs: tuple[EventSpec, ...] = ()
+    _event_metadata: dict[str, EventColumns] | None = None
+    _design_columns: tuple[str, ...] = ()
+    _design_matrix: np.ndarray | None = None
+    _default_future_exog: pd.DataFrame | None = None
+    _model_kwargs: dict | None = None
+
+    @property
+    def dates(self):
+        """Return a copy of the fitted observation dates."""
+        return None if self._dates is None else self._dates.copy()
+
+    @property
+    def exog_names(self):
+        """Return ordinary exogenous-variable names."""
+        return tuple(self._ordinary_exog_names)
+
+    @property
+    def event_names(self):
+        """Return event names in model-column order."""
+        return tuple(event.name for event in self._event_specs)
+
+    @property
+    def design_columns(self):
+        """Return the fitted combined-design column names."""
+        return tuple(self._design_columns)
 
     def summary(self) -> str:
         """Return a formatted parameter summary string.
@@ -591,13 +685,30 @@ class SARIMA(BaseModel):
             raise ValueError(
                 f"Need at least 10 observations, got {len(inputs.endog)}"
             )
+        event_specs = _validate_events(events, inputs.dates)
+        design, event_frame, event_metadata = _combined_design(
+            inputs,
+            event_specs,
+            trend,
+        )
 
         self.data = inputs.endog
         self.dates = inputs.dates
         self.exog = inputs.exog
         self.exog_names = inputs.exog_names
         self.future_exog = inputs.future_exog
-        self.events = tuple(events or ())
+        self.events = event_specs
+        self._event_frame = event_frame
+        self._event_metadata = event_metadata
+        self._design_frame = design
+        self.design_matrix = (
+            None
+            if design is None
+            else design.to_numpy(dtype=float, copy=True)
+        )
+        self.design_columns = (
+            () if design is None else tuple(design.columns)
+        )
         self.missing = missing
         self.order = tuple(order)
         self.seasonal_order = tuple(seasonal_order)
@@ -617,6 +728,8 @@ class SARIMA(BaseModel):
 
         model = SARIMAX(
             self.data,
+            exog=self._design_frame,
+            dates=self.dates,
             order=(p, d, q),
             seasonal_order=(P, D, Q, s),
             trend=self.trend,
@@ -654,6 +767,21 @@ class SARIMA(BaseModel):
             _seasonal_order=self.seasonal_order,
             _statsmodels_result=fitted,
             _trend=self.trend,
+            _dates=self.dates,
+            _ordinary_exog=self.exog,
+            _ordinary_exog_names=self.exog_names,
+            _event_specs=self.events,
+            _event_metadata=self._event_metadata,
+            _design_columns=self.design_columns,
+            _design_matrix=self.design_matrix,
+            _default_future_exog=self.future_exog,
+            _model_kwargs={
+                "order": self.order,
+                "seasonal_order": self.seasonal_order,
+                "trend": self.trend,
+                "enforce_stationarity": self.enforce_stationarity,
+                "enforce_invertibility": self.enforce_invertibility,
+            },
         )
 
         self.result_ = result
