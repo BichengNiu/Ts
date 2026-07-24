@@ -510,6 +510,98 @@ class SARIMAResult(BaseModelResult):
             header_lines.append(f"Seasonal Order: {self._seasonal_order}")
         return "\n".join(header_lines + lines[1:])
 
+    def _resolve_prediction_bounds(self, start, end, future_dates):
+        date_bounds = [
+            value
+            for value in (start, end)
+            if value is not None
+            and not isinstance(value, (int, np.integer))
+        ]
+        if not date_bounds:
+            return start, end
+        if self._dates is None:
+            raise TypeError("date prediction bounds require dated model data")
+
+        parsed_bounds = []
+        for value in date_bounds:
+            try:
+                timestamp = pd.Timestamp(value)
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    "prediction bounds must be integer positions or dates"
+                ) from error
+            if str(timestamp.tz) != str(self._dates.tz):
+                raise ValueError(
+                    "prediction date timezone must match model dates"
+                )
+            parsed_bounds.append(timestamp)
+
+        future_index = None
+        future_bound = max(
+            (
+                timestamp
+                for timestamp in parsed_bounds
+                if timestamp > self._dates[-1]
+            ),
+            default=None,
+        )
+        if future_bound is not None:
+            if future_dates is not None:
+                future_index = _validate_datetime_index(
+                    future_dates,
+                    "future_dates",
+                )
+            else:
+                frequency = self._dates.freq or pd.infer_freq(self._dates)
+                if frequency is None:
+                    raise ValueError(
+                        "future_dates is required when date frequency "
+                        "cannot be inferred"
+                    )
+                future_index = pd.date_range(
+                    start=self._dates[-1],
+                    end=future_bound,
+                    freq=frequency,
+                )[1:]
+        calendar = (
+            self._dates
+            if future_index is None
+            else self._dates.append(future_index)
+        )
+
+        def position(value, name):
+            if value is None or isinstance(value, (int, np.integer)):
+                return value
+            timestamp = pd.Timestamp(value)
+            location = int(calendar.get_indexer([timestamp])[0])
+            if location < 0:
+                raise ValueError(
+                    f"prediction date {timestamp.isoformat()} for {name} "
+                    "is absent from the prediction calendar"
+                )
+            return location
+
+        return position(start, "start"), position(end, "end")
+
+    def _prediction_dates(self, window, future_dates):
+        if self._dates is None:
+            return None
+        parts = []
+        if window.in_sample_size:
+            parts.append(
+                self._dates[
+                    window.start : window.start + window.in_sample_size
+                ]
+            )
+        if window.has_forecast:
+            parts.append(future_dates[window.forecast_skip :])
+        if not parts:
+            return None
+        result = parts[0]
+        for part in parts[1:]:
+            result = result.append(part)
+        return result
+
     def _resolve_future_dates(self, steps, future_dates):
         if future_dates is not None:
             dates = _validate_datetime_index(future_dates, "future_dates")
@@ -645,6 +737,11 @@ class SARIMAResult(BaseModelResult):
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
 
+        start, end = self._resolve_prediction_bounds(
+            start,
+            end,
+            future_dates,
+        )
         window = _resolve_prediction_window(self.nobs, start, end)
         alpha = _validate_prediction_alpha(alpha)
         if not window.has_forecast:
@@ -697,11 +794,7 @@ class SARIMAResult(BaseModelResult):
             )
         if len(predictions) == 1:
             return next(iter(predictions.values()))
-        scenario_dates = (
-            resolved_dates[window.forecast_skip:]
-            if window.in_sample_size == 0 and resolved_dates is not None
-            else None
-        )
+        scenario_dates = self._prediction_dates(window, resolved_dates)
         return ScenarioForecastResult(
             scenarios=predictions,
             default_name=default_name,
@@ -1004,10 +1097,20 @@ class SARIMA(BaseModel):
         p, d, q = self.order
         P, D, Q, s = self.seasonal_order
 
+        model_dates = self.dates
+        if model_dates is not None and (
+            model_dates.freq is None
+            and pd.infer_freq(model_dates) is None
+        ):
+            model_dates = None
+        model_exog = self._design_frame
+        if model_exog is not None and model_dates is None:
+            model_exog = model_exog.reset_index(drop=True)
+
         model = SARIMAX(
             self.data,
-            exog=self._design_frame,
-            dates=self.dates,
+            exog=model_exog,
+            dates=model_dates,
             order=(p, d, q),
             seasonal_order=(P, D, Q, s),
             trend=self.trend,

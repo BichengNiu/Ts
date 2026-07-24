@@ -570,3 +570,111 @@ def test_scenario_result_validates_access_and_plots():
             default_name=None,
             dates=dates[:1],
         )
+
+
+def test_predict_accepts_date_bounds_across_sample_boundary():
+    model = _dated_model_with_future_exog()
+    prediction = model.fit().predict(
+        start="2022-10-01",
+        end="2023-03-01",
+    )
+
+    assert prediction.mean.shape == (6,)
+    assert prediction.is_oos.tolist() == [
+        False,
+        False,
+        False,
+        True,
+        True,
+        True,
+    ]
+
+
+def test_multi_scenario_mixed_prediction_keeps_all_dates():
+    from Ts.TsModels._sarima import ScenarioForecastResult
+
+    model = _dated_model_with_future_exog()
+    future_dates = model.future_exog.index
+    prediction = model.fit().predict(
+        start="2022-11-01",
+        end="2023-03-01",
+        future_exog={
+            "high": pd.DataFrame({"x": [2.0] * 3}, index=future_dates),
+            "low": pd.DataFrame({"x": [-2.0] * 3}, index=future_dates),
+        },
+    )
+
+    assert isinstance(prediction, ScenarioForecastResult)
+    assert prediction.dates.equals(
+        pd.date_range("2022-11-01", periods=5, freq="MS")
+    )
+
+
+def test_future_event_is_generated_without_future_exog_column():
+    from Ts.TsModels._intervention import EventSpec
+
+    rng = np.random.default_rng(23)
+    dates = pd.date_range("2020-01-01", periods=36, freq="MS")
+    future_dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+    event_dates = [dates[10], dates[22], future_dates[1]]
+    historical_indicator = dates.isin(event_dates).astype(float)
+    y = pd.Series(
+        3.0 * historical_indicator + rng.normal(scale=0.03, size=36),
+        index=dates,
+    )
+    fitted = SARIMA(
+        y,
+        events=[
+            EventSpec(
+                "policy",
+                event_dates,
+                "pulse",
+                date_rule="exact",
+            )
+        ],
+        order=(0, 0, 0),
+        trend="n",
+    ).fit()
+
+    prediction = fitted.predict(
+        start=fitted.nobs,
+        end=fitted.nobs + 2,
+    )
+
+    assert prediction.mean[1] > 2.5
+    assert abs(prediction.mean[0]) < 0.2
+    assert abs(prediction.mean[2]) < 0.2
+
+
+def test_skipped_future_periods_use_full_default_exog_path():
+    fitted = _dated_model_with_future_exog().fit()
+    skipped = fitted.predict(start=fitted.nobs + 1, end=fitted.nobs + 2)
+    full = fitted.predict(start=fitted.nobs, end=fitted.nobs + 2)
+
+    np.testing.assert_allclose(skipped.mean, full.mean[1:])
+
+
+def test_irregular_dates_require_explicit_future_dates():
+    dates = pd.DatetimeIndex(
+        pd.date_range("2020-01-01", periods=20, freq="D").delete(8)
+    )
+    y = pd.Series(np.arange(19.0), index=dates)
+    fitted = SARIMA(y, order=(0, 0, 0), trend="c").fit()
+
+    with pytest.raises(ValueError, match="future_dates"):
+        fitted.predict(start=fitted.nobs, end=fitted.nobs)
+
+    future_dates = pd.DatetimeIndex(["2020-01-21", "2020-01-23"])
+    prediction = fitted.predict(
+        start=fitted.nobs,
+        end=fitted.nobs + 1,
+        future_dates=future_dates,
+    )
+    assert prediction.mean.shape == (2,)
+
+
+def test_date_bound_must_exist_in_prediction_calendar():
+    fitted = _dated_model_with_future_exog().fit()
+
+    with pytest.raises(ValueError, match="prediction date"):
+        fitted.predict(start="2022-12-15", end="2023-02-01")
