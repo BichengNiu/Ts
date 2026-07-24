@@ -801,6 +801,31 @@ class SARIMAResult(BaseModelResult):
             dates=scenario_dates,
         )
 
+    def policy_effect(
+        self,
+        events,
+        *,
+        start=0,
+        end=None,
+        method="simulation",
+        alpha=0.05,
+        n_draws=2000,
+        seed=None,
+    ):
+        """Estimate conditional effects for selected fitted events."""
+        from Ts.TsModels._intervention import estimate_policy_effect
+
+        return estimate_policy_effect(
+            self,
+            events=events,
+            start=start,
+            end=end,
+            method=method,
+            alpha=alpha,
+            n_draws=n_draws,
+            seed=seed,
+        )
+
     @property
     def arroots(self):
         """Autoregressive (AR) polynomial roots.

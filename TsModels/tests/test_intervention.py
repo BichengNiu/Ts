@@ -323,3 +323,130 @@ def test_build_event_matrix_requires_target_subset_and_matching_timezone():
             [],
             calendar=calendar,
         )
+
+
+def _fitted_policy_model(seed=31):
+    from Ts.TsModels import SARIMA
+    from Ts.TsModels._intervention import EventSpec
+
+    rng = np.random.default_rng(seed)
+    dates = pd.date_range("2010-01-01", periods=120, freq="MS")
+    step = np.zeros(120)
+    step[30:] += 1
+    step[80:] += 1
+    other = np.zeros(120)
+    other[[45, 95]] = 1
+    y = 1.8 * step - 0.7 * other + rng.normal(scale=0.05, size=120)
+    return SARIMA(
+        pd.Series(y, index=dates),
+        events=[
+            EventSpec(
+                "policy",
+                dates[[30, 80]],
+                "step",
+                date_rule="exact",
+            ),
+            EventSpec(
+                "other",
+                dates[[45, 95]],
+                "pulse",
+                date_rule="exact",
+            ),
+        ],
+        order=(0, 0, 0),
+        trend="n",
+    ).fit()
+
+
+def test_policy_effect_is_event_design_contrast():
+    from Ts.TsModels._intervention import PolicyEffectResult
+
+    fitted = _fitted_policy_model()
+    effect = fitted.policy_effect(
+        events="policy",
+        start="2010-01-01",
+        end="2019-12-01",
+        method="delta",
+    )
+    column = fitted.design_columns.index("event__policy")
+    expected = (
+        fitted._design_matrix[:, column]
+        * fitted.params["event__policy"]
+    )
+
+    assert isinstance(effect, PolicyEffectResult)
+    np.testing.assert_allclose(effect.effect.to_numpy(), expected)
+    np.testing.assert_allclose(
+        effect.factual_mean - effect.counterfactual_mean,
+        effect.effect,
+    )
+    assert effect.cumulative_effect == pytest.approx(expected.sum())
+    assert "因果" in effect.identification_note
+
+
+def test_policy_effect_keeps_nonselected_events_in_both_paths():
+    fitted = _fitted_policy_model()
+    policy = fitted.policy_effect("policy", method="delta")
+    other = fitted.policy_effect("other", method="delta")
+    both = fitted.policy_effect(["policy", "other"], method="delta")
+
+    np.testing.assert_allclose(both.effect, policy.effect + other.effect)
+    assert policy.coefficients["event"].unique().tolist() == ["policy"]
+
+
+def test_policy_effect_validates_event_selection_and_dates():
+    fitted = _fitted_policy_model()
+
+    with pytest.raises(ValueError, match="unknown event"):
+        fitted.policy_effect("missing", method="delta")
+    with pytest.raises(ValueError, match="duplicate"):
+        fitted.policy_effect(["policy", "policy"], method="delta")
+    with pytest.raises(ValueError, match="must not be empty"):
+        fitted.policy_effect([], method="delta")
+    with pytest.raises(ValueError, match="prediction date"):
+        fitted.policy_effect(
+            "policy",
+            start="2010-01-15",
+            method="delta",
+        )
+
+
+def test_policy_effect_summary_and_plot_are_self_contained():
+    import matplotlib.pyplot as plt
+
+    effect = _fitted_policy_model().policy_effect(
+        "policy",
+        method="delta",
+    )
+
+    summary = effect.summary()
+    assert "policy" in summary
+    assert "Cumulative effect" in summary
+    assert "delta" in summary
+    assert effect.identification_note in summary
+    fig, axes = effect.plot()
+    assert len(axes) == 2
+    plt.close(fig)
+
+
+def test_policy_effect_result_rejects_misaligned_paths():
+    from Ts.TsModels._intervention import PolicyEffectResult
+
+    dates = pd.date_range("2025-01-01", periods=2, freq="MS")
+    series = pd.Series([1.0, 2.0], index=dates)
+
+    with pytest.raises(ValueError, match="aligned"):
+        PolicyEffectResult(
+            coefficients=pd.DataFrame(),
+            factual_mean=series,
+            counterfactual_mean=series.iloc[:1],
+            effect=series,
+            lower=series,
+            upper=series,
+            cumulative_effect=3.0,
+            cumulative_lower=2.0,
+            cumulative_upper=4.0,
+            pretrend_test=None,
+            method="delta",
+            identification_note="note",
+        )

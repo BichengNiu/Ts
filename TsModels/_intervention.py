@@ -27,6 +27,7 @@ from pandas.tseries.offsets import (
     YearBegin,
     YearEnd,
 )
+from scipy.stats import norm
 
 DateRule = Literal["exact", "period", "next", "previous"]
 EventKind = Literal["pulse", "step"]
@@ -109,6 +110,110 @@ class EventColumns:
     columns: tuple[str, ...]
     relative_periods: tuple[int, ...] | None
     mapped_positions: tuple[int, ...]
+
+
+_IDENTIFICATION_NOTE = (
+    "这是模型条件下的政策效果；只有在外生性、无同期未控冲击、"
+    "模型设定正确和反事实稳定等识别条件成立时，才可解释为因果效应。"
+)
+
+
+@dataclass
+class PolicyEffectResult:
+    """Conditional effect contrast for one or more fitted events."""
+
+    coefficients: pd.DataFrame
+    factual_mean: pd.Series
+    counterfactual_mean: pd.Series
+    effect: pd.Series
+    lower: pd.Series
+    upper: pd.Series
+    cumulative_effect: float
+    cumulative_lower: float
+    cumulative_upper: float
+    pretrend_test: dict | None
+    method: str
+    identification_note: str
+
+    def __post_init__(self) -> None:
+        paths = (
+            self.factual_mean,
+            self.counterfactual_mean,
+            self.effect,
+            self.lower,
+            self.upper,
+        )
+        if any(not isinstance(path, pd.Series) for path in paths):
+            raise TypeError("policy-effect paths must be pandas Series")
+        if any(not path.index.equals(paths[0].index) for path in paths[1:]):
+            raise ValueError("policy-effect paths must be aligned")
+
+        self.coefficients = self.coefficients.copy()
+        for name in (
+            "factual_mean",
+            "counterfactual_mean",
+            "effect",
+            "lower",
+            "upper",
+        ):
+            setattr(self, name, getattr(self, name).copy())
+
+    def summary(self) -> str:
+        """Return a self-contained text summary."""
+        coefficient_text = (
+            "No event coefficients"
+            if self.coefficients.empty
+            else self.coefficients.to_string(index=False)
+        )
+        return "\n".join(
+            [
+                f"Policy effect method: {self.method}",
+                "",
+                "Event coefficients:",
+                coefficient_text,
+                "",
+                (
+                    "Cumulative effect: "
+                    f"{self.cumulative_effect:.6g} "
+                    f"[{self.cumulative_lower:.6g}, "
+                    f"{self.cumulative_upper:.6g}]"
+                ),
+                "",
+                f"Identification note: {self.identification_note}",
+            ]
+        )
+
+    def plot(self):
+        """Plot factual/counterfactual paths and the estimated effect."""
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        axes[0].plot(
+            self.factual_mean.index,
+            self.factual_mean,
+            label="Factual",
+        )
+        axes[0].plot(
+            self.counterfactual_mean.index,
+            self.counterfactual_mean,
+            label="Counterfactual",
+        )
+        axes[0].set_title("Factual and counterfactual paths")
+        axes[0].legend(frameon=False)
+
+        axes[1].plot(self.effect.index, self.effect, label="Effect")
+        axes[1].fill_between(
+            self.effect.index,
+            self.lower,
+            self.upper,
+            alpha=0.2,
+            label="Confidence interval",
+        )
+        axes[1].axhline(0.0, color="black", linewidth=0.8)
+        axes[1].set_title("Conditional policy effect")
+        axes[1].legend(frameon=False)
+        fig.tight_layout()
+        return fig, axes
 
 
 _START_OFFSETS = (
@@ -325,3 +430,213 @@ def build_event_matrix(
     matrix = full.iloc[target_positions].copy()
     matrix.index = target_index
     return matrix, metadata
+
+
+def _selected_event_names(result, events) -> tuple[str, ...]:
+    selected = (events,) if isinstance(events, str) else tuple(events)
+    if not selected:
+        raise ValueError("events must not be empty")
+    if any(not isinstance(name, str) for name in selected):
+        raise TypeError("events must contain event names")
+    if len(set(selected)) != len(selected):
+        raise ValueError("events contains duplicate event names")
+
+    known = {event.name for event in result._event_specs}
+    unknown = [name for name in selected if name not in known]
+    if unknown:
+        raise ValueError(f"unknown event: {unknown[0]}")
+    return selected
+
+
+def _event_parameter_table(
+    result,
+    selected: tuple[str, ...],
+    *,
+    alpha: float,
+) -> tuple[pd.DataFrame, tuple[str, ...]]:
+    z_critical = float(norm.ppf(1.0 - alpha / 2.0))
+    rows = []
+    columns = []
+    for event in result._event_specs:
+        if event.name not in selected:
+            continue
+        metadata = result._event_metadata[event.name]
+        relative_periods = metadata.relative_periods or (None,) * len(
+            metadata.columns
+        )
+        for column, relative_period in zip(
+            metadata.columns,
+            relative_periods,
+            strict=True,
+        ):
+            estimate = result.params[column]
+            standard_error = result.std_errors[column]
+            rows.append(
+                {
+                    "event": event.name,
+                    "column": column,
+                    "relative_period": relative_period,
+                    "coef": estimate,
+                    "se": standard_error,
+                    "z": estimate / standard_error,
+                    "p": result.p_values[column],
+                    "lower": estimate - z_critical * standard_error,
+                    "upper": estimate + z_critical * standard_error,
+                }
+            )
+            columns.append(column)
+    return pd.DataFrame(rows), tuple(columns)
+
+
+def _delta_effect_intervals(
+    contrast: np.ndarray,
+    covariance: np.ndarray,
+    *,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    variances = np.einsum(
+        "ij,jk,ik->i",
+        contrast,
+        covariance,
+        contrast,
+    )
+    standard_errors = np.sqrt(np.clip(variances, 0.0, None))
+    z_critical = float(norm.ppf(1.0 - alpha / 2.0))
+    cumulative_contrast = contrast.sum(axis=0)
+    cumulative_variance = float(
+        cumulative_contrast @ covariance @ cumulative_contrast
+    )
+    cumulative_standard_error = np.sqrt(max(cumulative_variance, 0.0))
+    return (
+        z_critical * standard_errors,
+        standard_errors,
+        z_critical * cumulative_standard_error,
+        cumulative_standard_error,
+    )
+
+
+def estimate_policy_effect(
+    result,
+    *,
+    events,
+    start=0,
+    end=None,
+    method="simulation",
+    alpha=0.05,
+    n_draws=2000,
+    seed=None,
+) -> PolicyEffectResult:
+    """Estimate a conditional fitted-event contrast."""
+    from Ts.TsModels._base import (
+        _resolve_prediction_window,
+        _validate_prediction_alpha,
+    )
+
+    del n_draws, seed
+    if method != "delta":
+        raise ValueError("method must be 'delta'")
+    alpha = _validate_prediction_alpha(alpha)
+    selected = _selected_event_names(result, events)
+    start_position, end_position = result._resolve_prediction_bounds(
+        start,
+        end,
+        None,
+    )
+    window = _resolve_prediction_window(
+        result.nobs,
+        start_position,
+        end_position,
+    )
+    future_dates = (
+        result._resolve_future_dates(window.forecast_steps, None)
+        if window.has_forecast
+        else None
+    )
+    target_dates = result._prediction_dates(window, future_dates)
+    if target_dates is None:
+        raise TypeError("policy effects require dated model data")
+
+    prediction = result.predict(
+        start=start_position,
+        end=end_position,
+        alpha=alpha,
+    )
+    if not hasattr(prediction, "mean"):
+        raise RuntimeError("policy effects require a single forecast scenario")
+
+    calendar = (
+        result._dates
+        if future_dates is None
+        else result._dates.append(future_dates)
+    )
+    event_frame, _ = build_event_matrix(
+        target_dates,
+        result._event_specs,
+        calendar=calendar,
+        reserved_names=result._ordinary_exog_names,
+    )
+    coefficients, selected_columns = _event_parameter_table(
+        result,
+        selected,
+        alpha=alpha,
+    )
+    parameter_names = tuple(result._statsmodels_result.param_names)
+    parameter_positions = [
+        parameter_names.index(column) for column in selected_columns
+    ]
+    selected_parameters = np.asarray(
+        result._statsmodels_result.params,
+        dtype=float,
+    )[parameter_positions]
+    contrast = event_frame.loc[:, selected_columns].to_numpy(dtype=float)
+    effect_values = contrast @ selected_parameters
+
+    full_covariance = np.asarray(
+        result._statsmodels_result.cov_params(),
+        dtype=float,
+    )
+    covariance = full_covariance[np.ix_(
+        parameter_positions,
+        parameter_positions,
+    )]
+    margin, _, cumulative_margin, _ = _delta_effect_intervals(
+        contrast,
+        covariance,
+        alpha=alpha,
+    )
+    factual_values = np.asarray(prediction.mean, dtype=float)
+    factual = pd.Series(
+        factual_values,
+        index=target_dates,
+        name="factual_mean",
+    )
+    effect = pd.Series(
+        effect_values,
+        index=target_dates,
+        name="effect",
+    )
+    cumulative_effect = float(effect_values.sum())
+    return PolicyEffectResult(
+        coefficients=coefficients,
+        factual_mean=factual,
+        counterfactual_mean=(factual - effect).rename(
+            "counterfactual_mean"
+        ),
+        effect=effect,
+        lower=pd.Series(
+            effect_values - margin,
+            index=target_dates,
+            name="lower",
+        ),
+        upper=pd.Series(
+            effect_values + margin,
+            index=target_dates,
+            name="upper",
+        ),
+        cumulative_effect=cumulative_effect,
+        cumulative_lower=cumulative_effect - cumulative_margin,
+        cumulative_upper=cumulative_effect + cumulative_margin,
+        pretrend_test=None,
+        method=method,
+        identification_note=_IDENTIFICATION_NOTE,
+    )
