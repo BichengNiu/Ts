@@ -11,6 +11,7 @@ from ._common import (
     fit_and_forecast,
     metrics_by_horizon,
     model_data,
+    training_dates,
     training_exog,
     validate_alpha,
     validate_model_protocol,
@@ -130,10 +131,16 @@ def backtest(
         )
         train_data = data[train_start:origin]
         try:
+            predict_kwargs = model._evaluation_predict_kwargs(
+                origin,
+                origin + horizon,
+            )
             fitted, forecast = fit_and_forecast(
                 model,
                 train_data,
                 training_exog(model, train_start, origin),
+                training_dates(model, train_start, origin),
+                predict_kwargs,
                 horizon,
                 alpha,
                 one_forecast_shape,

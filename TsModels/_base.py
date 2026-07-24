@@ -129,11 +129,11 @@ class PredictResult:
         from matplotlib.ticker import MaxNLocator
 
         from Ts.TsPlots.style import (
-            _ensure_fonts,
-            DEFAULT_PALETTE,
-            style_axes,
-            TITLE_FONTSIZE,
             AXIS_LABEL_FONTSIZE,
+            DEFAULT_PALETTE,
+            TITLE_FONTSIZE,
+            _ensure_fonts,
+            style_axes,
         )
 
         _ensure_fonts()
@@ -411,7 +411,7 @@ class BaseModelResult:
         """
         import matplotlib.pyplot as plt
 
-        from Ts.TsPlots import plot_series, plot_acf, plot_pacf
+        from Ts.TsPlots import plot_acf, plot_pacf, plot_series
 
         if title is None:
             title = f"{self.model_type}: Diagnostic Plots"
@@ -476,7 +476,7 @@ class BaseModelResult:
             ``.engle_lm`` attributes. Supports dict-style access and ``print()``
             for formatted summary + detailed output.
         """
-        from Ts.TsTests import LjungBoxTest, EngleLMTest, NormalityTest
+        from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
 
         wn = LjungBoxTest(self.residuals, lags=lags, apply_squared=False)
         wn_result = wn.fit()
@@ -517,7 +517,7 @@ class BaseModelResult:
         float or np.ndarray or None
             The long-run equilibrium value, or ``None`` if not applicable.
         """
-        return None
+        return
 
 
 @dataclass
@@ -601,7 +601,7 @@ class BaseModel(ABC):
     _evaluation_target_name = 'observed'
     _backcast_target_name = 'observed'
 
-    def _clone_for_evaluation(self, data, exog=None):
+    def _clone_for_evaluation(self, data, exog=None, *, dates=None):
         '''Clone this configuration with an isolated evaluation data window.'''
         cloned = copy.copy(self)
         cloned.data = np.array(data, dtype=float, copy=True)
@@ -612,7 +612,14 @@ class BaseModel(ABC):
                 if exog is None
                 else np.array(exog, dtype=float, copy=True)
             )
+        if hasattr(cloned, 'dates'):
+            cloned.dates = None if dates is None else dates.copy()
         return cloned
+
+    def _evaluation_predict_kwargs(self, start, stop):
+        '''Return model-specific context for an evaluation forecast window.'''
+        del start, stop
+        return {}
 
     def _evaluation_actual(self, observed, train_data):
         '''Return the observable target used to score forecasts.'''

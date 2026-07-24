@@ -83,12 +83,18 @@ def fit_and_forecast(
     model,
     train_data,
     exog,
+    dates,
+    predict_kwargs,
     horizon,
     alpha,
     expected_shape,
 ):
     """Fit an isolated model window and return validated forecasts."""
-    cloned = model._clone_for_evaluation(train_data, exog=exog)
+    cloned = model._clone_for_evaluation(
+        train_data,
+        exog=exog,
+        dates=dates,
+    )
     fitted = cloned.fit()
     predict = getattr(fitted, "predict", None)
     if not callable(predict):
@@ -99,6 +105,7 @@ def fit_and_forecast(
         start=fitted.nobs,
         end=fitted.nobs + horizon - 1,
         alpha=alpha,
+        **predict_kwargs,
     )
     return fitted, prediction_arrays(prediction, expected_shape)
 
@@ -171,11 +178,20 @@ def training_exog(model, start, stop):
     return np.array(np.asarray(exog)[start:stop], dtype=float, copy=True)
 
 
+def training_dates(model, start, stop):
+    """Return a copied date-index training window when available."""
+    dates = getattr(model, "dates", None)
+    if dates is None:
+        return None
+    return dates[start:stop].copy()
+
+
 def validate_model_protocol(model, context):
     """Require the evaluation hooks supplied by TsModels.BaseModel."""
     required = (
         "_clone_for_evaluation",
         "_evaluation_actual",
+        "_evaluation_predict_kwargs",
         "_validate_evaluation",
     )
     missing = [name for name in required if not callable(getattr(model, name, None))]

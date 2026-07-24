@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from Ts.TsMetrics import (
@@ -270,3 +271,52 @@ def test_predict_rejects_removed_pseudo_oos_argument():
 
     with pytest.raises(TypeError, match="oos_start"):
         fitted.predict(oos_start=25)
+
+
+def test_oos_passes_holdout_exog_without_holdout_y():
+    from Ts.TsModels import SARIMA
+
+    dates = pd.date_range("2020-01-01", periods=30, freq="MS")
+    exog = pd.DataFrame({"x": np.arange(30.0)}, index=dates)
+    data = pd.Series(2.0 * exog["x"].to_numpy(), index=dates)
+    model = SARIMA(
+        data,
+        exog=exog,
+        order=(0, 0, 0),
+        trend="n",
+    )
+
+    result = model.oos(split=20)
+
+    assert result.mean.shape == (10,)
+    assert result.metrics["rmse"] < 1e-5
+    assert model.result_ is None
+
+
+def test_record_mode_reports_missing_future_exog_dates():
+    from Ts.TsModels import SARIMA
+
+    dates = pd.date_range("2022-01-01", periods=23, freq="MS")
+    exog = pd.DataFrame(
+        {"x": np.arange(23.0)},
+        index=dates,
+    )
+    model = SARIMA(
+        pd.Series(1.5 * exog["x"].to_numpy(), index=dates),
+        exog=exog,
+        order=(0, 0, 0),
+        trend="n",
+    )
+    model.exog = model.exog[:20].copy()
+
+    result = model.backtest(
+        initial_window=20,
+        horizon=3,
+        on_error="record",
+    )
+
+    assert np.isnan(result.mean).all()
+    assert len(result.failures) == 1
+    message = result.failures[0]["message"]
+    assert dates[20].isoformat() in message
+    assert dates[22].isoformat() in message

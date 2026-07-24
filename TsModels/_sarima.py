@@ -1112,6 +1112,54 @@ class SARIMA(BaseModel):
         self.enforce_stationarity = enforce_stationarity
         self.enforce_invertibility = enforce_invertibility
 
+    def _clone_for_evaluation(self, data, exog=None, *, dates=None):
+        """Rebuild all derived design state for an evaluation window."""
+        return type(self)(
+            data,
+            order=self.order,
+            seasonal_order=self.seasonal_order,
+            trend=self.trend,
+            enforce_stationarity=self.enforce_stationarity,
+            enforce_invertibility=self.enforce_invertibility,
+            dates=dates,
+            exog=exog,
+            exog_names=self.exog_names if exog is not None else None,
+            events=self.events,
+            missing="raise",
+        )
+
+    def _evaluation_predict_kwargs(self, start, stop):
+        """Return future exogenous values and dates for one evaluation."""
+        kwargs = {}
+        if self.exog is not None:
+            expected = stop - start
+            future_exog = self.exog[start:stop]
+            if len(future_exog) != expected:
+                missing_start = max(start, len(self.exog))
+                if self.dates is None:
+                    missing = f"positions {missing_start} through {stop - 1}"
+                else:
+                    missing = ", ".join(
+                        timestamp.isoformat()
+                        for timestamp in self.dates[missing_start:stop]
+                    )
+                raise ValueError(
+                    f"future exog is missing dates: {missing}"
+                )
+            kwargs["future_exog"] = np.array(
+                future_exog,
+                dtype=float,
+                copy=True,
+            )
+        if self.dates is not None:
+            future_dates = self.dates[start:stop]
+            if len(future_dates) != stop - start:
+                raise ValueError(
+                    "future dates do not cover the evaluation window"
+                )
+            kwargs["future_dates"] = future_dates.copy()
+        return kwargs
+
     def fit(self):
         """Estimate the SARIMA model via maximum likelihood.
 

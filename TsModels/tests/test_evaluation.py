@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from Ts.TsMetrics import BacktestResult, compute_metrics
@@ -528,6 +529,138 @@ class TestBacktestModelIntegration:
         assert result.mean.shape == (1, 1)
         assert result.target == 'absolute_demeaned_return_proxy'
 
+    def test_arimax_backtest_aligns_training_and_future_context(
+        self,
+        monkeypatch,
+    ):
+        from Ts.TsModels import SARIMA
+        from Ts.TsModels._intervention import EventSpec
+
+        rng = np.random.default_rng(21)
+        dates = pd.date_range("2021-01-01", periods=24, freq="MS")
+        exog = pd.DataFrame(
+            {"x": rng.normal(size=24)},
+            index=dates,
+        )
+        event_positions = (5, 10, 15)
+        event_level = np.zeros(24)
+        for position in event_positions:
+            event_level[position:] += 1.0
+        data = pd.Series(
+            1.2 * exog["x"].to_numpy()
+            + 0.4 * event_level
+            + rng.normal(scale=0.01, size=24),
+            index=dates,
+        )
+        event = EventSpec(
+            "policy",
+            dates[list(event_positions)],
+            "step",
+            date_rule="exact",
+        )
+        model = SARIMA(
+            data,
+            exog=exog,
+            events=[event],
+            order=(0, 0, 0),
+            trend="n",
+        )
+        original_data = model.data.copy()
+        clone_records = []
+        forecast_records = []
+        original_clone = model._clone_for_evaluation
+        original_context = model._evaluation_predict_kwargs
+
+        def recording_clone(data, exog=None, *, dates=None):
+            cloned = original_clone(
+                data,
+                exog=exog,
+                dates=dates,
+            )
+            clone_records.append(
+                {
+                    "data": cloned.data.copy(),
+                    "exog": cloned.exog.copy(),
+                    "dates": cloned.dates.copy(),
+                    "events": cloned.events,
+                }
+            )
+            return cloned
+
+        def recording_context(start, stop):
+            context = original_context(start, stop)
+            forecast_records.append(
+                {
+                    "exog": context["future_exog"].copy(),
+                    "dates": context["future_dates"].copy(),
+                }
+            )
+            return context
+
+        monkeypatch.setattr(
+            model,
+            "_clone_for_evaluation",
+            recording_clone,
+        )
+        monkeypatch.setattr(
+            model,
+            "_evaluation_predict_kwargs",
+            recording_context,
+        )
+
+        result = model.backtest(
+            initial_window=12,
+            horizon=2,
+            step=4,
+            window="rolling",
+            window_size=12,
+        )
+
+        assert result.origins.tolist() == [12, 16, 20]
+        for record, start, stop in zip(
+            clone_records,
+            (0, 4, 8),
+            (12, 16, 20),
+            strict=True,
+        ):
+            np.testing.assert_array_equal(
+                record["data"],
+                model.data[start:stop],
+            )
+            np.testing.assert_array_equal(
+                record["exog"],
+                model.exog[start:stop],
+            )
+            assert record["dates"].equals(model.dates[start:stop])
+            assert record["events"] == model.events
+        for record, start in zip(
+            forecast_records,
+            (12, 16, 20),
+            strict=True,
+        ):
+            np.testing.assert_array_equal(
+                record["exog"],
+                model.exog[start:start + 2],
+            )
+            assert record["dates"].equals(
+                model.dates[start:start + 2]
+            )
+        np.testing.assert_array_equal(model.data, original_data)
+        assert model.result_ is None
+
+    def test_garch_oos_with_exog_remains_explicitly_unsupported(self):
+        from Ts.TsModels import GARCH
+
+        model = GARCH(
+            np.linspace(-1.0, 1.0, 30),
+            p=1,
+            q=1,
+            exog=np.ones((30, 1)),
+        )
+
+        with pytest.raises(NotImplementedError, match="GARCH oos.*exog"):
+            model.oos(split=20)
+
 
 @dataclass
 class _SequenceForecastResult(BaseModelResult):
@@ -681,7 +814,7 @@ class TestBackcastBehavior:
     @pytest.mark.parametrize('auto', [False, True])
     def test_garch_backcast_with_exog_is_rejected(self, auto):
         '''GARCH variants require explicit pre-sample exogenous values.'''
-        from Ts.TsModels import AutoGARCH, GARCH
+        from Ts.TsModels import GARCH, AutoGARCH
 
         data = np.linspace(-1.0, 1.0, 30)
         exog = np.ones((30, 1))
