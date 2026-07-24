@@ -27,7 +27,7 @@ from pandas.tseries.offsets import (
     YearBegin,
     YearEnd,
 )
-from scipy.stats import norm
+from scipy.stats import chi2, norm
 
 DateRule = Literal["exact", "period", "next", "previous"]
 EventKind = Literal["pulse", "step"]
@@ -461,14 +461,50 @@ def _event_parameter_table(
         if event.name not in selected:
             continue
         metadata = result._event_metadata[event.name]
-        relative_periods = metadata.relative_periods or (None,) * len(
-            metadata.columns
-        )
-        for column, relative_period in zip(
-            metadata.columns,
-            relative_periods,
-            strict=True,
-        ):
+        columns.extend(metadata.columns)
+        if metadata.relative_periods is None:
+            table_entries = ((metadata.columns[0], None, False),)
+        else:
+            column_by_period = dict(
+                zip(
+                    metadata.relative_periods,
+                    metadata.columns,
+                    strict=True,
+                )
+            )
+            table_entries = tuple(
+                (
+                    (
+                        f"event__{event.name}__"
+                        f"{_relative_suffix(relative_period)}"
+                    ),
+                    relative_period,
+                    relative_period == event.reference,
+                )
+                for relative_period in range(
+                    event.window[0],
+                    event.window[1] + 1,
+                )
+            )
+        for column, relative_period, fixed in table_entries:
+            if fixed:
+                rows.append(
+                    {
+                        "event": event.name,
+                        "column": column,
+                        "relative_period": relative_period,
+                        "coef": 0.0,
+                        "se": np.nan,
+                        "z": np.nan,
+                        "p": np.nan,
+                        "lower": 0.0,
+                        "upper": 0.0,
+                        "fixed": True,
+                    }
+                )
+                continue
+            if metadata.relative_periods is not None:
+                column = column_by_period[relative_period]
             estimate = result.params[column]
             standard_error = result.std_errors[column]
             rows.append(
@@ -482,37 +518,141 @@ def _event_parameter_table(
                     "p": result.p_values[column],
                     "lower": estimate - z_critical * standard_error,
                     "upper": estimate + z_critical * standard_error,
+                    "fixed": False,
                 }
             )
-            columns.append(column)
     return pd.DataFrame(rows), tuple(columns)
 
 
-def _delta_effect_intervals(
+def _validate_inference_controls(method, n_draws, seed):
+    if method not in {"delta", "simulation"}:
+        raise ValueError("method must be 'delta' or 'simulation'")
+    if (
+        isinstance(n_draws, (bool, np.bool_))
+        or not isinstance(n_draws, (int, np.integer))
+        or n_draws <= 0
+    ):
+        raise ValueError("n_draws must be a positive integer")
+    if seed is not None and (
+        isinstance(seed, (bool, np.bool_))
+        or not isinstance(seed, (int, np.integer))
+        or seed < 0
+    ):
+        raise ValueError("seed must be a non-negative integer or None")
+    return int(n_draws), None if seed is None else int(seed)
+
+
+def _contrast_standard_errors(
     contrast: np.ndarray,
     covariance: np.ndarray,
-    *,
-    alpha: float,
-) -> tuple[np.ndarray, np.ndarray, float, float]:
+) -> np.ndarray:
     variances = np.einsum(
         "ij,jk,ik->i",
         contrast,
         covariance,
         contrast,
     )
-    standard_errors = np.sqrt(np.clip(variances, 0.0, None))
+    return np.sqrt(np.clip(variances, 0.0, None))
+
+
+def _delta_intervals(
+    contrast: np.ndarray,
+    beta: np.ndarray,
+    covariance: np.ndarray,
+    *,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    effects = contrast @ beta
+    standard_errors = _contrast_standard_errors(contrast, covariance)
     z_critical = float(norm.ppf(1.0 - alpha / 2.0))
     cumulative_contrast = contrast.sum(axis=0)
-    cumulative_variance = float(
-        cumulative_contrast @ covariance @ cumulative_contrast
-    )
-    cumulative_standard_error = np.sqrt(max(cumulative_variance, 0.0))
+    cumulative_effect = float(cumulative_contrast @ beta)
+    cumulative_standard_error = _contrast_standard_errors(
+        cumulative_contrast[None, :],
+        covariance,
+    )[0]
     return (
-        z_critical * standard_errors,
-        standard_errors,
-        z_critical * cumulative_standard_error,
-        cumulative_standard_error,
+        effects - z_critical * standard_errors,
+        effects + z_critical * standard_errors,
+        cumulative_effect - z_critical * cumulative_standard_error,
+        cumulative_effect + z_critical * cumulative_standard_error,
     )
+
+
+def _simulation_intervals(
+    contrast: np.ndarray,
+    beta: np.ndarray,
+    covariance: np.ndarray,
+    *,
+    alpha: float,
+    n_draws: int,
+    seed: int | None,
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    rng = np.random.default_rng(seed)
+    covariance = (covariance + covariance.T) / 2.0
+    draws = rng.multivariate_normal(
+        beta,
+        covariance,
+        size=n_draws,
+        check_valid="raise",
+    )
+    paths = draws @ contrast.T
+    cumulative = paths.sum(axis=1)
+    quantiles = (alpha / 2.0, 1.0 - alpha / 2.0)
+    lower, upper = np.quantile(paths, quantiles, axis=0)
+    cumulative_lower, cumulative_upper = np.quantile(
+        cumulative,
+        quantiles,
+    )
+    return (
+        lower,
+        upper,
+        float(cumulative_lower),
+        float(cumulative_upper),
+    )
+
+
+def _selected_relative_periods(
+    result,
+    selected: tuple[str, ...],
+) -> tuple[int | None, ...]:
+    periods = []
+    for event in result._event_specs:
+        if event.name not in selected:
+            continue
+        metadata = result._event_metadata[event.name]
+        periods.extend(
+            metadata.relative_periods
+            or (None,) * len(metadata.columns)
+        )
+    return tuple(periods)
+
+
+def _pretrend_wald_test(
+    beta: np.ndarray,
+    covariance: np.ndarray,
+    columns: tuple[str, ...],
+    relative_periods: tuple[int | None, ...],
+) -> dict | None:
+    lead_positions = [
+        position
+        for position, relative_period in enumerate(relative_periods)
+        if relative_period is not None and relative_period < 0
+    ]
+    if not lead_positions:
+        return None
+    lead_beta = beta[lead_positions]
+    lead_covariance = covariance[np.ix_(lead_positions, lead_positions)]
+    statistic = float(
+        lead_beta @ np.linalg.pinv(lead_covariance) @ lead_beta
+    )
+    degrees_of_freedom = len(lead_positions)
+    return {
+        "statistic": statistic,
+        "df": degrees_of_freedom,
+        "p_value": float(chi2.sf(statistic, degrees_of_freedom)),
+        "columns": tuple(columns[position] for position in lead_positions),
+    }
 
 
 def estimate_policy_effect(
@@ -532,9 +672,7 @@ def estimate_policy_effect(
         _validate_prediction_alpha,
     )
 
-    del n_draws, seed
-    if method != "delta":
-        raise ValueError("method must be 'delta'")
+    n_draws, seed = _validate_inference_controls(method, n_draws, seed)
     alpha = _validate_prediction_alpha(alpha)
     selected = _selected_event_names(result, events)
     start_position, end_position = result._resolve_prediction_bounds(
@@ -599,10 +737,24 @@ def estimate_policy_effect(
         parameter_positions,
         parameter_positions,
     )]
-    margin, _, cumulative_margin, _ = _delta_effect_intervals(
+    interval_function = (
+        _delta_intervals if method == "delta" else _simulation_intervals
+    )
+    interval_kwargs = {"alpha": alpha}
+    if method == "simulation":
+        interval_kwargs.update(n_draws=n_draws, seed=seed)
+    lower, upper, cumulative_lower, cumulative_upper = interval_function(
         contrast,
+        selected_parameters,
         covariance,
-        alpha=alpha,
+        **interval_kwargs,
+    )
+    relative_periods = _selected_relative_periods(result, selected)
+    pretrend_test = _pretrend_wald_test(
+        selected_parameters,
+        covariance,
+        selected_columns,
+        relative_periods,
     )
     factual_values = np.asarray(prediction.mean, dtype=float)
     factual = pd.Series(
@@ -624,19 +776,19 @@ def estimate_policy_effect(
         ),
         effect=effect,
         lower=pd.Series(
-            effect_values - margin,
+            lower,
             index=target_dates,
             name="lower",
         ),
         upper=pd.Series(
-            effect_values + margin,
+            upper,
             index=target_dates,
             name="upper",
         ),
         cumulative_effect=cumulative_effect,
-        cumulative_lower=cumulative_effect - cumulative_margin,
-        cumulative_upper=cumulative_effect + cumulative_margin,
-        pretrend_test=None,
+        cumulative_lower=cumulative_lower,
+        cumulative_upper=cumulative_upper,
+        pretrend_test=pretrend_test,
         method=method,
         identification_note=_IDENTIFICATION_NOTE,
     )

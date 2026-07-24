@@ -450,3 +450,142 @@ def test_policy_effect_result_rejects_misaligned_paths():
             method="delta",
             identification_note="note",
         )
+
+
+def _fitted_window_model(seed=47):
+    from Ts.TsModels import SARIMA
+    from Ts.TsModels._intervention import EventSpec, build_event_matrix
+
+    rng = np.random.default_rng(seed)
+    dates = pd.date_range("2015-01-01", periods=100, freq="MS")
+    event = EventSpec(
+        "announcement",
+        [dates[50]],
+        "pulse",
+        window=(-3, 2),
+        reference=-1,
+        date_rule="exact",
+    )
+    design, _ = build_event_matrix(dates, [event])
+    coefficients = np.array([-0.1, 0.05, 1.2, 0.7, 0.3])
+    y = design.to_numpy() @ coefficients
+    y += rng.normal(scale=0.05, size=len(dates))
+    return SARIMA(
+        pd.Series(y, index=dates),
+        events=[event],
+        order=(0, 0, 0),
+        trend="n",
+    ).fit()
+
+
+def test_delta_interval_uses_full_event_covariance():
+    from Ts.TsModels._intervention import _contrast_standard_errors
+
+    contrast = np.array([[1.0, 2.0]])
+    covariance = np.array([[4.0, 1.0], [1.0, 9.0]])
+
+    standard_error = _contrast_standard_errors(contrast, covariance)
+
+    assert standard_error[0] == pytest.approx(np.sqrt(44.0))
+
+
+def test_delta_cumulative_interval_uses_summed_contrast():
+    from scipy.stats import norm
+
+    from Ts.TsModels._intervention import _delta_intervals
+
+    beta = np.array([1.0, 2.0])
+    contrast = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    covariance = np.array([[4.0, 1.0], [1.0, 9.0]])
+
+    _, _, cumulative_lower, cumulative_upper = _delta_intervals(
+        contrast,
+        beta,
+        covariance,
+        alpha=0.05,
+    )
+
+    cumulative_contrast = contrast.sum(axis=0)
+    cumulative = float(cumulative_contrast @ beta)
+    cumulative_se = np.sqrt(
+        cumulative_contrast @ covariance @ cumulative_contrast
+    )
+    margin = norm.ppf(0.975) * cumulative_se
+    assert cumulative_lower == pytest.approx(cumulative - margin)
+    assert cumulative_upper == pytest.approx(cumulative + margin)
+
+
+def test_simulation_is_reproducible_and_keeps_joint_covariance():
+    fitted = _fitted_policy_model()
+
+    first = fitted.policy_effect(
+        "policy",
+        method="simulation",
+        n_draws=500,
+        seed=123,
+    )
+    second = fitted.policy_effect(
+        "policy",
+        method="simulation",
+        n_draws=500,
+        seed=123,
+    )
+
+    pd.testing.assert_series_equal(first.lower, second.lower)
+    pd.testing.assert_series_equal(first.upper, second.upper)
+    assert first.cumulative_lower == second.cumulative_lower
+    assert first.cumulative_upper == second.cumulative_upper
+
+
+def test_event_leads_receive_joint_wald_pretrend_test():
+    effect = _fitted_window_model().policy_effect(
+        "announcement",
+        method="delta",
+    )
+
+    assert effect.pretrend_test["df"] == 2
+    assert 0.0 <= effect.pretrend_test["p_value"] <= 1.0
+    reference = effect.coefficients.query("relative_period == -1")
+    assert len(reference) == 1
+    assert reference.iloc[0]["coef"] == 0.0
+    assert bool(reference.iloc[0]["fixed"])
+
+
+def test_policy_effect_uses_exact_parameter_names():
+    fitted = _fitted_window_model()
+    fitted.params = dict(reversed(tuple(fitted.params.items())))
+
+    effect = fitted.policy_effect("announcement", method="delta")
+
+    expected = np.zeros(fitted.nobs)
+    metadata = fitted._event_metadata["announcement"]
+    for column in metadata.columns:
+        position = fitted.design_columns.index(column)
+        expected += fitted._design_matrix[:, position] * fitted.params[column]
+    np.testing.assert_allclose(effect.effect, expected)
+
+
+@pytest.mark.parametrize("n_draws", [0, -1, 1.5, True])
+def test_policy_effect_rejects_invalid_draw_count(n_draws):
+    with pytest.raises(ValueError, match="n_draws"):
+        _fitted_policy_model().policy_effect(
+            "policy",
+            method="simulation",
+            n_draws=n_draws,
+        )
+
+
+@pytest.mark.parametrize("seed", [-1, 1.5, True])
+def test_policy_effect_rejects_invalid_seed(seed):
+    with pytest.raises(ValueError, match="seed"):
+        _fitted_policy_model().policy_effect(
+            "policy",
+            method="simulation",
+            n_draws=10,
+            seed=seed,
+        )
+
+
+def test_policy_effect_rejects_unknown_inference_method():
+    with pytest.raises(ValueError, match="method"):
+        _fitted_policy_model().policy_effect("policy", method="unknown")
