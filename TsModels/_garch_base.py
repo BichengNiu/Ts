@@ -12,8 +12,19 @@ import types
 import numpy as np
 import pandas as pd
 
-from Ts.TsModels._base import BaseModel, _VOL_TYPES, _GARCH_M_FORMS
-from Ts.TsModels._garch_result import GARCHResult, _scale_params_back, _get_dist_object, _DIST_LABELS
+from Ts.TsModels._base import (
+    _GARCH_M_FORMS,
+    _VOL_TYPES,
+    BaseModel,
+    _normalise_model_dates,
+    _resolve_missing_rows,
+)
+from Ts.TsModels._garch_result import (
+    _DIST_LABELS,
+    GARCHResult,
+    _get_dist_object,
+    _scale_params_back,
+)
 
 
 class _BaseVolModel(BaseModel):
@@ -54,12 +65,39 @@ class _BaseVolModel(BaseModel):
         garch_m_form="vol",
         ar_lags=None,
         exog=None,
+        dates=None,
         igarch=False,
         compare_lags=True,
+        missing="raise",
     ):
         raw_data = np.asarray(data, dtype=float).ravel()
-        valid_rows = ~np.isnan(raw_data)
-        y = raw_data[valid_rows]
+        model_dates = _normalise_model_dates(data, dates, len(raw_data))
+        if exog is not None:
+            exog = np.asarray(exog, dtype=float)
+            if exog.ndim == 1:
+                exog = exog.reshape(-1, 1)
+            if exog.shape[0] != len(raw_data):
+                raise ValueError(
+                    f"exog must have {len(raw_data)} rows (same as data), "
+                    f"got {exog.shape[0]}"
+                )
+
+        valid_rows = np.isfinite(raw_data)
+        if exog is not None:
+            valid_rows &= np.all(np.isfinite(exog), axis=1)
+        dropped_positions = _resolve_missing_rows(
+            valid_rows,
+            missing,
+            name="data or exog",
+        )
+        if missing == "drop":
+            y = raw_data[valid_rows]
+            exog = None if exog is None else exog[valid_rows]
+            if model_dates is not None:
+                model_dates = model_dates[valid_rows].copy()
+        else:
+            y = raw_data.copy()
+
 
         if p < 1:
             raise ValueError(f"p must be >= 1, got {p}")
@@ -96,20 +134,11 @@ class _BaseVolModel(BaseModel):
                     f"IGARCH requires q >= 1 (GARCH component), got q={q}"
                 )
 
-        if exog is not None:
-            exog = np.asarray(exog, dtype=float)
-            if exog.ndim == 1:
-                exog = exog.reshape(-1, 1)
-            if exog.shape[0] != len(raw_data):
-                raise ValueError(
-                    f"exog must have {len(raw_data)} rows (same as data), "
-                    f"got {exog.shape[0]}"
-                )
-            if np.any(np.isnan(exog)):
-                raise ValueError("exog must not contain NaN values")
-            exog = exog[valid_rows]
 
         self.data = y
+        self.missing = missing
+        self.dates = model_dates
+        self.dropped_positions = dropped_positions
         self.p = p
         self.q = q
         self.o = o

@@ -49,26 +49,46 @@ metrics = compute_metrics(actual, predicted)
 
 返回字典包含上述六项指标和有效配对数 `n`。
 
-## 真实留出法 OOS
+## 显式估计期与验证期 OOS
+
+位置型数据使用零基、闭区间边界：
 
 ```python
-evaluation = oos(model, split=80)
-# 等价便利入口：model.oos(split=80)
+evaluation = oos(
+    model,
+    estimation_period=(0, 79),
+    validation_period=(80, 99),
+)
+# 等价便利入口：model.oos(...)
 ```
 
-引擎只使用 `model.data[:split]` 克隆并拟合模型，然后预测
-`model.data[split:]`。原模型及其 `result_` 不会被修改。
+带日期索引的数据必须使用真实存在的日期边界：
+
+```python
+evaluation = model.oos(
+    estimation_period=("2018-01-01", "2022-12-01"),
+    validation_period=("2023-03-01", "2023-12-01"),
+)
+```
+
+两个期间均为闭区间。验证期必须严格晚于估计期；允许中间存在间隔，
+但模型会从估计期末端开始连续预测并跨过该间隔，只对验证期评分。
+日期边界必须精确存在，不会自动吸附到最近日期。越界、逆序、重叠、
+估计期不足 10 个观测或外生变量无法覆盖完整预测桥接区间都会直接报错。
+
+引擎只使用估计期数据克隆并拟合模型。原模型及其 `result_` 不会被修改。
+`split` 参数已删除，不存在弃用或兼容路径。
 
 `predict(oos_start=...)` 不存在。固定全样本参数再把尾部标成 OOS 会把
-保留期信息带入参数估计，因此不作为性能评估接口。
+验证期信息带入参数估计，因此不作为性能评估接口。
 
 `OOSResult` 提供：
 
 - `mean`、`actual`、`lower`、`upper`；
-- `target_indices` 和 `split`；
+- `estimation_indices` 与 `validation_indices`；
+- 日期模型同时提供 `estimation_dates` 与 `validation_dates`；
 - 总体 `metrics` 与逐变量 `metrics_by_series`；
 - `target`，用于标明被评价的可观测对象。
-
 ## 滚动历史回测
 
 ```python
@@ -107,7 +127,7 @@ print(comparison.ranking)
 - 使用相同评估方法；
 - 模型名称必须是字符串且不能因隐式转换发生覆盖；
 - `target` 相同；
-- 目标索引相同；
+- 估计期与验证期的索引和日期元数据相同；
 - 实际观测值逐元素完全相同。
 
 这可以阻止把均值预测与波动率预测，或不同留出期的结果放进同一排名。

@@ -1,4 +1,4 @@
-"""Leakage-free single-split out-of-sample evaluation."""
+"""Leakage-free validation over explicit estimation and validation periods."""
 
 from __future__ import annotations
 
@@ -10,50 +10,86 @@ from ._common import (
     fit_and_forecast,
     model_data,
     oos_metrics_by_series,
+    resolve_evaluation_periods,
     training_dates,
     training_exog,
     validate_alpha,
     validate_model_protocol,
-    validate_positive_int,
 )
 from ._metrics import compute_metrics
 from ._results import OOSResult
 
 
-def oos(model, split, *, alpha=0.05):
-    """Evaluate a model on a held-out suffix without estimation leakage.
+def _validation_slice(values, offset):
+    """Return the scored suffix while preserving an absent interval."""
+    if values is None:
+        return None
+    return np.array(values[offset:], dtype=float, copy=True)
 
-    The model is cloned and fitted using exactly ``model.data[:split]``.
-    It then forecasts every observation from ``split`` to the end of the
-    original data. The caller and any existing fitted result are unchanged.
+
+def oos(model, estimation_period, validation_period, *, alpha=0.05):
+    """Evaluate a model without exposing validation targets to estimation.
+
+    Both public periods use inclusive bounds. Date-aware models require exact
+    date labels; position-based models require zero-based integer positions.
+    A gap between the periods is allowed and forecast through, but only the
+    validation period is scored.
     """
     data = model_data(model)
     validate_model_protocol(model, "oos")
-    split = validate_positive_int("split", split, minimum=10)
+    periods = resolve_evaluation_periods(
+        model,
+        data,
+        estimation_period,
+        validation_period,
+    )
     alpha = validate_alpha(alpha)
-    if split >= len(data):
-        raise ValueError(
-            f"split must be smaller than the number of observations ({len(data)})"
-        )
 
-    train_data = data[:split]
-    horizon = len(data) - split
-    expected_shape = expected_forecast_shape(data, horizon)
-    fitted, (mean, lower, upper) = fit_and_forecast(
+    train_data = data[
+        periods.estimation_start:periods.estimation_stop
+    ]
+    bridge_horizon = periods.validation_stop - periods.estimation_stop
+    bridge_shape = expected_forecast_shape(data, bridge_horizon)
+    fitted, (bridge_mean, bridge_lower, bridge_upper) = fit_and_forecast(
         model,
         train_data,
-        training_exog(model, 0, split),
-        training_dates(model, 0, split),
-        model._evaluation_predict_kwargs(split, len(data)),
-        horizon,
+        training_exog(
+            model,
+            periods.estimation_start,
+            periods.estimation_stop,
+        ),
+        training_dates(
+            model,
+            periods.estimation_start,
+            periods.estimation_stop,
+        ),
+        model._evaluation_predict_kwargs(
+            periods.estimation_stop,
+            periods.validation_stop,
+        ),
+        bridge_horizon,
         alpha,
-        expected_shape,
+        bridge_shape,
     )
+
+    validation_offset = periods.validation_start - periods.estimation_stop
+    mean = _validation_slice(bridge_mean, validation_offset)
+    lower = _validation_slice(bridge_lower, validation_offset)
+    upper = _validation_slice(bridge_upper, validation_offset)
+    validation_shape = expected_forecast_shape(
+        data,
+        periods.validation_stop - periods.validation_start,
+    )
+    if mean.shape != validation_shape:
+        raise ValueError(
+            f"validation forecast has shape {mean.shape}, expected "
+            f"{validation_shape}"
+        )
     actual = evaluation_actual(
         model,
-        data[split:],
+        data[periods.validation_start:periods.validation_stop],
         train_data,
-        expected_shape,
+        validation_shape,
     )
 
     return OOSResult(
@@ -61,10 +97,12 @@ def oos(model, split, *, alpha=0.05):
         actual=actual,
         lower=lower,
         upper=upper,
-        target_indices=np.arange(split, len(data), dtype=int),
+        estimation_indices=periods.estimation_indices,
+        validation_indices=periods.validation_indices,
+        estimation_dates=periods.estimation_dates,
+        validation_dates=periods.validation_dates,
         metrics=compute_metrics(actual, mean),
         metrics_by_series=oos_metrics_by_series(actual, mean),
         model_type=fitted.model_type,
         target=model._evaluation_target_name,
-        split=split,
     )

@@ -43,8 +43,9 @@ class _MeanResult(BaseModelResult):
 class _MeanModel(BaseModel):
     """Model double whose fitted value reveals the exact training window."""
 
-    def __init__(self, data):
+    def __init__(self, data, dates=None):
         self.data = np.asarray(data, dtype=float)
+        self.dates = dates
         self.fit_windows = []
         self.result_ = None
 
@@ -79,21 +80,114 @@ class _InvalidTargetModel(_MeanModel):
         return np.asarray(observed)[:-1]
 
 
-def test_oos_fits_only_the_pre_split_sample():
+def test_oos_fits_only_the_estimation_period():
     """The holdout API cannot estimate parameters from evaluation data."""
     model = _MeanModel(np.arange(15.0))
 
-    result = oos(model, split=10)
+    result = oos(
+        model,
+        estimation_period=(0, 9),
+        validation_period=(10, 14),
+    )
 
     assert len(model.fit_windows) == 1
     np.testing.assert_array_equal(model.fit_windows[0], np.arange(10.0))
-    np.testing.assert_array_equal(result.target_indices, np.arange(10, 15))
+    np.testing.assert_array_equal(result.estimation_indices, np.arange(10))
+    np.testing.assert_array_equal(
+        result.validation_indices,
+        np.arange(10, 15),
+    )
     np.testing.assert_allclose(result.mean, 4.5)
     np.testing.assert_array_equal(result.actual, np.arange(10.0, 15.0))
     assert result.metrics["n"] == 5
     assert result.target == "observed"
     assert model.result_ is None
+    assert not hasattr(result, "split")
 
+
+
+def test_oos_allows_a_gap_and_scores_only_the_validation_period():
+    """A later validation period may follow an unscored forecast gap."""
+    model = _MeanModel(np.arange(20.0))
+
+    result = model.oos(
+        estimation_period=(2, 11),
+        validation_period=(15, 18),
+    )
+
+    np.testing.assert_array_equal(model.fit_windows[0], np.arange(2.0, 12.0))
+    np.testing.assert_array_equal(
+        result.estimation_indices,
+        np.arange(2, 12),
+    )
+    np.testing.assert_array_equal(
+        result.validation_indices,
+        np.arange(15, 19),
+    )
+    np.testing.assert_array_equal(result.actual, np.arange(15.0, 19.0))
+    np.testing.assert_allclose(result.mean, 6.5)
+
+
+def test_oos_resolves_exact_date_periods():
+    """Date bounds are inclusive and must exist in the model calendar."""
+    dates = pd.date_range("2020-01-01", periods=20, freq="MS")
+    model = _MeanModel(np.arange(20.0), dates=dates)
+
+    result = model.oos(
+        estimation_period=("2020-03-01", "2020-12-01"),
+        validation_period=("2021-03-01", "2021-06-01"),
+    )
+
+    assert result.estimation_dates.equals(dates[2:12])
+    assert result.validation_dates.equals(dates[14:18])
+    np.testing.assert_array_equal(
+        result.validation_indices,
+        np.arange(14, 18),
+    )
+
+
+@pytest.mark.parametrize(
+    ("estimation_period", "validation_period", "message"),
+    [
+        ((0, 9), (9, 12), "strictly later"),
+        ((5, 4), (10, 12), "estimation_period start"),
+        ((0, 9), (12, 10), "validation_period start"),
+        ((0, 9), (10, 20), "outside"),
+    ],
+)
+def test_oos_rejects_invalid_period_relationships(
+    estimation_period,
+    validation_period,
+    message,
+):
+    """Period ordering, overlap, and coverage are hard failures."""
+    model = _MeanModel(np.arange(20.0))
+
+    with pytest.raises(ValueError, match=message):
+        model.oos(
+            estimation_period=estimation_period,
+            validation_period=validation_period,
+        )
+
+
+def test_oos_rejects_missing_date_bound():
+    """Date selection never silently snaps to a nearby observation."""
+    dates = pd.date_range("2020-01-01", periods=20, freq="MS")
+    model = _MeanModel(np.arange(20.0), dates=dates)
+
+    with pytest.raises(ValueError, match="does not exist"):
+        model.oos(
+            estimation_period=("2020-01-01", "2020-10-15"),
+            validation_period=("2020-11-01", "2021-08-01"),
+        )
+
+
+def test_oos_has_no_split_compatibility_path():
+    """The removed split API fails instead of entering a compatibility path."""
+    model = _MeanModel(np.arange(15.0))
+
+    with pytest.raises(TypeError, match="split"):
+        model.oos(split=10)
 
 def test_public_backtest_uses_each_origin_without_future_leakage():
     """Rolling-origin evaluation refits on data strictly before each origin."""
@@ -146,7 +240,10 @@ def test_base_model_methods_delegate_to_tsmetrics():
     """Model convenience methods expose the canonical evaluation engine."""
     model = _MeanModel(np.arange(16.0))
 
-    holdout = model.oos(split=12)
+    holdout = model.oos(
+        estimation_period=(0, 11),
+        validation_period=(12, 15),
+    )
     rolling = model.backtest(initial_window=10, horizon=1, step=3)
 
     assert isinstance(holdout, OOSResult)
@@ -164,12 +261,14 @@ def _oos_result(mean, actual, target="observed"):
         actual=actual,
         lower=None,
         upper=None,
-        target_indices=np.arange(10, 10 + len(mean)),
+        estimation_indices=np.arange(10),
+        validation_indices=np.arange(10, 10 + len(mean)),
+        estimation_dates=None,
+        validation_dates=None,
         metrics=compute_metrics(actual, mean),
         metrics_by_series=[compute_metrics(actual, mean)],
         model_type="TEST",
         target=target,
-        split=10,
     )
 
 
@@ -286,7 +385,10 @@ def test_oos_passes_holdout_exog_without_holdout_y():
         trend="n",
     )
 
-    result = model.oos(split=20)
+    result = model.oos(
+        estimation_period=(dates[0], dates[19]),
+        validation_period=(dates[20], dates[29]),
+    )
 
     assert result.mean.shape == (10,)
     assert result.metrics["rmse"] < 1e-5

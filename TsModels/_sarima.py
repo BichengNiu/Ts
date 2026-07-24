@@ -16,6 +16,7 @@ from Ts.TsModels._base import (
     BaseModel,
     BaseModelResult,
     PredictResult,
+    _resolve_missing_rows,
     _resolve_prediction_window,
     _validate_prediction_alpha,
 )
@@ -34,6 +35,7 @@ class _SARIMAInputs:
     exog: np.ndarray | None
     exog_names: tuple[str, ...]
     future_exog: pd.DataFrame | None
+    dropped_positions: tuple[int, ...]
 
 
 def _numeric_array(values, name):
@@ -41,6 +43,95 @@ def _numeric_array(values, name):
         return np.asarray(values, dtype=float)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{name} must contain numeric values") from error
+
+
+def _normalise_nonnegative_integer(value, name):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, np.integer)
+    ):
+        raise TypeError(f"{name} must be a non-negative integer")
+    value = int(value)
+    if value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
+def _normalise_lag_order(value, name):
+    """Return an integer order or immutable tuple of active positive lags."""
+    if isinstance(value, (int, np.integer)) and not isinstance(
+        value, (bool, np.bool_)
+    ):
+        return _normalise_nonnegative_integer(value, name)
+    if isinstance(value, (str, bytes)):
+        raise TypeError(
+            f"{name} must be a non-negative integer or an iterable of lags"
+        )
+    try:
+        lags = tuple(value)
+    except TypeError as error:
+        raise TypeError(
+            f"{name} must be a non-negative integer or an iterable of lags"
+        ) from error
+    if not lags:
+        return 0
+
+    normalised = []
+    for lag in lags:
+        if isinstance(lag, (bool, np.bool_)) or not isinstance(
+            lag, (int, np.integer)
+        ):
+            raise TypeError(f"{name} lags must be positive integers")
+        lag = int(lag)
+        if lag <= 0:
+            raise ValueError(f"{name} lags must be positive integers")
+        normalised.append(lag)
+    if len(set(normalised)) != len(normalised):
+        raise ValueError(f"{name} lags must be unique")
+    return tuple(sorted(normalised))
+
+
+def _normalise_order(order):
+    if not isinstance(order, (tuple, list)) or len(order) != 3:
+        raise ValueError(f"order must be a tuple of (p, d, q), got {order}")
+    p, d, q = order
+    return (
+        _normalise_lag_order(p, "p"),
+        _normalise_nonnegative_integer(d, "d"),
+        _normalise_lag_order(q, "q"),
+    )
+
+
+def _normalise_seasonal_order(seasonal_order):
+    if (
+        not isinstance(seasonal_order, (tuple, list))
+        or len(seasonal_order) != 4
+    ):
+        raise ValueError(
+            f"seasonal_order must be a tuple of (P, D, Q, s), "
+            f"got {seasonal_order}"
+        )
+    P, D, Q, s = seasonal_order
+    return (
+        _normalise_lag_order(P, "P"),
+        _normalise_nonnegative_integer(D, "D"),
+        _normalise_lag_order(Q, "Q"),
+        _normalise_nonnegative_integer(s, "s"),
+    )
+
+
+def _active_lags(order_component):
+    if isinstance(order_component, (int, np.integer)):
+        return tuple(range(1, int(order_component) + 1))
+    return tuple(order_component)
+
+
+def _maximum_lag(order_component):
+    return max(_active_lags(order_component), default=0)
+
+
+def _display_order(order):
+    p, d, q = order
+    return (_maximum_lag(p), d, _maximum_lag(q))
 
 
 def _normalise_exog_names(names, width):
@@ -186,8 +277,11 @@ def _normalise_sarima_inputs(
     finite = np.isfinite(endog)
     if historical_exog is not None:
         finite &= np.all(np.isfinite(historical_exog), axis=1)
-    if missing == "raise" and not np.all(finite):
-        raise ValueError("data or historical exog contains non-finite values")
+    dropped_positions = _resolve_missing_rows(
+        finite,
+        missing,
+        name="data or historical exog",
+    )
     if missing == "drop":
         endog = endog[finite]
         if data_dates is not None:
@@ -203,6 +297,7 @@ def _normalise_sarima_inputs(
             if historical_exog is None
             else np.array(historical_exog, dtype=float, copy=True)
         ),
+        dropped_positions=dropped_positions,
         exog_names=names,
         future_exog=future_exog,
     )
@@ -495,19 +590,129 @@ class SARIMAResult(BaseModelResult):
         """Return the fitted combined-design column names."""
         return tuple(self._design_columns)
 
+    @property
+    def ar_lags(self):
+        """Active non-seasonal autoregressive lags."""
+        if self._order is None:
+            return ()
+        return _active_lags(self._order[0])
+
+    @property
+    def ma_lags(self):
+        """Active non-seasonal moving-average lags."""
+        if self._order is None:
+            return ()
+        return _active_lags(self._order[2])
+
+    @property
+    def fixed_params(self):
+        """Non-seasonal AR/MA coefficients excluded and fixed at zero."""
+        fixed = {}
+        if self.ar_lags:
+            for lag in range(1, max(self.ar_lags) + 1):
+                if lag not in self.ar_lags:
+                    fixed[f"ar.L{lag}"] = 0.0
+        if self.ma_lags:
+            for lag in range(1, max(self.ma_lags) + 1):
+                if lag not in self.ma_lags:
+                    fixed[f"ma.L{lag}"] = 0.0
+        return fixed
+
+    @property
+    def is_stationary(self):
+        """Whether all roots of the fitted AR polynomial lie outside one."""
+        return bool(np.all(np.abs(self.arroots) > 1.0))
+
+    @property
+    def is_invertible(self):
+        """Whether all roots of the fitted MA polynomial lie outside one."""
+        return bool(np.all(np.abs(self.maroots) > 1.0))
+
+    @property
+    def stationarity_enforced(self):
+        """Whether stationarity was enforced during maximum likelihood."""
+        if self._model_kwargs is not None:
+            return bool(
+                self._model_kwargs.get("enforce_stationarity", True)
+            )
+        return bool(
+            getattr(
+                getattr(self._statsmodels_result, "model", None),
+                "enforce_stationarity",
+                True,
+            )
+        )
+
+    @property
+    def invertibility_enforced(self):
+        """Whether invertibility was enforced during maximum likelihood."""
+        if self._model_kwargs is not None:
+            return bool(
+                self._model_kwargs.get("enforce_invertibility", True)
+            )
+        return bool(
+            getattr(
+                getattr(self._statsmodels_result, "model", None),
+                "enforce_invertibility",
+                True,
+            )
+        )
+
+    @staticmethod
+    def _format_root_diagnostic(roots, passed, *, absent):
+        if len(roots) == 0:
+            return f"Not applicable ({absent})"
+        minimum = float(np.min(np.abs(roots)))
+        conclusion = "Passed" if passed else "Failed"
+        return f"{conclusion} (minimum |root| = {minimum:.4f})"
+
     def summary(self) -> str:
         """Return a formatted parameter summary string.
 
         Overrides BaseModelResult to add SARIMA-specific details (order,
-        seasonal_order).
+        seasonal_order), sparse-lag constraints, and AR/MA root conditions.
         """
         base = super().summary()
         lines = base.split("\n")
         header_lines = [lines[0]]
         if self._order:
-            header_lines.append(f"Order: SARIMA{self._order}")
+            header_lines.append(f"Order: SARIMA{_display_order(self._order)}")
         if self._seasonal_order and self._seasonal_order != (0, 0, 0, 0):
             header_lines.append(f"Seasonal Order: {self._seasonal_order}")
+        if self.ar_lags:
+            header_lines.append(
+                "Active AR Lags     : "
+                + ", ".join(str(lag) for lag in self.ar_lags)
+            )
+        if self.ma_lags:
+            header_lines.append(
+                "Active MA Lags     : "
+                + ", ".join(str(lag) for lag in self.ma_lags)
+            )
+        if self.fixed_params:
+            header_lines.append(
+                "Fixed at Zero      : " + ", ".join(self.fixed_params)
+            )
+        header_lines.extend(
+            [
+                "AR Stationarity    : "
+                + self._format_root_diagnostic(
+                    self.arroots,
+                    self.is_stationary,
+                    absent="no AR terms",
+                ),
+                "MA Invertibility   : "
+                + self._format_root_diagnostic(
+                    self.maroots,
+                    self.is_invertible,
+                    absent="no MA terms",
+                ),
+                "Stationarity Enforced  : "
+                + ("Yes" if self.stationarity_enforced else "No"),
+                "Invertibility Enforced : "
+                + ("Yes" if self.invertibility_enforced else "No"),
+            ]
+        )
         return "\n".join(header_lines + lines[1:])
 
     def _resolve_prediction_bounds(self, start, end, future_dates):
@@ -950,7 +1155,7 @@ class SARIMAResult(BaseModelResult):
             ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
 
         if title is None:
-            order_str = f"SARIMA{self._order}"
+            order_str = f"SARIMA{_display_order(self._order)}"
             if self._seasonal_order and self._seasonal_order != (0, 0, 0, 0):
                 order_str += str(self._seasonal_order)
             title = f"{order_str}: Inverse AR and MA Roots"
@@ -963,15 +1168,15 @@ class SARIMAResult(BaseModelResult):
         """Return the unconditional mean (long-run equilibrium) of the
         estimated SARIMA process.
 
-        For a stationary ARMA(p,q) with constant :math:`c`:
+        For a stationary ARMA/SARMA process with reduced AR polynomial
+        :math:`A(B)` and constant :math:`c`:
 
         .. math::
 
-            \\mu = \\frac{c}{1 - \\phi_1 - \\dots - \\phi_p}
+            \\mu = \\frac{c}{A(1)}
 
-        where :math:`c` is the ``intercept`` parameter (the constant term in
-        the AR representation) and :math:`\\phi_i` are the AR coefficients
-        (including seasonal AR terms).
+        This reduced-polynomial form handles sparse and multiplicative
+        seasonal AR terms without assuming contiguous lag coefficients.
 
         Returns ``None`` when the concept is not applicable:
 
@@ -979,7 +1184,7 @@ class SARIMAResult(BaseModelResult):
         - ``trend`` includes a time component (``"t"``, ``"ct"``, ``"ctt"``)
           — trend-stationary series have no constant equilibrium.
         - AR polynomial is non-stationary (inverse roots on or outside the
-          unit circle) or :math:`1 - \\sum\\phi_i \\approx 0`.
+          unit circle) or :math:`A(1) \\approx 0`.
 
         Returns
         -------
@@ -988,8 +1193,8 @@ class SARIMAResult(BaseModelResult):
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
 
-        p, d, _q = self._order
-        P, D, _Q, _s = self._seasonal_order
+        _p, d, _q = self._order
+        _P, D, _Q, _s = self._seasonal_order
 
         # Differencing removes the unconditional mean
         if (d or 0) + (D or 0) > 0:
@@ -999,26 +1204,20 @@ class SARIMAResult(BaseModelResult):
         if self._trend in ("t", "ct", "ctt"):
             return None
 
-        # Check AR stationarity
-        ar_roots = np.asarray(self._statsmodels_result.arroots)
-        if len(ar_roots) > 0:
-            inv_roots = 1.0 / ar_roots
-            if np.any(np.abs(inv_roots) >= 1.0 - 1e-10):
-                return None
+        # Check stationarity of the complete reduced AR polynomial.
+        if not self.is_stationary:
+            return None
 
         # trend="n" — zero-mean process
         if self._trend == "n":
             return 0.0
 
-        # Extract AR coefficients (non-seasonal + seasonal)
-        ar_sum = 0.0
-        for i in range(1, p + 1):
-            ar_sum += self.params.get(f"ar.L{i}", 0.0)
-        for i in range(1, P + 1):
-            ar_sum += self.params.get(f"ar.S.L{i}", 0.0)
-
         intercept = self.params.get("intercept", 0.0)
-        denom = 1.0 - ar_sum
+        reduced_ar = np.asarray(
+            self._statsmodels_result.polynomial_reduced_ar,
+            dtype=float,
+        )
+        denom = float(np.sum(reduced_ar))
         if abs(denom) < 1e-10:
             return None
 
@@ -1033,9 +1232,13 @@ class SARIMA(BaseModel):
     data : array-like
         Time series data (1-D).
     order : tuple
-        ``(p, d, q)`` non-seasonal order.
+        ``(p, d, q)`` non-seasonal order. ``p`` and ``q`` may be
+        non-negative integers or iterables containing the exact positive
+        lags to estimate. For example, ``([1, 3], 0, 0)`` estimates AR
+        lags 1 and 3 while fixing lag 2 at zero.
     seasonal_order : tuple
-        ``(P, D, Q, s)`` seasonal order. Default ``(0, 0, 0, 0)``.
+        ``(P, D, Q, s)`` seasonal order. ``P`` and ``Q`` accept the same
+        integer-or-active-lags form. Default ``(0, 0, 0, 0)``.
     trend : str
         Trend specification: ``"n"`` (none), ``"c"`` (constant),
         ``"t"`` (linear), ``"ct"`` (both). Default ``"c"``.
@@ -1043,6 +1246,12 @@ class SARIMA(BaseModel):
         Whether to enforce stationarity of the AR polynomial. Default ``True``.
     enforce_invertibility : bool
         Whether to enforce invertibility of the MA polynomial. Default ``True``.
+    dates : datetime-like sequence, optional
+        Strict sample dates. A Series DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
+    missing : {"raise", "drop"}
+        Non-finite input policy. ``"drop"`` records removed zero-based rows
+        in :attr:`dropped_positions`. Default ``"raise"``.
     """
 
     def __init__(
@@ -1068,15 +1277,8 @@ class SARIMA(BaseModel):
             missing=missing,
         )
 
-        if not isinstance(order, (tuple, list)) or len(order) != 3:
-            raise ValueError(
-                f"order must be a tuple of (p, d, q), got {order}"
-            )
-        if not isinstance(seasonal_order, (tuple, list)) or len(seasonal_order) != 4:
-            raise ValueError(
-                f"seasonal_order must be a tuple of (P, D, Q, s), "
-                f"got {seasonal_order}"
-            )
+        order = _normalise_order(order)
+        seasonal_order = _normalise_seasonal_order(seasonal_order)
         if len(inputs.endog) < 10:
             raise ValueError(
                 f"Need at least 10 observations, got {len(inputs.endog)}"
@@ -1106,6 +1308,7 @@ class SARIMA(BaseModel):
             () if design is None else tuple(design.columns)
         )
         self.missing = missing
+        self.dropped_positions = inputs.dropped_positions
         self.order = tuple(order)
         self.seasonal_order = tuple(seasonal_order)
         self.trend = trend

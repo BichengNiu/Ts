@@ -46,12 +46,36 @@ def _comparable_score(name, result, reference, metric):
         )
     if result.target != reference.target:
         raise ValueError("all compared results must use the same target")
-    if not np.array_equal(
+    if isinstance(result, OOSResult):
+        for attribute in ("estimation_indices", "validation_indices"):
+            if not np.array_equal(
+                np.asarray(getattr(result, attribute)),
+                np.asarray(getattr(reference, attribute)),
+            ):
+                raise ValueError(
+                    "all compared OOS results must use the same "
+                    f"{attribute}"
+                )
+        for attribute in ("estimation_dates", "validation_dates"):
+            result_dates = getattr(result, attribute)
+            reference_dates = getattr(reference, attribute)
+            if (result_dates is None) != (reference_dates is None):
+                raise ValueError(
+                    "all compared OOS results must use the same date metadata"
+                )
+            if result_dates is not None and not result_dates.equals(
+                reference_dates
+            ):
+                raise ValueError(
+                    "all compared OOS results must use the same "
+                    f"{attribute}"
+                )
+    elif not np.array_equal(
         np.asarray(result.target_indices),
         np.asarray(reference.target_indices),
     ):
         raise ValueError(
-            "all compared results must use the same target indices"
+            "all compared backtests must use the same target indices"
         )
     result_actual = np.asarray(result.actual)
     reference_actual = np.asarray(reference.actual)

@@ -659,7 +659,10 @@ class TestBacktestModelIntegration:
         )
 
         with pytest.raises(NotImplementedError, match="GARCH oos.*exog"):
-            model.oos(split=20)
+            model.oos(
+                estimation_period=(0, 19),
+                validation_period=(20, 29),
+            )
 
 
 @dataclass

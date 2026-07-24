@@ -21,7 +21,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from Ts.TsModels._base import BaseModel, BaseModelResult, _VOL_TYPES, _GARCH_M_FORMS
+from Ts.TsModels._base import (
+    _GARCH_M_FORMS,
+    _VOL_TYPES,
+    BaseModel,
+    BaseModelResult,
+    _normalise_model_dates,
+    _resolve_missing_rows,
+)
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
 
@@ -290,7 +297,8 @@ class _BaseAutoModel(BaseModel):
             Cleaned 1-D data array.
         """
         y = np.asarray(data, dtype=float).ravel()
-        y = y[~np.isnan(y)]
+        if not np.all(np.isfinite(y)):
+            raise ValueError("data must contain only finite values")
         if len(y) < 10:
             raise ValueError(f"Need at least 10 observations, got {len(y)}")
         if criterion not in _SUPPORTED_CRITERIA:
@@ -403,6 +411,12 @@ class AutoSARIMA(_BaseAutoModel):
         ``"aic"``, ``"bic"``, ``"hqic"``, or ``"aicc"``.
     method : str
         Search strategy. Currently only ``"grid"``.
+    missing : {"raise", "drop"}
+        Non-finite input policy. ``"drop"`` records removed zero-based rows
+        in :attr:`dropped_positions`. Default ``"raise"``.
+    dates : datetime-like sequence, optional
+        Strict sample dates. A Series DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
     """
 
     def __init__(
@@ -418,9 +432,25 @@ class AutoSARIMA(_BaseAutoModel):
         trend="c",
         criterion="aic",
         method="grid",
+        dates=None,
+        missing="raise",
     ):
+        raw_data = np.asarray(data, dtype=float).ravel()
+        finite_rows = np.isfinite(raw_data)
+        model_dates = _normalise_model_dates(data, dates, len(raw_data))
+        dropped_positions = _resolve_missing_rows(
+            finite_rows,
+            missing,
+        )
+        data = raw_data[finite_rows] if missing == "drop" else raw_data.copy()
+        self.missing = missing
+        if missing == "drop" and model_dates is not None:
+            model_dates = model_dates[finite_rows].copy()
+        self.dropped_positions = dropped_positions
+
         self.data = self._validate_params(data, criterion, method)
         self.criterion = criterion
+        self.dates = model_dates
         self.method = method
 
         self.p_range = self._validate_range(p, "p")
@@ -494,6 +524,7 @@ class AutoSARIMA(_BaseAutoModel):
                 order=ns_order,
                 seasonal_order=s_order,
                 trend=self.trend,
+                dates=self.dates,
             )
 
         best_result, best_order_pair, candidate_results, candidate_orders, n_attempted, search_messages = \
@@ -577,6 +608,12 @@ class AutoGARCH(_BaseAutoModel):
         AR lags for the mean equation (only used with ``garch_m=True``).
     exog : array-like, optional
         Exogenous regressors for the mean equation.
+    dates : datetime-like sequence, optional
+        Strict sample dates. A Series DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
+    missing : {"raise", "drop"}
+        Joint non-finite policy for data and exog. ``"drop"`` records removed
+        zero-based rows in :attr:`dropped_positions`. Default ``"raise"``.
     """
 
     _evaluation_target_name = 'absolute_demeaned_return_proxy'
@@ -612,9 +649,37 @@ class AutoGARCH(_BaseAutoModel):
         garch_m_form="vol",
         ar_lags=None,
         exog=None,
+        dates=None,
+        missing="raise",
     ):
         raw_data = np.asarray(data, dtype=float).ravel()
-        valid_rows = ~np.isnan(raw_data)
+        model_dates = _normalise_model_dates(data, dates, len(raw_data))
+        if exog is not None:
+            exog = np.asarray(exog, dtype=float)
+            if exog.ndim == 1:
+                exog = exog.reshape(-1, 1)
+            if exog.shape[0] != len(raw_data):
+                raise ValueError(
+                    f"exog must have {len(raw_data)} rows (same as data), "
+                    f"got {exog.shape[0]}"
+                )
+
+        valid_rows = np.isfinite(raw_data)
+        if exog is not None:
+            valid_rows &= np.all(np.isfinite(exog), axis=1)
+        dropped_positions = _resolve_missing_rows(
+            valid_rows,
+            missing,
+            name="data or exog",
+        )
+        if missing == "drop":
+            raw_data = raw_data[valid_rows]
+            exog = None if exog is None else exog[valid_rows]
+            if model_dates is not None:
+                model_dates = model_dates[valid_rows].copy()
+        self.missing = missing
+        self.dropped_positions = dropped_positions
+        self.dates = model_dates
         self.data = self._validate_params(raw_data, criterion, method)
         self.criterion = criterion
         self.method = method
@@ -654,18 +719,6 @@ class AutoGARCH(_BaseAutoModel):
         self.garch_m = garch_m
         self.garch_m_form = garch_m_form
         self.ar_lags = ar_lags
-        if exog is not None:
-            exog = np.asarray(exog, dtype=float)
-            if exog.ndim == 1:
-                exog = exog.reshape(-1, 1)
-            if exog.shape[0] != len(raw_data):
-                raise ValueError(
-                    f"exog must have {len(raw_data)} rows (same as data), "
-                    f"got {exog.shape[0]}"
-                )
-            if np.any(np.isnan(exog)):
-                raise ValueError("exog must not contain NaN values")
-            exog = exog[valid_rows]
         self.exog = exog
 
     @staticmethod
@@ -721,6 +774,7 @@ class AutoGARCH(_BaseAutoModel):
                 garch_m_form=self.garch_m_form,
                 ar_lags=self.ar_lags,
                 exog=self.exog,
+                dates=self.dates,
                 compare_lags=False,
             )
 

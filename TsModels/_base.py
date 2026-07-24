@@ -14,10 +14,57 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 
 # Shared constants used by _garch.py and _auto.py
 _VOL_TYPES = frozenset({"GARCH", "EGARCH"})
 _GARCH_M_FORMS = frozenset({"vol", "var", "log"})
+
+
+def _resolve_missing_rows(finite_rows, missing, *, name="data"):
+    """Validate a missing-value policy and return dropped row positions."""
+    if missing not in {"raise", "drop"}:
+        raise ValueError("missing must be 'raise' or 'drop'")
+
+    finite_rows = np.asarray(finite_rows, dtype=bool)
+    if finite_rows.ndim != 1:
+        raise ValueError("finite_rows must be one-dimensional")
+
+    dropped_positions = tuple(
+        int(position) for position in np.flatnonzero(~finite_rows)
+    )
+    if dropped_positions and missing == "raise":
+        positions = ", ".join(str(position) for position in dropped_positions)
+        raise ValueError(
+            f"{name} contains non-finite values at row positions: {positions}"
+        )
+    return dropped_positions
+
+
+def _normalise_model_dates(data, dates, expected_length):
+    """Return a strict copied DatetimeIndex for a public model input."""
+    values = dates
+    if values is None:
+        index = getattr(data, "index", None)
+        if isinstance(index, pd.DatetimeIndex):
+            values = index
+    if values is None:
+        return None
+    try:
+        index = pd.DatetimeIndex(values)
+    except (TypeError, ValueError) as error:
+        raise TypeError("dates must be datetime-like") from error
+    if len(index) != expected_length:
+        raise ValueError(
+            f"dates must contain {expected_length} entries, got {len(index)}"
+        )
+    if index.hasnans:
+        raise ValueError("dates must not contain missing values")
+    if not index.is_unique:
+        raise ValueError("dates must be unique")
+    if not index.is_monotonic_increasing:
+        raise ValueError("dates must be strictly increasing")
+    return index.copy()
 
 
 @dataclass(frozen=True)
@@ -606,6 +653,8 @@ class BaseModel(ABC):
         cloned = copy.copy(self)
         cloned.data = np.array(data, dtype=float, copy=True)
         cloned.result_ = None
+        if hasattr(cloned, "dropped_positions"):
+            cloned.dropped_positions = ()
         if hasattr(cloned, 'exog'):
             cloned.exog = (
                 None
@@ -630,11 +679,22 @@ class BaseModel(ABC):
         '''Validate model-specific requirements for an evaluation method.'''
         del context
 
-    def oos(self, split, *, alpha=0.05):
-        '''Evaluate a held-out suffix after fitting only pre-split data.'''
+    def oos(
+        self,
+        estimation_period,
+        validation_period,
+        *,
+        alpha=0.05,
+    ):
+        '''Evaluate an explicit validation period after isolated estimation.'''
         from Ts.TsMetrics import oos
 
-        return oos(self, split=split, alpha=alpha)
+        return oos(
+            self,
+            estimation_period=estimation_period,
+            validation_period=validation_period,
+            alpha=alpha,
+        )
 
     def backtest(
         self,

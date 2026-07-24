@@ -1269,7 +1269,10 @@ def test_oos_passes_holdout_exog_without_holdout_y():
     y = pd.Series(2.0 * x["x"].to_numpy(), index=dates)
     model = SARIMA(y, exog=x, order=(0, 0, 0), trend="n")
 
-    result = model.oos(split=20)
+    result = model.oos(
+        estimation_period=(dates[0], dates[19]),
+        validation_period=(dates[20], dates[29]),
+    )
 
     assert result.mean.shape == (10,)
     assert result.metrics["rmse"] < 1e-5

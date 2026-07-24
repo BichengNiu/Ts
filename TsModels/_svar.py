@@ -13,8 +13,12 @@ import numpy as np
 from numpy.linalg import det
 from scipy.optimize import minimize
 
-from Ts.TsModels._base import BaseModel
-from Ts.TsModels._var import VAR, VARResult, IRFResult
+from Ts.TsModels._base import (
+    BaseModel,
+    _normalise_model_dates,
+    _resolve_missing_rows,
+)
+from Ts.TsModels._var import VAR, IRFResult, VARResult
 
 
 def _param_to_matrices(params, A_mask, B_mask, A_template, B_template):
@@ -564,6 +568,12 @@ class SVAR(BaseModel):
         Trend specification (``"c"``, ``"ct"``, ``"ctt"``, ``"n"``).
     cols : list of str, optional
         Variable names.
+    dates : datetime-like sequence, optional
+        Strict sample dates. A DataFrame DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
+    missing : {"raise", "drop"}
+        Non-finite row policy. ``"drop"`` records removed zero-based rows in
+        :attr:`dropped_positions`. Default ``"raise"``.
 
     Notes
     -----
@@ -572,8 +582,19 @@ class SVAR(BaseModel):
     long-run model uses the Blanchard-Quah closed-form solution.
     """
 
-    def __init__(self, data, lags=1, A=None, B=None, C_lr=None,
-                 trend="c", cols=None):
+    def __init__(
+        self,
+        data,
+        lags=1,
+        A=None,
+        B=None,
+        C_lr=None,
+        trend="c",
+        cols=None,
+        dates=None,
+        missing="raise",
+    ):
+        model_dates = _normalise_model_dates(data, dates, len(data))
         # Column selection must precede np.asarray to get correct shape
         if hasattr(data, "columns"):
             if cols is not None:
@@ -611,7 +632,14 @@ class SVAR(BaseModel):
         else:
             data_names = [f"y{i}" for i in range(y.shape[1])]
 
-        y = y[~np.any(np.isnan(y), axis=1)]
+        finite_rows = np.all(np.isfinite(y), axis=1)
+        dropped_positions = _resolve_missing_rows(finite_rows, missing)
+        if missing == "drop":
+            y = y[finite_rows]
+            if model_dates is not None:
+                model_dates = model_dates[finite_rows].copy()
+        else:
+            y = y.copy()
 
         min_obs = lags + 10
         if y.shape[0] < min_obs:
@@ -655,6 +683,9 @@ class SVAR(BaseModel):
 
 
         self.data = y
+        self.dates = model_dates
+        self.missing = missing
+        self.dropped_positions = dropped_positions
         self.lags = lags
         self.A = A
         self.B = B
@@ -673,8 +704,13 @@ class SVAR(BaseModel):
         SVARResult
         """
         # --- Step 1: reduced-form VAR ---
-        var_model = VAR(self.data, lags=self.lags, trend=self.trend,
-                        cols=self.data_names)
+        var_model = VAR(
+            self.data,
+            lags=self.lags,
+            trend=self.trend,
+            cols=self.data_names,
+            dates=self.dates,
+        )
         var_result = var_model.fit()
         sm_result = var_result._var_result
 

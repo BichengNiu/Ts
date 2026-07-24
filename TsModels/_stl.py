@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from statsmodels.tsa.seasonal import STL as _StatsmodelsSTL
 
+from Ts.TsModels._base import _resolve_missing_rows
+
 
 @dataclass
 class STLResult:
@@ -84,7 +86,12 @@ class STLResult:
 
 
 class STL:
-    """Seasonal-Trend decomposition using LOESS."""
+    """Seasonal-Trend decomposition using LOESS.
+
+    ``missing="raise"`` rejects non-finite input. Explicit ``"drop"`` removes
+    affected observations and records their original zero-based positions in
+    :attr:`dropped_positions`.
+    """
 
     def __init__(
         self,
@@ -100,12 +107,19 @@ class STL:
         seasonal_jump=1,
         trend_jump=1,
         low_pass_jump=1,
+        missing="raise",
     ):
         self.data = np.asarray(data, dtype=float)
         if self.data.ndim != 1:
             raise ValueError("data must be one-dimensional")
-        if not np.all(np.isfinite(self.data)):
-            raise ValueError("data must contain only finite values")
+        finite_rows = np.isfinite(self.data)
+        dropped_positions = _resolve_missing_rows(finite_rows, missing)
+        if missing == "drop":
+            self.data = self.data[finite_rows]
+        else:
+            self.data = self.data.copy()
+        self.missing = missing
+        self.dropped_positions = dropped_positions
         if (
             isinstance(period, (bool, np.bool_))
             or not isinstance(period, (int, np.integer))

@@ -14,15 +14,17 @@ from Ts.TsModels._base import (
     BaseModel,
     BaseModelResult,
     PredictResult,
+    _normalise_model_dates,
+    _resolve_missing_rows,
     _resolve_prediction_window,
 )
 from Ts.TsModels._var import (
-    _stata_fmt,
-    IRFResult,
     FEVDResult,
     GrangerCausalityResult,
+    IRFResult,
     _GrangerEntry,
     _run_granger_all,
+    _stata_fmt,
 )
 
 # Map user-facing trend names to statsmodels VECM deterministic.
@@ -82,6 +84,7 @@ class VECMOrderResult:
     endogenous: list
     max_lags: int
     nobs: int
+    dropped_positions: tuple[int, ...] = ()
 
     def summary(self) -> str:
         lines = [
@@ -781,9 +784,25 @@ class VECM(BaseModel):
         ``"rtrend"`` (trend in CE), ``"ct"`` (trend outside CE).
     cols : list of str, optional
         Variable names for display.
+    dates : datetime-like sequence, optional
+        Strict sample dates. A DataFrame DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
+    missing : {"raise", "drop"}
+        Non-finite row policy. ``"drop"`` records removed zero-based rows in
+        :attr:`dropped_positions`. Default ``"raise"``.
     """
 
-    def __init__(self, data, lags=2, coint_rank=1, trend="c", cols=None):
+    def __init__(
+        self,
+        data,
+        lags=2,
+        coint_rank=1,
+        trend="c",
+        cols=None,
+        dates=None,
+        missing="raise",
+    ):
+        model_dates = _normalise_model_dates(data, dates, len(data))
         if hasattr(data, "columns"):
             if cols is not None:
                 data = data[cols]
@@ -802,7 +821,14 @@ class VECM(BaseModel):
                 f"data must have at least 2 variables (k >= 2), got k = {k}"
             )
 
-        y = y[~np.any(np.isnan(y), axis=1)]
+        finite_rows = np.all(np.isfinite(y), axis=1)
+        dropped_positions = _resolve_missing_rows(finite_rows, missing)
+        if missing == "drop":
+            y = y[finite_rows]
+            if model_dates is not None:
+                model_dates = model_dates[finite_rows].copy()
+        else:
+            y = y.copy()
 
         if lags < 1:
             raise ValueError(
@@ -837,13 +863,23 @@ class VECM(BaseModel):
             data_names = [f"y{i}" for i in range(k)]
 
         self.data = y
+        self.dates = model_dates
+        self.missing = missing
+        self.dropped_positions = dropped_positions
         self.lags = lags
         self.coint_rank = coint_rank
         self.trend = trend
         self.data_names = data_names
 
     @staticmethod
-    def select_order(data, max_lags, coint_rank=1, criterion="aic", cols=None):
+    def select_order(
+        data,
+        max_lags,
+        coint_rank=1,
+        criterion="aic",
+        cols=None,
+        missing="raise",
+    ):
         """Select optimal lag length using information criteria.
 
         Parameters
@@ -884,6 +920,13 @@ class VECM(BaseModel):
                 f"data must be 2-D (nobs, k), got shape {y.shape}"
             )
         k = y.shape[1]
+        finite_rows = np.all(np.isfinite(y), axis=1)
+        dropped_positions = _resolve_missing_rows(finite_rows, missing)
+        if missing == "drop":
+            y = y[finite_rows]
+        else:
+            y = y.copy()
+
         if cols is not None:
             names = list(cols)
         else:
@@ -922,6 +965,7 @@ class VECM(BaseModel):
             endogenous=names,
             max_lags=max_lags,
             nobs=len(y),
+            dropped_positions=dropped_positions,
         )
 
     def fit(self):

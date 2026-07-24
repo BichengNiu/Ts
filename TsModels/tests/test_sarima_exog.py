@@ -72,6 +72,7 @@ def test_missing_drop_removes_y_exog_and_dates_jointly():
     assert dates[2] not in model.dates
     assert dates[4] not in model.dates
     assert model.exog.shape == (10, 1)
+    assert model.dropped_positions == (2, 4)
 
 
 def test_missing_raise_is_default_and_rejects_infinite_values():

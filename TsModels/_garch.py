@@ -52,6 +52,12 @@ class GARCH(_BaseVolModel):
     compare_lags : bool
         For pure ARCH models with ``p > 1``, fit lower-order ARCH models to
         report their AIC/BIC values. Default ``True``.
+    dates : datetime-like sequence, optional
+        Strict sample dates. A Series DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
+    missing : {"raise", "drop"}
+        Joint non-finite policy for data and exog. ``"drop"`` records removed
+        zero-based rows in :attr:`dropped_positions`. Default ``"raise"``.
     """
 
     def __init__(
@@ -67,8 +73,10 @@ class GARCH(_BaseVolModel):
         garch_m_form="vol",
         ar_lags=None,
         exog=None,
+        dates=None,
         igarch=False,
         compare_lags=True,
+        missing="raise",
     ):
         super().__init__(
             data=data,
@@ -82,6 +90,8 @@ class GARCH(_BaseVolModel):
             garch_m_form=garch_m_form,
             ar_lags=ar_lags,
             exog=exog,
+            dates=dates,
             igarch=igarch,
             compare_lags=compare_lags,
+            missing=missing,
         )

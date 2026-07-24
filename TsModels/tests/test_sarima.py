@@ -244,6 +244,31 @@ class TestSARIMARoots:
         assert len(fitted_arma11.arroots) == 1
         assert len(fitted_arma11.maroots) == 1
 
+    def test_summary_distinguishes_enforcement_from_root_result(
+        self,
+        arma11_data,
+    ):
+        from Ts.TsModels._sarima import SARIMA
+
+        result = SARIMA(
+            arma11_data,
+            order=(1, 0, 1),
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        ).fit()
+        text = result.summary()
+
+        assert not result.stationarity_enforced
+        assert not result.invertibility_enforced
+        assert "Stationarity Enforced  : No" in text
+        assert "Invertibility Enforced : No" in text
+        assert result.is_stationary == bool(
+            np.all(np.abs(result.arroots) > 1.0)
+        )
+        assert result.is_invertible == bool(
+            np.all(np.abs(result.maroots) > 1.0)
+        )
+
     def test_plot_roots_returns_fig_ax(self, fitted_arma11):
         """plot_roots() returns (fig, ax) for ARMA(1,1).
 
@@ -267,6 +292,129 @@ class TestSARIMARoots:
         fig, ax = fitted_ar1.plot_roots()
         assert isinstance(fig, Figure)
         assert isinstance(ax, Axes)
+
+
+class TestSARIMASparseLags:
+    """Sparse AR/MA lag specifications fix omitted coefficients at zero."""
+
+    @pytest.fixture
+    def sparse_ar_result(self):
+        data = simulate_sarima(
+            n=300,
+            order=(3, 0, 0),
+            ar=[0.5, 0.0, -0.2],
+            const=1.0,
+            seed=2401,
+            burn=200,
+        ).data
+        from Ts.TsModels._sarima import SARIMA
+
+        return SARIMA(
+            data,
+            order=([1, 3], 0, 0),
+            trend="c",
+        ).fit()
+
+    @pytest.fixture
+    def sparse_ma_result(self):
+        data = simulate_sarima(
+            n=350,
+            order=(1, 0, 3),
+            ar=[0.35],
+            ma=[0.45, 0.0, -0.2],
+            seed=2402,
+            burn=200,
+        ).data
+        from Ts.TsModels._sarima import SARIMA
+
+        return SARIMA(
+            data,
+            order=(1, 0, [1, 3]),
+            trend="n",
+        ).fit()
+
+    def test_sparse_ar_fixes_second_lag_at_zero(self, sparse_ar_result):
+        assert sparse_ar_result._order == ((1, 3), 0, 0)
+        assert sparse_ar_result.ar_lags == (1, 3)
+        assert "ar.L1" in sparse_ar_result.params
+        assert "ar.L2" not in sparse_ar_result.params
+        assert "ar.L3" in sparse_ar_result.params
+        assert sparse_ar_result.fixed_params == {"ar.L2": 0.0}
+        assert sparse_ar_result._statsmodels_result.polynomial_ar[2] == 0.0
+
+    def test_sparse_ma_fixes_second_lag_at_zero(self, sparse_ma_result):
+        assert sparse_ma_result._order == (1, 0, (1, 3))
+        assert sparse_ma_result.ma_lags == (1, 3)
+        assert "ma.L1" in sparse_ma_result.params
+        assert "ma.L2" not in sparse_ma_result.params
+        assert "ma.L3" in sparse_ma_result.params
+        assert sparse_ma_result.fixed_params == {"ma.L2": 0.0}
+        assert sparse_ma_result._statsmodels_result.polynomial_ma[2] == 0.0
+
+    def test_sparse_lag_summary_reports_constraints_and_roots(
+        self,
+        sparse_ar_result,
+    ):
+        text = sparse_ar_result.summary()
+        assert "Order: SARIMA(3, 0, 0)" in text
+        assert "Active AR Lags     : 1, 3" in text
+        assert "Fixed at Zero      : ar.L2" in text
+        assert "AR Stationarity    : Passed" in text
+        assert "MA Invertibility   : Not applicable" in text
+        assert "Stationarity Enforced  : Yes" in text
+        assert sparse_ar_result.is_stationary
+
+    def test_sparse_ma_predicts_and_reports_invertibility(
+        self,
+        sparse_ma_result,
+    ):
+        prediction = sparse_ma_result.predict(
+            start=sparse_ma_result.nobs,
+            end=sparse_ma_result.nobs + 2,
+        )
+        assert prediction.mean.shape == (3,)
+        assert sparse_ma_result.is_invertible
+        assert "MA Invertibility   : Passed" in sparse_ma_result.summary()
+
+    def test_sparse_ar_long_run_equilibrium(self, sparse_ar_result):
+        expected = sparse_ar_result.params["intercept"] / (
+            1.0
+            - sparse_ar_result.params["ar.L1"]
+            - sparse_ar_result.params["ar.L3"]
+        )
+        assert sparse_ar_result.long_run_equilibrium() == pytest.approx(
+            expected
+        )
+
+    def test_sparse_lags_are_sorted_and_immutable(self, ar1_data):
+        from Ts.TsModels._sarima import SARIMA
+
+        lags = [3, 1]
+        model = SARIMA(ar1_data, order=(lags, 0, 0))
+        lags.append(2)
+        assert model.order == ((1, 3), 0, 0)
+
+    @pytest.mark.parametrize(
+        ("order", "error", "message"),
+        [
+            (([0, 1], 0, 0), ValueError, "p lags must be positive"),
+            (([1, 1], 0, 0), ValueError, "p lags must be unique"),
+            (([1, 2.5], 0, 0), TypeError, "p lags must be positive"),
+            ((True, 0, 0), TypeError, "p must be a non-negative"),
+            ((1, True, 0), TypeError, "d must be a non-negative"),
+        ],
+    )
+    def test_invalid_sparse_orders_raise_clear_errors(
+        self,
+        ar1_data,
+        order,
+        error,
+        message,
+    ):
+        from Ts.TsModels._sarima import SARIMA
+
+        with pytest.raises(error, match=message):
+            SARIMA(ar1_data, order=order)
 
 
 class TestSARIMAPredict:
@@ -358,11 +506,14 @@ class TestSARIMAPredict:
         evaluation = SARIMA(
             result.data,
             order=result._order,
-        ).oos(split=split)
+        ).oos(
+            estimation_period=(0, split - 1),
+            validation_period=(split, result.nobs - 1),
+        )
 
         assert evaluation.metrics["rmse"] > 0
         assert len(evaluation.mean) == result.nobs - split
-        assert evaluation.target_indices[0] == split
+        assert evaluation.validation_indices[0] == split
 
     def test_predict_rejects_removed_oos_start(self, result):
         """The leaked pseudo-OOS argument is no longer accepted."""

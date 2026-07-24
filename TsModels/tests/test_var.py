@@ -565,7 +565,10 @@ class TestVARPredict:
         evaluation = VAR(
             fitted_var.data,
             lags=fitted_var._lags,
-        ).oos(split=split)
+        ).oos(
+            estimation_period=(0, split - 1),
+            validation_period=(split, len(fitted_var.data) - 1),
+        )
 
         assert evaluation.mean.shape == (
             len(fitted_var.data) - split,

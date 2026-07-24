@@ -14,6 +14,8 @@ from Ts.TsModels._base import (
     BaseModel,
     BaseModelResult,
     PredictResult,
+    _normalise_model_dates,
+    _resolve_missing_rows,
     _resolve_prediction_window,
     _validate_prediction_alpha,
 )
@@ -459,6 +461,7 @@ class VAROrderResult:
     endogenous: list = field(default_factory=list)
     max_lags: int = 1
     nobs: int = 0
+    dropped_positions: tuple[int, ...] = ()
 
     def summary(self) -> str:
         """Return a formatted lag-order selection table."""
@@ -1650,9 +1653,24 @@ class VAR(BaseModel):
         *cols* provides display names. If None with a DataFrame, all columns
         are used and names are taken from the DataFrame; for an ndarray
         names are auto-generated as ``"y0"``, ``"y1"``, ...
+    dates : datetime-like sequence, optional
+        Strict sample dates. A DataFrame DatetimeIndex is inferred automatically.
+        Array inputs may provide dates explicitly.
+    missing : {"raise", "drop"}
+        Non-finite row policy. ``"drop"`` records removed zero-based rows in
+        :attr:`dropped_positions`. Default ``"raise"``.
     """
 
-    def __init__(self, data, lags=1, trend="c", cols=None):
+    def __init__(
+        self,
+        data,
+        lags=1,
+        trend="c",
+        cols=None,
+        dates=None,
+        missing="raise",
+    ):
+        model_dates = _normalise_model_dates(data, dates, len(data))
         # Column selection for DataFrame inputs
         if hasattr(data, "columns"):
             if cols is not None:
@@ -1677,7 +1695,14 @@ class VAR(BaseModel):
         else:
             data_names = [f"y{i}" for i in range(y.shape[1])]
 
-        y = y[~np.any(np.isnan(y), axis=1)]
+        finite_rows = np.all(np.isfinite(y), axis=1)
+        dropped_positions = _resolve_missing_rows(finite_rows, missing)
+        if missing == "drop":
+            if model_dates is not None:
+                model_dates = model_dates[finite_rows].copy()
+            y = y[finite_rows]
+        else:
+            y = y.copy()
 
         if lags < 1:
             raise ValueError(f"lags must be >= 1, got {lags}")
@@ -1692,13 +1717,22 @@ class VAR(BaseModel):
                 f"({lags} lags + 10), got {y.shape[0]}"
             )
 
+        self.dates = model_dates
         self.data = y
+        self.missing = missing
+        self.dropped_positions = dropped_positions
         self.lags = lags
         self.trend = trend
         self.data_names = data_names
 
     @staticmethod
-    def select_order(data, max_lags, criterion="aic", cols=None):
+    def select_order(
+        data,
+        max_lags,
+        criterion="aic",
+        cols=None,
+        missing="raise",
+    ):
         """Select optimal lag length using information criteria.
 
         Parameters
@@ -1733,6 +1767,13 @@ class VAR(BaseModel):
             raise ValueError(
                 f"data must be 2-D (nobs, k), got shape {y.shape}"
             )
+        finite_rows = np.all(np.isfinite(y), axis=1)
+        dropped_positions = _resolve_missing_rows(finite_rows, missing)
+        if missing == "drop":
+            y = y[finite_rows]
+        else:
+            y = y.copy()
+
 
         sm_model = _SM_VAR(y)
         result = sm_model.select_order(max_lags)
@@ -1828,6 +1869,7 @@ class VAR(BaseModel):
             endogenous=endogenous,
             max_lags=max_lags,
             nobs=len(y),
+            dropped_positions=dropped_positions,
         )
 
     def fit(self):

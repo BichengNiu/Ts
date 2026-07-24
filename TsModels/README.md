@@ -2,6 +2,21 @@
 
 时间序列分解与模型估计工具包。提供 STL 分解及 SARIMA、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsTests 包衔接。
 
+## Missing-data contract
+
+All public model constructors accept `missing="raise"` or `missing="drop"`.
+The default is `"raise"`, which rejects both `NaN` and infinite values.
+Explicit `"drop"` removes affected observations and records their original
+zero-based row positions in `dropped_positions`. Multivariate models remove
+complete rows. No model imputes raw observations.
+
+## Date-index contract
+
+所有预测模型构造器都接受 `dates=None`。`pandas.Series` 或
+`pandas.DataFrame` 的 `DatetimeIndex` 会自动保留；数组数据可通过 `dates=`
+显式提供日期。日期数量必须与原始观测一致，且不得包含缺失、重复或逆序值。
+使用 `missing="drop"` 删除观测时，对应日期会同步删除。
+
 ## 模块结构
 
 ```
@@ -102,6 +117,10 @@ result.test_residuals(lags=10)
 | `SARIMA` / `SARIMAResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
 | | `.arroots` | AR 多项式特征根 (ndarray) |
 | | `.maroots` | MA 多项式特征根 (ndarray) |
+| | `.is_stationary` | AR 多项式的全部根是否位于单位圆外 |
+| | `.is_invertible` | MA 多项式的全部根是否位于单位圆外 |
+| | `.ar_lags` / `.ma_lags` | 实际参与估计的非季节 AR/MA 滞后 |
+| | `.fixed_params` | 因稀疏滞后设定而固定为 0 的系数 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.long_run_equilibrium()` | 无条件均值 (平稳 ARMA, d=0, trend="c" → float；否则 None) |
 | `GARCH` / `GARCHResult` | `.predict(start, end, dynamic, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
@@ -131,23 +150,45 @@ result.test_residuals(lags=10)
 | | `.is_stable` | 基于 companion matrix 的稳定性检查 (bool) |
 | | `.plot_roots(title)` | VECM 逆特征根单位圆图 |
 
-## 性能评估与反推
+## 性能评估与期间接口
 
-预测性能指标、真实留出法 OOS、滚动历史回测和模型性能排序统一由
+预测性能指标、显式期间 OOS、滚动历史回测和模型性能排序统一由
 `TsMetrics` 定义。`BaseModel.oos()` 与 `BaseModel.backtest()` 只是指向
 `TsMetrics` 规范实现的便利方法；`PredictResult` 不保存实际值或性能指标。
 
-不存在 `predict(oos_start=...)` 伪样本外路径。需要单一留出集时使用：
+位置型数据使用零基、闭区间位置：
 
 ```python
-evaluation = model.oos(split=80)
+evaluation = model.oos(
+    estimation_period=(0, 79),
+    validation_period=(80, 99),
+)
 print(evaluation.metrics)
 ```
 
-所有继承 `BaseModel` 的预测模型（SARIMA、GARCH、VAR、VECM、SVAR 及 Auto 模型）提供三个统一方法。STL 是分解器，不提供预测，因此没有这些方法。
+带日期索引的数据使用精确日期边界：
 
 ```python
-model.oos(split, alpha=0.05)
+evaluation = model.oos(
+    estimation_period=("2018-01-01", "2022-12-01"),
+    validation_period=("2023-03-01", "2023-12-01"),
+    alpha=0.05,
+)
+```
+
+验证期必须严格晚于估计期。两者可以不相邻；模型会连续预测中间间隔，
+但只对验证期评分。日期必须唯一、严格递增且边界真实存在。越界、逆序、
+重叠、估计样本不足或外生变量未覆盖预测桥接区间都会直接失败。
+
+`OOSResult` 保存 `estimation_indices`、`validation_indices`，日期模型还保存
+`estimation_dates`、`validation_dates`。旧 `split` 参数和结果字段已经删除，
+不存在弃用期或兼容路径。`predict(oos_start=...)` 伪样本外路径同样不存在。
+
+所有继承 `BaseModel` 的预测模型（SARIMA、GARCH、VAR、VECM、SVAR 及 Auto 模型）
+共享该接口。STL 是分解器，不提供预测和验证期接口。
+
+```python
+model.oos(estimation_period, validation_period, alpha=0.05)
 
 model.backtest(
     initial_window,
@@ -161,7 +202,6 @@ model.backtest(
 
 model.backcast(steps, alpha=0.05)
 ```
-
 ### Backtesting：无未来信息泄漏的滚动起点回测
 
 `backtest()` 在每个预测起点重新拟合模型。扩展窗口使用起点前的全部历史；滚动窗口仅使用最近 `window_size` 个观测。原模型及其已有 `result_` 不会被修改。
@@ -251,23 +291,38 @@ result.observed == result.trend + result.seasonal + result.residuals
 ### SARIMA
 
 ```python
-SARIMA(data, order=(1,0,0), seasonal_order=(0,0,0,0), trend="c")
+SARIMA(data, order=(1,0,0), seasonal_order=(0,0,0,0), trend="c", *, dates=None, exog=None, missing="raise")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `data` | array-like | — | 时间序列 |
-| `order` | tuple | `(1,0,0)` | 非季节阶数 `(p,d,q)` |
+| `order` | tuple | `(1,0,0)` | 非季节阶数 `(p,d,q)`；`p`、`q` 可为整数或实际参与估计的滞后列表 |
 | `seasonal_order` | tuple | `(0,0,0,0)` | 季节阶数 `(P,D,Q,s)` |
 | `trend` | str | `"c"` | 趋势设定：`"n"`, `"c"`, `"t"`, `"ct"` |
 | `enforce_stationarity` | bool | `True` | 强制 AR 多项式平稳性 |
 | `enforce_invertibility` | bool | `True` | 强制 MA 多项式可逆性 |
 
+稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
+
+```python
+# AR(3)，但固定 ar.L2 = 0
+ar_result = SARIMA(data, order=([1, 3], 0, 0)).fit()
+
+# ARMA(1,3)，但固定 ma.L2 = 0
+arma_result = SARIMA(data, order=(1, 0, [1, 3])).fit()
+```
+
+`summary()` 会报告实际 AR/MA 滞后、固定为 0 的系数、根的最小模、
+AR 多项式平稳性、MA 多项式可逆性，以及估计时是否强制这些条件。
+对于 `d > 0` 或 `D > 0` 的模型，平稳性结论针对差分后的 AR 多项式，
+不表示原始水平序列平稳。
+
 ### GARCH
 
 ```python
 GARCH(data, p=1, q=1, o=0, vol="GARCH", mean="Constant", dist="normal",
-      garch_m=False, garch_m_form="vol", ar_lags=None, exog=None)
+      garch_m=False, garch_m_form="vol", ar_lags=None, exog=None, dates=None, missing="raise")
 ```
 
 纯 ARCH(p) 模型通过 `q=0` 实现：`GARCH(data, p=2, q=0)` 等价于原 ARCH(2)。
@@ -401,7 +456,7 @@ best = result.best_result  # SARIMAResult 或 GARCHResult
 ```python
 AutoSARIMA(data, p=(0,3), d=(0,1), q=(0,3),
            P=(0,1), D=(0,1), Q=(0,1), s=0,
-           trend="c", criterion="aic", method="grid")
+           trend="c", criterion="aic", method="grid", dates=None, missing="raise")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -418,7 +473,7 @@ AutoGARCH(data, p=(1,4), q=(0,4), o=(0,0),
           vol="GARCH", mean="Constant", dist="normal",
           criterion="aic", method="grid",
           igarch=False, garch_m=False, garch_m_form="vol",
-          ar_lags=None, exog=None)
+          ar_lags=None, exog=None, dates=None, missing="raise")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -474,7 +529,7 @@ result = auto.fit()
 ### VAR
 
 ```python
-VAR(data, lags=1, trend="c", cols=None)
+VAR(data, lags=1, trend="c", cols=None, dates=None, missing="raise")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -541,7 +596,7 @@ result.plot_roots()     # 逆特征根单位圆图
 ### SVAR
 
 ```python
-SVAR(data, lags=1, A=None, B=None, C_lr=None, trend="c", cols=None)
+SVAR(data, lags=1, A=None, B=None, C_lr=None, trend="c", cols=None, dates=None, missing="raise")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -606,7 +661,7 @@ SVAR 不支持直接通过 ``svar A B`` 进行**过度识别检验** (LR test) �
 ### VECM
 
 ```python
-VECM(data, lags=2, coint_rank=1, trend="c", cols=None)
+VECM(data, lags=2, coint_rank=1, trend="c", cols=None, dates=None, missing="raise")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |

@@ -420,9 +420,16 @@ class TestAutoGARCH:
         exog = np.arange(len(data), dtype=float)
         data[10] = np.nan
 
-        auto = AutoGARCH(data, p=(1, 1), q=(1, 1), exog=exog)
+        auto = AutoGARCH(
+            data,
+            p=(1, 1),
+            q=(1, 1),
+            exog=exog,
+            missing="drop",
+        )
 
         assert len(auto.data) == len(data) - 1
+        assert auto.dropped_positions == (10,)
         assert auto.exog.shape == (len(data) - 1, 1)
 
     def test_invalid_criterion_raises(self, garch11_data):

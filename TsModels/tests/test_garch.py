@@ -129,10 +129,11 @@ class TestGARCH:
         exog = rng.normal(size=(60, 2))
         data[10] = np.nan
 
-        model = GARCH(data, p=1, q=1, exog=exog)
+        model = GARCH(data, p=1, q=1, exog=exog, missing="drop")
 
         assert len(model.data) == 59
         assert model.exog.shape == (59, 2)
+        assert model.dropped_positions == (10,)
 
 
 class TestGARCHResult:
@@ -796,7 +797,10 @@ class TestGARCHPredict:
             q=garch_result._q,
             o=garch_result._o,
             compare_lags=False,
-        ).oos(split=split)
+        ).oos(
+            estimation_period=(0, split - 1),
+            validation_period=(split, len(garch_result.data) - 1),
+        )
 
         expected = np.abs(
             garch_result.data[split:]
