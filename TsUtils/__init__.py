@@ -1,4 +1,3 @@
-# ruff: noqa: N999
 """Time-series preprocessing utilities.
 
 The package owns decomposition and data-cleaning helpers that prepare series

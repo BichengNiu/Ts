@@ -1,6 +1,6 @@
-numpy
-pandas
-scipy
-matplotlib
-statsmodels
-arch
+numpy>=2.0,<3
+pandas>=2.2,<3
+scipy>=1.13,<2
+matplotlib>=3.8,<4
+statsmodels>=0.14.5,<0.15
+arch>=7,<9

@@ -8,9 +8,7 @@ import numpy as np
 
 from ._results import BacktestResult, ComparisonResult, OOSResult
 
-_ERROR_METRICS = frozenset(
-    {"mae", "mse", "rmse", "mape", "smape", "theil_u1"}
-)
+_ERROR_METRICS = frozenset({"mae", "mse", "rmse", "mape", "smape", "theil_u1"})
 
 
 def _comparison_items(results, metric):
@@ -30,9 +28,7 @@ def _comparison_reference(items):
     """Return the first valid result as the comparison reference."""
     first_name, first = items[0]
     if not isinstance(first, (OOSResult, BacktestResult)):
-        raise TypeError(
-            f"result {first_name!r} is not an OOSResult or BacktestResult"
-        )
+        raise TypeError(f"result {first_name!r} is not an OOSResult or BacktestResult")
     return first
 
 
@@ -41,9 +37,7 @@ def _comparable_score(name, result, reference, metric):
     if not isinstance(name, str):
         raise TypeError("result names must be strings")
     if not isinstance(result, type(reference)):
-        raise TypeError(
-            "all compared results must use the same evaluation method"
-        )
+        raise TypeError("all compared results must use the same evaluation method")
     if result.target != reference.target:
         raise ValueError("all compared results must use the same target")
     if isinstance(result, OOSResult):
@@ -53,8 +47,7 @@ def _comparable_score(name, result, reference, metric):
                 np.asarray(getattr(reference, attribute)),
             ):
                 raise ValueError(
-                    "all compared OOS results must use the same "
-                    f"{attribute}"
+                    f"all compared OOS results must use the same {attribute}"
                 )
         for attribute in ("estimation_dates", "validation_dates"):
             result_dates = getattr(result, attribute)
@@ -63,20 +56,15 @@ def _comparable_score(name, result, reference, metric):
                 raise ValueError(
                     "all compared OOS results must use the same date metadata"
                 )
-            if result_dates is not None and not result_dates.equals(
-                reference_dates
-            ):
+            if result_dates is not None and not result_dates.equals(reference_dates):
                 raise ValueError(
-                    "all compared OOS results must use the same "
-                    f"{attribute}"
+                    f"all compared OOS results must use the same {attribute}"
                 )
     elif not np.array_equal(
         np.asarray(result.target_indices),
         np.asarray(reference.target_indices),
     ):
-        raise ValueError(
-            "all compared backtests must use the same target indices"
-        )
+        raise ValueError("all compared backtests must use the same target indices")
     result_actual = np.asarray(result.actual)
     reference_actual = np.asarray(reference.actual)
     if result_actual.shape != reference_actual.shape or not np.array_equal(
@@ -84,13 +72,9 @@ def _comparable_score(name, result, reference, metric):
         reference_actual,
         equal_nan=True,
     ):
-        raise ValueError(
-            "all compared results must use the same actual values"
-        )
+        raise ValueError("all compared results must use the same actual values")
     if metric not in result.metrics:
-        raise ValueError(
-            f"result {name!r} does not contain metric {metric!r}"
-        )
+        raise ValueError(f"result {name!r} does not contain metric {metric!r}")
     return float(result.metrics[metric])
 
 
@@ -107,17 +91,8 @@ def compare_forecasts(results, *, metric="rmse"):
         for name, result in items
     }
 
-    ranking = sorted(
-        scores,
-        key=lambda name: (
-            not np.isfinite(scores[name]),
-            scores[name] if np.isfinite(scores[name]) else np.inf,
-            name,
-        ),
-    )
     return ComparisonResult(
         metric=metric,
         scores=scores,
-        ranking=ranking,
         target=reference.target,
     )

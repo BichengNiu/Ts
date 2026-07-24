@@ -25,7 +25,6 @@ class InterpolationResult:
     data: np.ndarray | pd.Series | pd.DataFrame
     missing_mask: np.ndarray
     filled_mask: np.ndarray
-    remaining_mask: np.ndarray
     method: str
     max_gap: int | None
     edge: str
@@ -43,22 +42,26 @@ class InterpolationResult:
             dtype=bool,
             copy=True,
         )
-        self.remaining_mask = np.array(
-            self.remaining_mask,
-            dtype=bool,
-            copy=True,
+        self.method, self.max_gap, self.edge = _normalise_options(
+            self.method,
+            self.max_gap,
+            self.edge,
         )
         shape = np.asarray(self.data).shape
         for name, mask in (
             ("missing_mask", self.missing_mask),
             ("filled_mask", self.filled_mask),
-            ("remaining_mask", self.remaining_mask),
         ):
             if mask.shape != shape:
                 raise ValueError(
                     f"{name} must have the same shape as data, "
                     f"got {mask.shape} and {shape}"
                 )
+        if np.any(self.filled_mask & ~self.missing_mask):
+            raise ValueError("filled_mask must be a subset of missing_mask")
+        values = np.asarray(self.data, dtype=float)
+        if np.any(self.filled_mask & np.isnan(values)):
+            raise ValueError("filled_mask positions must contain filled values")
 
     @property
     def n_missing(self):
@@ -74,6 +77,11 @@ class InterpolationResult:
     def n_remaining(self):
         """Number of originally missing values that remain missing."""
         return int(self.remaining_mask.sum())
+
+    @property
+    def remaining_mask(self):
+        """Originally missing positions that were not filled."""
+        return self.missing_mask & ~self.filled_mask
 
     @property
     def complete(self):
@@ -102,13 +110,10 @@ def _normalise_options(method, max_gap, edge):
     if not isinstance(method, str) or method not in _METHODS:
         supported = ", ".join(sorted(_METHODS))
         raise ValueError(f"method must be one of: {supported}")
-    if (
-        max_gap is not None
-        and (
-            isinstance(max_gap, (bool, np.bool_))
-            or not isinstance(max_gap, (int, np.integer))
-            or max_gap < 1
-        )
+    if max_gap is not None and (
+        isinstance(max_gap, (bool, np.bool_))
+        or not isinstance(max_gap, (int, np.integer))
+        or max_gap < 1
     ):
         raise ValueError("max_gap must be None or a non-boolean integer >= 1")
     if not isinstance(edge, str) or edge not in _EDGE_POLICIES:
@@ -173,7 +178,7 @@ def _eligible_missing(mask, max_gap):
         changes = np.diff(padded.astype(np.int8))
         starts = np.flatnonzero(changes == 1)
         stops = np.flatnonzero(changes == -1)
-        for start, stop in zip(starts, stops):
+        for start, stop in zip(starts, stops, strict=True):
             if stop - start > max_gap:
                 eligible[start:stop, column] = False
     return eligible
@@ -283,18 +288,13 @@ def interpolate_missing(
         _fill_nearest_edges(output, original, missing, eligible)
 
     filled = missing & ~np.isnan(output)
-    remaining = missing & np.isnan(output)
     restored = _restore_data(output, frame, kind)
     public_missing = missing[:, 0] if kind in {"series", "array1d"} else missing
     public_filled = filled[:, 0] if kind in {"series", "array1d"} else filled
-    public_remaining = (
-        remaining[:, 0] if kind in {"series", "array1d"} else remaining
-    )
     return InterpolationResult(
         data=restored,
         missing_mask=public_missing,
         filled_mask=public_filled,
-        remaining_mask=public_remaining,
         method=method,
         max_gap=max_gap,
         edge=edge,

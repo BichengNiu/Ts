@@ -22,6 +22,46 @@ class STLResult:
     period: int
     config: dict
 
+    def __post_init__(self):
+        """Copy components and require one coherent decomposition."""
+        component_names = (
+            "observed",
+            "trend",
+            "seasonal",
+            "residuals",
+            "weights",
+        )
+        for name in component_names:
+            values = np.array(getattr(self, name), dtype=float, copy=True)
+            if values.ndim != 1 or values.size == 0:
+                raise ValueError(f"{name} must be a non-empty 1-D array")
+            if not np.all(np.isfinite(values)):
+                raise ValueError(f"{name} must contain only finite values")
+            setattr(self, name, values)
+        component_lengths = {getattr(self, name).size for name in component_names}
+        if len(component_lengths) != 1:
+            raise ValueError("all STL components must have the same length")
+        if (
+            isinstance(self.period, (bool, np.bool_))
+            or not isinstance(self.period, (int, np.integer))
+            or self.period < 2
+        ):
+            raise ValueError("period must be a non-boolean integer >= 2")
+        self.period = int(self.period)
+        if self.observed.size < 2 * self.period:
+            raise ValueError("STL results must contain at least two complete cycles")
+        if np.any((self.weights < 0.0) | (self.weights > 1.0)):
+            raise ValueError("weights must be between zero and one")
+        self.config = dict(self.config)
+        required = {"period", "robust", "seasonal", "trend", "low_pass"}
+        missing = required.difference(self.config)
+        if missing:
+            raise ValueError(
+                "config is missing required entries: " + ", ".join(sorted(missing))
+            )
+        if int(self.config["period"]) != self.period:
+            raise ValueError("config period must match result period")
+
     @property
     def nobs(self):
         """Number of observations in the decomposition."""
@@ -55,8 +95,8 @@ class STLResult:
         """Plot observed, trend, seasonal, and residual components."""
         import matplotlib.pyplot as plt
 
-        from Ts.TsPlots import plot_series
-        from Ts.TsPlots.style import AXIS_LABEL_FONTSIZE, TITLE_FONTSIZE
+        from ..TsPlots import plot_series
+        from ..TsPlots.style import AXIS_LABEL_FONTSIZE, TITLE_FONTSIZE
 
         fig, axes = plt.subplots(4, 1, figsize=(10, 9), sharex=True)
         panels = [
@@ -65,7 +105,11 @@ class STLResult:
             (self.seasonal, "Seasonal", "Seasonal"),
             (self.residuals, "Residual", "Residual"),
         ]
-        for axis, (values, panel_title, ytitle) in zip(axes, panels):
+        for axis, (values, panel_title, ytitle) in zip(
+            axes,
+            panels,
+            strict=True,
+        ):
             plot_series(
                 values,
                 ax=axis,
@@ -97,6 +141,7 @@ class STL:
         self,
         data,
         period,
+        *,
         seasonal=7,
         trend=None,
         low_pass=None,

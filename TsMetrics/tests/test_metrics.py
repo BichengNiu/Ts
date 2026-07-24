@@ -22,9 +22,7 @@ def test_point_metrics_have_expected_values():
     assert mae(actual, predicted) == pytest.approx(4.0 / 3.0)
     assert mse(actual, predicted) == pytest.approx(10.0 / 3.0)
     assert rmse(actual, predicted) == pytest.approx(np.sqrt(10.0 / 3.0))
-    assert mape(actual, predicted) == pytest.approx(
-        np.mean([1.0, 0.0, 0.75]) * 100.0
-    )
+    assert mape(actual, predicted) == pytest.approx(np.mean([1.0, 0.0, 0.75]) * 100.0)
     assert smape(actual, predicted) == pytest.approx(
         np.mean([2.0 / 3.0, 0.0, 6.0 / 5.0]) * 100.0
     )

@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from ._common import (
+from ._evaluation import (
     evaluation_actual,
     expected_forecast_shape,
     fit_and_forecast,
     model_data,
-    oos_metrics_by_series,
-    resolve_evaluation_periods,
     training_dates,
     training_exog,
     validate_alpha,
     validate_model_protocol,
 )
-from ._metrics import compute_metrics
+from ._periods import resolve_evaluation_periods
 from ._results import OOSResult
 
 
@@ -36,7 +34,7 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
     validation period is scored.
     """
     data = model_data(model)
-    validate_model_protocol(model, "oos")
+    target = validate_model_protocol(model, "oos")
     periods = resolve_evaluation_periods(
         model,
         data,
@@ -45,12 +43,10 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
     )
     alpha = validate_alpha(alpha)
 
-    train_data = data[
-        periods.estimation_start:periods.estimation_stop
-    ]
+    train_data = data[periods.estimation_start : periods.estimation_stop]
     bridge_horizon = periods.validation_stop - periods.estimation_stop
     bridge_shape = expected_forecast_shape(data, bridge_horizon)
-    fitted, (bridge_mean, bridge_lower, bridge_upper) = fit_and_forecast(
+    model_type, (bridge_mean, bridge_lower, bridge_upper) = fit_and_forecast(
         model,
         train_data,
         training_exog(
@@ -59,7 +55,7 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
             periods.estimation_stop,
         ),
         training_dates(
-            model,
+            periods.dates,
             periods.estimation_start,
             periods.estimation_stop,
         ),
@@ -82,12 +78,11 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
     )
     if mean.shape != validation_shape:
         raise ValueError(
-            f"validation forecast has shape {mean.shape}, expected "
-            f"{validation_shape}"
+            f"validation forecast has shape {mean.shape}, expected {validation_shape}"
         )
     actual = evaluation_actual(
         model,
-        data[periods.validation_start:periods.validation_stop],
+        data[periods.validation_start : periods.validation_stop],
         train_data,
         validation_shape,
     )
@@ -101,8 +96,6 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
         validation_indices=periods.validation_indices,
         estimation_dates=periods.estimation_dates,
         validation_dates=periods.validation_dates,
-        metrics=compute_metrics(actual, mean),
-        metrics_by_series=oos_metrics_by_series(actual, mean),
-        model_type=fitted.model_type,
-        target=model._evaluation_target_name,
+        model_type=model_type,
+        target=target,
     )

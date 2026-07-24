@@ -17,12 +17,12 @@ class TestEvaluationResultContracts:
     """Validate result shapes and public data contracts."""
 
     def test_result_types_are_public(self):
-        '''Evaluation result containers are exported by their owning packages.'''
+        """Evaluation result containers are exported by their owning packages."""
         from Ts.TsMetrics import BacktestResult
         from Ts.TsModels import BackcastResult
 
-        assert BacktestResult.__name__ == 'BacktestResult'
-        assert BackcastResult.__name__ == 'BackcastResult'
+        assert BacktestResult.__name__ == "BacktestResult"
+        assert BackcastResult.__name__ == "BackcastResult"
 
     def test_backtest_result_keeps_origin_and_horizon_axes(self):
         """BacktestResult preserves forecast-origin and horizon dimensions.
@@ -35,10 +35,6 @@ class TestEvaluationResultContracts:
             lower=None,
             upper=None,
             origins=np.array([20, 21]),
-            target_indices=np.array([[20, 21], [21, 22]]),
-            metrics={},
-            metrics_by_horizon=[],
-            metrics_by_series=[],
             failures=[],
             model_type="SARIMA",
             window="expanding",
@@ -60,10 +56,6 @@ class TestEvaluationResultContracts:
                 lower=None,
                 upper=None,
                 origins=np.array([20, 21]),
-                target_indices=np.array([[20, 21], [21, 22]]),
-                metrics={},
-                metrics_by_horizon=[],
-                metrics_by_series=[],
                 failures=[],
                 model_type="SARIMA",
                 window="expanding",
@@ -266,14 +258,14 @@ class _MeanForecastModel(BaseModel):
 
 
 class TestBacktestBehavior:
-    '''Verify leakage-free rolling-origin orchestration.'''
+    """Verify leakage-free rolling-origin orchestration."""
 
     def test_expanding_windows_use_only_pre_origin_data(self):
-        '''Each expanding fit ends immediately before its forecast origin.
+        """Each expanding fit ends immediately before its forecast origin.
 
         covers: TsMetrics/_backtest.py::backtest [function]
         covers: TsModels/_base.py::BaseModel.backtest [function]
-        '''
+        """
         model = _MeanForecastModel(np.arange(20.0))
 
         result = model.backtest(
@@ -295,14 +287,14 @@ class TestBacktestBehavior:
         np.testing.assert_allclose(result.actual[0], np.array([10.0, 11.0]))
 
     def test_rolling_windows_keep_the_requested_size(self):
-        '''Rolling fits discard observations older than window_size.'''
+        """Rolling fits discard observations older than window_size."""
         model = _MeanForecastModel(np.arange(20.0))
 
         result = model.backtest(
             initial_window=10,
             horizon=1,
             step=4,
-            window='rolling',
+            window="rolling",
             window_size=10,
         )
 
@@ -312,7 +304,7 @@ class TestBacktestBehavior:
         np.testing.assert_array_equal(model.fit_windows[2], np.arange(8.0, 18.0))
 
     def test_confidence_intervals_keep_origin_horizon_shape(self):
-        '''Forecast confidence arrays align with point predictions.'''
+        """Forecast confidence arrays align with point predictions."""
         model = _MeanForecastModel(np.arange(18.0))
 
         result = model.backtest(initial_window=10, horizon=3, step=4)
@@ -322,7 +314,7 @@ class TestBacktestBehavior:
         np.testing.assert_allclose(result.upper - result.lower, 1.0)
 
     def test_record_mode_keeps_failed_origin_as_nan(self):
-        '''on_error=record records a fit failure without shifting later rows.'''
+        """on_error=record records a fit failure without shifting later rows."""
         model = _MeanForecastModel(
             np.arange(18.0),
             fail_train_length=12,
@@ -332,32 +324,32 @@ class TestBacktestBehavior:
             initial_window=10,
             horizon=1,
             step=2,
-            on_error='record',
+            on_error="record",
         )
 
         assert result.origins.tolist() == [10, 12, 14, 16]
         assert np.isnan(result.mean[1, 0])
         assert result.failures == [
             {
-                'origin': 12,
-                'error_type': 'RuntimeError',
-                'message': 'planned fit failure',
+                "origin": 12,
+                "error_type": "RuntimeError",
+                "message": "planned fit failure",
             }
         ]
-        assert result.metrics['n'] == 3
+        assert result.metrics["n"] == 3
 
     def test_raise_mode_propagates_window_failure(self):
-        '''on_error=raise does not hide a failed refit.'''
+        """on_error=raise does not hide a failed refit."""
         model = _MeanForecastModel(
             np.arange(18.0),
             fail_train_length=12,
         )
 
-        with pytest.raises(RuntimeError, match='planned fit failure'):
+        with pytest.raises(RuntimeError, match="planned fit failure"):
             model.backtest(initial_window=10, horizon=1, step=2)
 
     def test_backtest_does_not_replace_existing_result(self):
-        '''Backtesting leaves the caller fitted state untouched.'''
+        """Backtesting leaves the caller fitted state untouched."""
         model = _MeanForecastModel(np.arange(16.0))
         sentinel = object()
         model.result_ = sentinel
@@ -367,30 +359,30 @@ class TestBacktestBehavior:
         assert model.result_ is sentinel
 
     @pytest.mark.parametrize(
-        ('kwargs', 'message'),
+        ("kwargs", "message"),
         [
-            ({'initial_window': 9}, 'initial_window'),
-            ({'initial_window': 10, 'horizon': 0}, 'horizon'),
-            ({'initial_window': 10, 'step': 0}, 'step'),
-            ({'initial_window': 10, 'window': 'bad'}, 'window'),
+            ({"initial_window": 9}, "initial_window"),
+            ({"initial_window": 10, "horizon": 0}, "horizon"),
+            ({"initial_window": 10, "step": 0}, "step"),
+            ({"initial_window": 10, "window": "bad"}, "window"),
             (
                 {
-                    'initial_window': 10,
-                    'window': 'rolling',
-                    'window_size': 9,
+                    "initial_window": 10,
+                    "window": "rolling",
+                    "window_size": 9,
                 },
-                'window_size',
+                "window_size",
             ),
-            ({'initial_window': 10, 'alpha': 1.0}, 'alpha'),
-            ({'initial_window': 10, 'on_error': 'ignore'}, 'on_error'),
-            ({'initial_window': 18, 'horizon': 3}, 'initial_window'),
+            ({"initial_window": 10, "alpha": 1.0}, "alpha"),
+            ({"initial_window": 10, "on_error": "ignore"}, "on_error"),
+            ({"initial_window": 18, "horizon": 3}, "initial_window"),
         ],
     )
     def test_invalid_backtest_arguments_raise(self, kwargs, message):
-        '''Backtest validation names the invalid public argument.
+        """Backtest validation names the invalid public argument.
 
         covers: TsMetrics/_backtest.py::_validate_backtest_args [function]
-        '''
+        """
         model = _MeanForecastModel(np.arange(20.0))
 
         with pytest.raises(ValueError, match=message):
@@ -398,11 +390,11 @@ class TestBacktestBehavior:
 
 
 class TestBacktestModelIntegration:
-    '''Smoke-test every predictive model family through the shared engine.'''
+    """Smoke-test every predictive model family through the shared engine."""
 
     @staticmethod
     def _univariate_data():
-        '''Return deterministic AR(1) data.'''
+        """Return deterministic AR(1) data."""
         from Ts.TsSims import simulate_sarima
 
         return simulate_sarima(
@@ -415,14 +407,14 @@ class TestBacktestModelIntegration:
 
     @staticmethod
     def _multivariate_data():
-        '''Return deterministic cointegrated bivariate data.'''
+        """Return deterministic cointegrated bivariate data."""
         rng = np.random.default_rng(42)
         x = np.cumsum(rng.standard_normal(80))
         y = 2.0 * x + 0.5 * rng.standard_normal(80)
         return np.column_stack([y, x])
 
     def test_sarima_backtest(self):
-        '''SARIMA produces finite multistep rolling-origin forecasts.'''
+        """SARIMA produces finite multistep rolling-origin forecasts."""
         from Ts.TsModels import SARIMA
 
         model = SARIMA(self._univariate_data(), order=(1, 0, 0))
@@ -430,10 +422,10 @@ class TestBacktestModelIntegration:
 
         assert result.mean.shape == (2, 2)
         assert np.isfinite(result.mean).all()
-        assert result.target == 'observed'
+        assert result.target == "observed"
 
     def test_var_backtest(self):
-        '''VAR preserves the series axis in backtest output.'''
+        """VAR preserves the series axis in backtest output."""
         from Ts.TsModels import VAR
 
         model = VAR(self._multivariate_data(), lags=1)
@@ -444,7 +436,7 @@ class TestBacktestModelIntegration:
         assert np.isfinite(result.mean).all()
 
     def test_vecm_backtest(self):
-        '''VECM refits and forecasts cointegrated data at each origin.'''
+        """VECM refits and forecasts cointegrated data at each origin."""
         from Ts.TsModels import VECM
 
         model = VECM(self._multivariate_data(), lags=2, coint_rank=1)
@@ -454,7 +446,7 @@ class TestBacktestModelIntegration:
         assert np.isfinite(result.mean).all()
 
     def test_svar_backtest(self):
-        '''SVAR inherits the shared evaluation path through BaseModel.'''
+        """SVAR inherits the shared evaluation path through BaseModel."""
         from Ts.TsModels import SVAR
 
         restrictions = np.array([[np.nan, 0.0], [np.nan, np.nan]])
@@ -469,7 +461,7 @@ class TestBacktestModelIntegration:
         assert np.isfinite(result.mean).all()
 
     def test_garch_backtest_uses_labelled_volatility_proxy(self):
-        '''GARCH compares sigma forecasts with a labelled return proxy.'''
+        """GARCH compares sigma forecasts with a labelled return proxy."""
         from Ts.TsModels import GARCH
         from Ts.TsSims import simulate_garch
 
@@ -487,11 +479,11 @@ class TestBacktestModelIntegration:
         result = model.backtest(initial_window=70, horizon=2, step=10)
 
         assert result.mean.shape == (2, 2)
-        assert result.target == 'absolute_demeaned_return_proxy'
+        assert result.target == "absolute_demeaned_return_proxy"
         assert np.all(result.mean > 0.0)
 
     def test_auto_sarima_backtest_with_single_candidate(self):
-        '''AutoSARIMA can reselect its single candidate in each window.'''
+        """AutoSARIMA can reselect its single candidate in each window."""
         from Ts.TsModels import AutoSARIMA
 
         model = AutoSARIMA(
@@ -509,7 +501,7 @@ class TestBacktestModelIntegration:
         assert np.isfinite(result.mean).all()
 
     def test_auto_garch_backtest_with_single_candidate(self):
-        '''AutoGARCH can reselect its single candidate in each window.'''
+        """AutoGARCH can reselect its single candidate in each window."""
         from Ts.TsModels import AutoGARCH
         from Ts.TsSims import simulate_garch
 
@@ -527,7 +519,7 @@ class TestBacktestModelIntegration:
         result = model.backtest(initial_window=70, horizon=1, step=10)
 
         assert result.mean.shape == (1, 1)
-        assert result.target == 'absolute_demeaned_return_proxy'
+        assert result.target == "absolute_demeaned_return_proxy"
 
     def test_arimax_backtest_aligns_training_and_future_context(
         self,
@@ -640,11 +632,9 @@ class TestBacktestModelIntegration:
         ):
             np.testing.assert_array_equal(
                 record["exog"],
-                model.exog[start:start + 2],
+                model.exog[start : start + 2],
             )
-            assert record["dates"].equals(
-                model.dates[start:start + 2]
-            )
+            assert record["dates"].equals(model.dates[start : start + 2])
         np.testing.assert_array_equal(model.data, original_data)
         assert model.result_ is None
 
@@ -658,7 +648,7 @@ class TestBacktestModelIntegration:
             exog=np.ones((30, 1)),
         )
 
-        with pytest.raises(NotImplementedError, match="GARCH oos.*exog"):
+        with pytest.raises(NotImplementedError, match=r"GARCH oos.*exog"):
             model.oos(
                 estimation_period=(0, 19),
                 validation_period=(20, 29),
@@ -667,7 +657,7 @@ class TestBacktestModelIntegration:
 
 @dataclass
 class _SequenceForecastResult(BaseModelResult):
-    '''Result whose forecast values expose backcast time ordering.'''
+    """Result whose forecast values expose backcast time ordering."""
 
     def predict(
         self,
@@ -676,7 +666,7 @@ class _SequenceForecastResult(BaseModelResult):
         dynamic=False,
         alpha=0.05,
     ):
-        '''Return the sequence one through the requested horizon.'''
+        """Return the sequence one through the requested horizon."""
         del dynamic, alpha
         if end is None:
             end = start
@@ -691,7 +681,7 @@ class _SequenceForecastResult(BaseModelResult):
 
 
 class _SequenceForecastModel(BaseModel):
-    '''Model test double that records reverse-time training data.'''
+    """Model test double that records reverse-time training data."""
 
     def __init__(self, data):
         self.data = np.asarray(data, dtype=float)
@@ -699,10 +689,10 @@ class _SequenceForecastModel(BaseModel):
         self.result_ = None
 
     def fit(self):
-        '''Store the active data and return a sequence forecaster.'''
+        """Store the active data and return a sequence forecaster."""
         self.fit_windows.append(self.data.copy())
         result = _SequenceForecastResult(
-            model_type='SEQUENCE',
+            model_type="SEQUENCE",
             params={},
             std_errors={},
             p_values={},
@@ -719,14 +709,14 @@ class _SequenceForecastModel(BaseModel):
 
 
 class TestBackcastBehavior:
-    '''Verify reverse-fit-forecast-reverse semantics.'''
+    """Verify reverse-fit-forecast-reverse semantics."""
 
     def test_backcast_reverses_training_data_and_forecast_axis(self):
-        '''Backcast fits reversed data and returns chronological estimates.
+        """Backcast fits reversed data and returns chronological estimates.
 
         covers: TsModels/_backcast.py::backcast_model [function]
         covers: TsModels/_base.py::BaseModel.backcast [function]
-        '''
+        """
         model = _SequenceForecastModel(np.arange(12.0))
 
         result = model.backcast(steps=3)
@@ -745,10 +735,10 @@ class TestBackcastBehavior:
             np.array([3.25, 2.25, 1.25]),
         )
         assert result.indices.tolist() == [-3, -2, -1]
-        assert result.target == 'observed'
+        assert result.target == "observed"
 
     def test_backcast_does_not_replace_existing_result(self):
-        '''Reverse-time fitting leaves the caller fitted state untouched.'''
+        """Reverse-time fitting leaves the caller fitted state untouched."""
         model = _SequenceForecastModel(np.arange(12.0))
         sentinel = object()
         model.result_ = sentinel
@@ -758,12 +748,12 @@ class TestBackcastBehavior:
         assert model.result_ is sentinel
 
     @pytest.mark.parametrize(
-        ('kwargs', 'error_type', 'message'),
+        ("kwargs", "error_type", "message"),
         [
-            ({'steps': 0}, ValueError, 'steps'),
-            ({'steps': True}, TypeError, 'steps'),
-            ({'steps': 2, 'alpha': 0.0}, ValueError, 'alpha'),
-            ({'steps': 2, 'alpha': np.nan}, ValueError, 'alpha'),
+            ({"steps": 0}, ValueError, "steps"),
+            ({"steps": True}, TypeError, "steps"),
+            ({"steps": 2, "alpha": 0.0}, ValueError, "alpha"),
+            ({"steps": 2, "alpha": np.nan}, ValueError, "alpha"),
         ],
     )
     def test_invalid_backcast_arguments_raise(
@@ -772,14 +762,14 @@ class TestBackcastBehavior:
         error_type,
         message,
     ):
-        '''Backcast validation names its invalid public argument.'''
+        """Backcast validation names its invalid public argument."""
         model = _SequenceForecastModel(np.arange(12.0))
 
         with pytest.raises(error_type, match=message):
             model.backcast(**kwargs)
 
     def test_var_backcast_preserves_series_axis(self):
-        '''Multivariate backcasting returns steps by series.'''
+        """Multivariate backcasting returns steps by series."""
         from Ts.TsModels import VAR
 
         data = TestBacktestModelIntegration._multivariate_data()
@@ -790,7 +780,7 @@ class TestBackcastBehavior:
         assert np.isfinite(result.mean).all()
 
     def test_garch_backcast_is_positive_conditional_volatility(self):
-        '''GARCH backcasts are positive and explicitly labelled volatility.'''
+        """GARCH backcasts are positive and explicitly labelled volatility."""
         from Ts.TsModels import GARCH
         from Ts.TsSims import simulate_garch
 
@@ -812,11 +802,11 @@ class TestBackcastBehavior:
         ).backcast(steps=3)
 
         assert np.all(result.mean > 0.0)
-        assert result.target == 'conditional_volatility'
+        assert result.target == "conditional_volatility"
 
-    @pytest.mark.parametrize('auto', [False, True])
+    @pytest.mark.parametrize("auto", [False, True])
     def test_garch_backcast_with_exog_is_rejected(self, auto):
-        '''GARCH variants require explicit pre-sample exogenous values.'''
+        """GARCH variants require explicit pre-sample exogenous values."""
         from Ts.TsModels import GARCH, AutoGARCH
 
         data = np.linspace(-1.0, 1.0, 30)
@@ -832,5 +822,5 @@ class TestBackcastBehavior:
         else:
             model = GARCH(data, p=1, q=1, exog=exog)
 
-        with pytest.raises(NotImplementedError, match='exog'):
+        with pytest.raises(NotImplementedError, match="exog"):
             model.backcast(steps=2)

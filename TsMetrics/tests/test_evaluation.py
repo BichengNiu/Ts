@@ -105,7 +105,6 @@ def test_oos_fits_only_the_estimation_period():
     assert not hasattr(result, "split")
 
 
-
 def test_oos_allows_a_gap_and_scores_only_the_validation_period():
     """A later validation period may follow an unscored forecast gap."""
     model = _MeanModel(np.arange(20.0))
@@ -189,6 +188,7 @@ def test_oos_has_no_split_compatibility_path():
     with pytest.raises(TypeError, match="split"):
         model.oos(split=10)
 
+
 def test_public_backtest_uses_each_origin_without_future_leakage():
     """Rolling-origin evaluation refits on data strictly before each origin."""
     model = _MeanModel(np.arange(20.0))
@@ -254,7 +254,6 @@ def _oos_result(mean, actual, target="observed"):
     """Build a minimal comparable result."""
     mean = np.asarray(mean, dtype=float)
     actual = np.asarray(actual, dtype=float)
-    from Ts.TsMetrics import compute_metrics
 
     return OOSResult(
         mean=mean,
@@ -265,8 +264,6 @@ def _oos_result(mean, actual, target="observed"):
         validation_indices=np.arange(10, 10 + len(mean)),
         estimation_dates=None,
         validation_dates=None,
-        metrics=compute_metrics(actual, mean),
-        metrics_by_series=[compute_metrics(actual, mean)],
         model_type="TEST",
         target=target,
     )
@@ -343,13 +340,12 @@ def test_compare_forecasts_requires_exact_actual_values():
         compare_forecasts({"a": first, "b": second})
 
 
-def test_comparison_result_rejects_duplicate_ranking_names():
-    """A ranking must contain every model exactly once, not just as a set."""
-    with pytest.raises(ValueError, match="once"):
+def test_comparison_result_rejects_negative_error_scores():
+    """Finite error metrics cannot encode impossible negative values."""
+    with pytest.raises(ValueError, match="non-negative"):
         ComparisonResult(
             metric="rmse",
-            scores={"a": 1.0, "b": 2.0},
-            ranking=["a", "a", "b"],
+            scores={"a": -1.0, "b": 2.0},
             target="observed",
         )
 

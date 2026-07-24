@@ -241,9 +241,12 @@ class PredictResult:
             # when prediction begins in the middle of the full sample.
             if first_oos > 0:
                 bridge_x = np.concatenate([[anchor_x], fc_x])
-                bridge_y = np.concatenate([
-                    [mean_arr[first_oos - 1]], fc_mean,
-                ])
+                bridge_y = np.concatenate(
+                    [
+                        [mean_arr[first_oos - 1]],
+                        fc_mean,
+                    ]
+                )
             elif self._full_data is not None and 0 <= anchor_x < len(self._full_data):
                 bridge_x = np.concatenate([[anchor_x], fc_x])
                 bridge_y = np.concatenate([[self._full_data[anchor_x]], fc_mean])
@@ -488,10 +491,19 @@ class BaseModelResult:
         ]
         anno_text = "\n".join(anno_lines)
         ax1.text(
-            0.98, 0.95, anno_text,
+            0.98,
+            0.95,
+            anno_text,
             transform=ax1.transAxes,
-            fontsize=8, ha="right", va="top",
-            bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "alpha": 0.85, "edgecolor": "#cccccc"},
+            fontsize=8,
+            ha="right",
+            va="top",
+            bbox={
+                "boxstyle": "round,pad=0.3",
+                "facecolor": "white",
+                "alpha": 0.85,
+                "edgecolor": "#cccccc",
+            },
         )
 
         plot_acf(self.residuals, ax=ax2, title="Residual ACF")
@@ -645,38 +657,36 @@ class BaseModel(ABC):
         """
         ...
 
-    _evaluation_target_name = 'observed'
-    _backcast_target_name = 'observed'
+    _evaluation_target_name = "observed"
+    _backcast_target_name = "observed"
 
     def _clone_for_evaluation(self, data, exog=None, *, dates=None):
-        '''Clone this configuration with an isolated evaluation data window.'''
+        """Clone this configuration with an isolated evaluation data window."""
         cloned = copy.copy(self)
         cloned.data = np.array(data, dtype=float, copy=True)
         cloned.result_ = None
         if hasattr(cloned, "dropped_positions"):
             cloned.dropped_positions = ()
-        if hasattr(cloned, 'exog'):
+        if hasattr(cloned, "exog"):
             cloned.exog = (
-                None
-                if exog is None
-                else np.array(exog, dtype=float, copy=True)
+                None if exog is None else np.array(exog, dtype=float, copy=True)
             )
-        if hasattr(cloned, 'dates'):
+        if hasattr(cloned, "dates"):
             cloned.dates = None if dates is None else dates.copy()
         return cloned
 
     def _evaluation_predict_kwargs(self, start, stop):
-        '''Return model-specific context for an evaluation forecast window.'''
+        """Return model-specific context for an evaluation forecast window."""
         del start, stop
         return {}
 
     def _evaluation_actual(self, observed, train_data):
-        '''Return the observable target used to score forecasts.'''
+        """Return the observable target used to score forecasts."""
         del train_data
         return np.array(observed, dtype=float, copy=True)
 
     def _validate_evaluation(self, context):
-        '''Validate model-specific requirements for an evaluation method.'''
+        """Validate model-specific requirements for an evaluation method."""
         del context
 
     def oos(
@@ -686,7 +696,7 @@ class BaseModel(ABC):
         *,
         alpha=0.05,
     ):
-        '''Evaluate an explicit validation period after isolated estimation.'''
+        """Evaluate an explicit validation period after isolated estimation."""
         from Ts.TsMetrics import oos
 
         return oos(
@@ -699,14 +709,15 @@ class BaseModel(ABC):
     def backtest(
         self,
         initial_window,
+        *,
         horizon=1,
         step=1,
-        window='expanding',
+        window="expanding",
         window_size=None,
         alpha=0.05,
-        on_error='raise',
+        on_error="raise",
     ):
-        '''Run leakage-free rolling-origin forecast evaluation.
+        """Run leakage-free rolling-origin forecast evaluation.
 
         A fresh model is fitted at every origin using only observations
         available before that origin. The configured model and any existing
@@ -723,7 +734,8 @@ class BaseModel(ABC):
         window : {expanding, rolling}
             Training-window update rule.
         window_size : int, optional
-            Rolling-window length. Defaults to ``initial_window``.
+            Fixed rolling-window length, between 10 and ``initial_window``.
+            Defaults to ``initial_window``.
         alpha : float
             Significance level used for prediction intervals.
         on_error : {raise, record}
@@ -732,7 +744,7 @@ class BaseModel(ABC):
         Returns
         -------
         BacktestResult
-        '''
+        """
         from Ts.TsMetrics import backtest
 
         return backtest(
@@ -747,7 +759,7 @@ class BaseModel(ABC):
         )
 
     def backcast(self, steps, alpha=0.05):
-        '''Estimate pre-sample values by reverse-time refitting.
+        """Estimate pre-sample values by reverse-time refitting.
 
         The observed series is reversed, the same configured model is fitted
         to that reversed series, and its forecasts are reversed back into
@@ -765,7 +777,7 @@ class BaseModel(ABC):
         Returns
         -------
         BackcastResult
-        '''
+        """
         from Ts.TsModels._backcast import backcast_model
 
         return backcast_model(self, steps=steps, alpha=alpha)

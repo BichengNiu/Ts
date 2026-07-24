@@ -97,7 +97,7 @@ evaluation = backtest(
     initial_window=80,
     horizon=4,
     step=1,
-    window='expanding',
+    window="expanding",
 )
 # 等价便利入口：model.backtest(...)
 ```
@@ -107,17 +107,19 @@ evaluation = backtest(
 同时提供总体、逐预测期和逐变量指标。
 
 `window_size` 只对 `window='rolling'` 有效；扩展窗口传入该参数会明确
-抛出 `ValueError`，不会静默忽略。
+抛出 `ValueError`，不会静默忽略。固定滚动窗口必须满足
+`10 <= window_size <= initial_window`，因此从第一个预测原点开始就保持
+同一训练长度，不会先扩展再滚动。
 
 ## 模型性能比较
 
 ```python
 comparison = compare_forecasts(
     {
-        'AR(1)': ar1_evaluation,
-        'AR(2)': ar2_evaluation,
+        "AR(1)": ar1_evaluation,
+        "AR(2)": ar2_evaluation,
     },
-    metric='rmse',
+    metric="rmse",
 )
 print(comparison.ranking)
 ```
@@ -144,7 +146,7 @@ abs(y_future - mean(y_train))
 结果明确标记：
 
 ```python
-target == 'absolute_demeaned_return_proxy'
+target == "absolute_demeaned_return_proxy"
 ```
 
 该代理不被表述为已观测的真实波动率。GARCH/AutoGARCH 设置 `exog` 时，

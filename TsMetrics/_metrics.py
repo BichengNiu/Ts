@@ -16,8 +16,7 @@ def _paired_values(actual, predicted, nan_policy):
         )
     if nan_policy not in {"omit", "raise"}:
         raise ValueError(
-            "nan_policy must be either 'omit' or 'raise', "
-            f"got {nan_policy!r}"
+            f"nan_policy must be either 'omit' or 'raise', got {nan_policy!r}"
         )
 
     actual_flat = actual_array.ravel()
@@ -61,9 +60,7 @@ def _mape_values(actual, predicted):
     if not np.any(nonzero):
         return float("nan")
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-        relative_errors = np.abs(
-            predicted[nonzero] / actual[nonzero] - 1.0
-        )
+        relative_errors = np.abs(predicted[nonzero] / actual[nonzero] - 1.0)
     return float(np.mean(relative_errors) * 100.0)
 
 
@@ -88,18 +85,13 @@ def _theil_u1_values(actual, predicted):
     """Compute Theil U1 after cancelling a common stable scale."""
     if actual.size == 0:
         return float("nan")
-    scale = float(
-        max(np.max(np.abs(actual)), np.max(np.abs(predicted)))
-    )
+    scale = float(max(np.max(np.abs(actual)), np.max(np.abs(predicted))))
     if scale == 0.0:
         return 0.0
     scaled_actual = actual / scale
     scaled_predicted = predicted / scale
     numerator = _root_mean_square(scaled_predicted - scaled_actual)
-    denominator = (
-        _root_mean_square(scaled_actual)
-        + _root_mean_square(scaled_predicted)
-    )
+    denominator = _root_mean_square(scaled_actual) + _root_mean_square(scaled_predicted)
     return float(numerator / denominator)
 
 
