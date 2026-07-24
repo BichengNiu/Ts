@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from Ts.TsModels._base import (
@@ -17,6 +18,186 @@ from Ts.TsModels._base import (
     _resolve_prediction_window,
     _validate_prediction_alpha,
 )
+from Ts.TsModels._intervention import _validate_datetime_index
+
+
+@dataclass(frozen=True)
+class _SARIMAInputs:
+    endog: np.ndarray
+    dates: pd.DatetimeIndex | None
+    exog: np.ndarray | None
+    exog_names: tuple[str, ...]
+    future_exog: pd.DataFrame | None
+
+
+def _numeric_array(values, name):
+    try:
+        return np.asarray(values, dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{name} must contain numeric values") from error
+
+
+def _normalise_exog_names(names, width):
+    if names is None:
+        raise ValueError("exog_names is required for array exog")
+    names = tuple(names)
+    if len(names) != width:
+        raise ValueError(
+            f"exog_names must contain one name per exog column ({width})"
+        )
+    if any(not isinstance(name, str) or not name.strip() for name in names):
+        raise ValueError("exog_names must contain non-empty strings")
+    names = tuple(name.strip() for name in names)
+    if len(set(names)) != len(names):
+        raise ValueError("exog_names must be unique")
+    return names
+
+
+def _normalise_data_and_dates(data, dates):
+    if isinstance(data, pd.Series):
+        if dates is not None:
+            raise ValueError(
+                "dates must not be provided when data is a pandas Series"
+            )
+        values = _numeric_array(data.to_numpy(), "data")
+        data_dates = (
+            _validate_datetime_index(data.index, "data dates")
+            if isinstance(data.index, pd.DatetimeIndex)
+            else None
+        )
+    else:
+        values = _numeric_array(data, "data")
+        data_dates = (
+            None
+            if dates is None
+            else _validate_datetime_index(dates, "dates")
+        )
+    if values.ndim != 1:
+        raise ValueError(
+            f"data must be one-dimensional, got shape {values.shape}"
+        )
+    if data_dates is not None and len(data_dates) != len(values):
+        raise ValueError(
+            "dates must contain exactly one value per data observation"
+        )
+    return values.copy(), data_dates
+
+
+def _normalise_dataframe_exog(exog, dates, exog_names):
+    if exog_names is not None:
+        raise ValueError(
+            "exog_names must not be provided when exog is a DataFrame"
+        )
+    if dates is None:
+        raise ValueError(
+            "DataFrame exog requires dated data or an explicit dates argument"
+        )
+    index = _validate_datetime_index(exog.index, "exog dates")
+    if str(index.tz) != str(dates.tz):
+        raise ValueError("exog dates timezone must match data dates timezone")
+    names = _normalise_exog_names(tuple(exog.columns), exog.shape[1])
+
+    missing_dates = dates.difference(index)
+    if len(missing_dates):
+        raise ValueError(
+            "exog is missing historical date "
+            f"{missing_dates[0].isoformat()}"
+        )
+    historical_mask = index <= dates[-1]
+    extra_historical = index[historical_mask & ~index.isin(dates)]
+    if len(extra_historical):
+        raise ValueError(
+            "exog contains extra historical date "
+            f"{extra_historical[0].isoformat()}"
+        )
+
+    frame = exog.copy()
+    frame.columns = names
+    historical = _numeric_array(frame.loc[dates, list(names)], "exog")
+    future_frame = frame.loc[index > dates[-1], list(names)].copy()
+    if future_frame.empty:
+        future_frame = None
+    else:
+        future_values = _numeric_array(future_frame, "future exog")
+        if not np.all(np.isfinite(future_values)):
+            raise ValueError("future exog contains non-finite values")
+        future_frame = pd.DataFrame(
+            future_values,
+            index=future_frame.index.copy(),
+            columns=names,
+        )
+    return historical, names, future_frame
+
+
+def _normalise_array_exog(exog, endog_length, exog_names):
+    values = _numeric_array(exog, "exog")
+    if values.ndim != 2:
+        raise ValueError(
+            f"exog must be two-dimensional, got shape {values.shape}"
+        )
+    if len(values) != endog_length:
+        raise ValueError(
+            f"exog has {len(values)} observations; expected "
+            f"{endog_length} observations"
+        )
+    names = _normalise_exog_names(exog_names, values.shape[1])
+    return values.copy(), names
+
+
+def _normalise_sarima_inputs(
+    data,
+    *,
+    dates=None,
+    exog=None,
+    exog_names=None,
+    missing="raise",
+):
+    if missing not in {"raise", "drop"}:
+        raise ValueError("missing must be 'raise' or 'drop'")
+    endog, data_dates = _normalise_data_and_dates(data, dates)
+
+    future_exog = None
+    if exog is None:
+        if exog_names is not None:
+            raise ValueError("exog_names requires exog")
+        historical_exog = None
+        names = ()
+    elif isinstance(exog, pd.DataFrame):
+        historical_exog, names, future_exog = _normalise_dataframe_exog(
+            exog,
+            data_dates,
+            exog_names,
+        )
+    else:
+        historical_exog, names = _normalise_array_exog(
+            exog,
+            len(endog),
+            exog_names,
+        )
+
+    finite = np.isfinite(endog)
+    if historical_exog is not None:
+        finite &= np.all(np.isfinite(historical_exog), axis=1)
+    if missing == "raise" and not np.all(finite):
+        raise ValueError("data or historical exog contains non-finite values")
+    if missing == "drop":
+        endog = endog[finite]
+        if data_dates is not None:
+            data_dates = data_dates[finite].copy()
+        if historical_exog is not None:
+            historical_exog = historical_exog[finite]
+
+    return _SARIMAInputs(
+        endog=endog.copy(),
+        dates=data_dates,
+        exog=(
+            None
+            if historical_exog is None
+            else np.array(historical_exog, dtype=float, copy=True)
+        ),
+        exog_names=names,
+        future_exog=future_exog,
+    )
 
 
 @dataclass
@@ -136,15 +317,12 @@ class SARIMAResult(BaseModelResult):
         _full_lower = None
         _full_upper = None
         if self._statsmodels_result is not None and self.fitted_values is not None:
-            try:
-                full_pred = self._statsmodels_result.get_prediction(
-                    start=0, end=self.nobs - 1
-                )
-                full_frame = full_pred.summary_frame(alpha=alpha)
-                _full_lower = np.asarray(full_frame["mean_ci_lower"])
-                _full_upper = np.asarray(full_frame["mean_ci_upper"])
-            except Exception:
-                pass
+            full_pred = self._statsmodels_result.get_prediction(
+                start=0, end=self.nobs - 1
+            )
+            full_frame = full_pred.summary_frame(alpha=alpha)
+            _full_lower = np.asarray(full_frame["mean_ci_lower"])
+            _full_upper = np.asarray(full_frame["mean_ci_upper"])
 
         return PredictResult(
             mean=mean,
@@ -214,13 +392,13 @@ class SARIMAResult(BaseModelResult):
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots.style import (
-            _ensure_fonts,
-            DEFAULT_PALETTE,
-            style_axes,
-            TITLE_FONTSIZE,
             AXIS_LABEL_FONTSIZE,
-            TICK_LABELSIZE,
+            DEFAULT_PALETTE,
             LEGEND_FONTSIZE,
+            TICK_LABELSIZE,
+            TITLE_FONTSIZE,
+            _ensure_fonts,
+            style_axes,
         )
 
         _ensure_fonts()
@@ -320,8 +498,8 @@ class SARIMAResult(BaseModelResult):
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
 
-        p, d, q = self._order
-        P, D, Q, s = self._seasonal_order
+        p, d, _q = self._order
+        P, D, _Q, _s = self._seasonal_order
 
         # Differencing removes the unconditional mean
         if (d or 0) + (D or 0) > 0:
@@ -332,14 +510,11 @@ class SARIMAResult(BaseModelResult):
             return None
 
         # Check AR stationarity
-        try:
-            ar_roots = np.asarray(self._statsmodels_result.arroots)
-            if len(ar_roots) > 0:
-                inv_roots = 1.0 / ar_roots
-                if np.any(np.abs(inv_roots) >= 1.0 - 1e-10):
-                    return None
-        except Exception:
-            pass
+        ar_roots = np.asarray(self._statsmodels_result.arroots)
+        if len(ar_roots) > 0:
+            inv_roots = 1.0 / ar_roots
+            if np.any(np.abs(inv_roots) >= 1.0 - 1e-10):
+                return None
 
         # trend="n" — zero-mean process
         if self._trend == "n":
@@ -388,9 +563,20 @@ class SARIMA(BaseModel):
         trend="c",
         enforce_stationarity=True,
         enforce_invertibility=True,
+        *,
+        dates=None,
+        exog=None,
+        exog_names=None,
+        events=None,
+        missing="raise",
     ):
-        y = np.asarray(data, dtype=float).ravel()
-        y = y[~np.isnan(y)]  # drop NaN
+        inputs = _normalise_sarima_inputs(
+            data,
+            dates=dates,
+            exog=exog,
+            exog_names=exog_names,
+            missing=missing,
+        )
 
         if not isinstance(order, (tuple, list)) or len(order) != 3:
             raise ValueError(
@@ -401,12 +587,18 @@ class SARIMA(BaseModel):
                 f"seasonal_order must be a tuple of (P, D, Q, s), "
                 f"got {seasonal_order}"
             )
-        if len(y) < 10:
+        if len(inputs.endog) < 10:
             raise ValueError(
-                f"Need at least 10 observations, got {len(y)}"
+                f"Need at least 10 observations, got {len(inputs.endog)}"
             )
 
-        self.data = y
+        self.data = inputs.endog
+        self.dates = inputs.dates
+        self.exog = inputs.exog
+        self.exog_names = inputs.exog_names
+        self.future_exog = inputs.future_exog
+        self.events = tuple(events or ())
+        self.missing = missing
         self.order = tuple(order)
         self.seasonal_order = tuple(seasonal_order)
         self.trend = trend
