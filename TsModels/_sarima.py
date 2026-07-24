@@ -1216,19 +1216,29 @@ class SARIMA(BaseModel):
             residuals=resid,
             fitted_values=fitted_vals,
             nobs=int(fitted.nobs),
-            data=self.data,
+            data=self.data.copy(),
             _order=self.order,
             _seasonal_order=self.seasonal_order,
             _statsmodels_result=fitted,
             _trend=self.trend,
-            _dates=self.dates,
-            _ordinary_exog=self.exog,
+            _dates=None if self.dates is None else self.dates.copy(),
+            _ordinary_exog=(
+                None if self.exog is None else self.exog.copy()
+            ),
             _ordinary_exog_names=self.exog_names,
             _event_specs=self.events,
-            _event_metadata=self._event_metadata,
+            _event_metadata=dict(self._event_metadata),
             _design_columns=self.design_columns,
-            _design_matrix=self.design_matrix,
-            _default_future_exog=self.future_exog,
+            _design_matrix=(
+                None
+                if self.design_matrix is None
+                else self.design_matrix.copy()
+            ),
+            _default_future_exog=(
+                None
+                if self.future_exog is None
+                else self.future_exog.copy()
+            ),
             _model_kwargs={
                 "order": self.order,
                 "seasonal_order": self.seasonal_order,

@@ -7,6 +7,23 @@ import pytest
 from Ts.TsModels import SARIMA
 
 
+def test_new_arimax_types_are_public():
+    from Ts import EventSpec, PolicyEffectResult, ScenarioForecastResult
+    from Ts.TsModels import (
+        EventSpec as ModelEventSpec,
+    )
+    from Ts.TsModels import (
+        PolicyEffectResult as ModelPolicyEffectResult,
+    )
+    from Ts.TsModels import (
+        ScenarioForecastResult as ModelScenarioForecastResult,
+    )
+
+    assert EventSpec is ModelEventSpec
+    assert PolicyEffectResult is ModelPolicyEffectResult
+    assert ScenarioForecastResult is ModelScenarioForecastResult
+
+
 def test_dataframe_exog_splits_history_and_default_future():
     y_dates = pd.date_range("2025-01-01", periods=12, freq="MS")
     all_dates = pd.date_range("2025-01-01", periods=15, freq="MS")
@@ -161,6 +178,34 @@ def test_inputs_are_copied_and_plain_sarima_still_works():
     assert plain.exog is None
     assert plain.dates is None
     assert plain.future_exog is None
+
+
+def test_fitted_result_owns_model_arrays_and_default_future_exog():
+    model = _dated_model_with_future_exog()
+    fitted = model.fit()
+    original_forecast = fitted.predict(
+        start=fitted.nobs,
+        end=fitted.nobs + 2,
+    ).mean.copy()
+
+    assert not np.shares_memory(fitted.data, model.data)
+    assert not np.shares_memory(fitted._ordinary_exog, model.exog)
+    assert not np.shares_memory(fitted._design_matrix, model.design_matrix)
+    assert fitted._dates is not model.dates
+    assert fitted._default_future_exog is not model.future_exog
+
+    model.data[:] = -100.0
+    model.exog[:] = -100.0
+    model.design_matrix[:] = -100.0
+    model.future_exog.iloc[:, :] = -100.0
+
+    np.testing.assert_allclose(
+        fitted.predict(
+            start=fitted.nobs,
+            end=fitted.nobs + 2,
+        ).mean,
+        original_forecast,
+    )
 
 
 def _arimax_fixture(seed=42, n=300):

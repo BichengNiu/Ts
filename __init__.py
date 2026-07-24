@@ -1,3 +1,4 @@
+# ruff: noqa: I001, N999
 """Ts — Time Series Econometrics Toolkit.
 
 This package consolidates five sub-packages under a unified namespace.
@@ -49,6 +50,9 @@ from .TsModels import (
     BaseModelResult,
     ResidualTestResults,
     SARIMA,
+    ScenarioForecastResult,
+    EventSpec,
+    PolicyEffectResult,
     GARCH,
     AutoSARIMA,
     AutoGARCH,
@@ -100,7 +104,7 @@ from .TsTests import (
     NormalityTestResult,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     # TsPlots
     "plot_series",
     "plot_scatter",
@@ -127,6 +131,9 @@ __all__ = [
     "ResidualTestResults",
     # TsModels — models
     "SARIMA",
+    "ScenarioForecastResult",
+    "EventSpec",
+    "PolicyEffectResult",
     "GARCH",
     "AutoSARIMA",
     "AutoGARCH",

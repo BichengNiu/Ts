@@ -136,3 +136,19 @@ target == 'absolute_demeaned_return_proxy'
 ```bash
 python -m pytest Ts/TsMetrics/tests -p no:cacheprovider -q
 ```
+
+## ARIMAX 的 OOS 与历史回测
+
+对带普通外生变量的 SARIMA/ARIMAX，OOS 和 backtest 会在每个预测起点：
+
+- 只使用该起点之前的 `y`、外生变量和日期重新估计模型；
+- 将目标窗口对应的未来外生变量传给预测，不把未来 `y` 传入拟合；
+- 在滚动窗口中同步切片训练期 `y`、外生变量和日期；
+- 根据保留的 `EventSpec` 在训练期和预测期日历上重新生成事件列。
+
+这种评价方式假设目标窗口的外生变量在预测起点已经可知。若它们实际上也需
+预测，应先建立相应的信息集或情境，不能把事后实现值当作实时已知信息。
+
+缺少或错位的未来外生变量不会使用回退值。`on_error="raise"` 会立即抛出
+异常；backtest 使用 `on_error="record"` 时，该预测起点保留为全 `NaN`，
+并在 `failures` 中记录缺失日期和错误信息。

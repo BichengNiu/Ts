@@ -674,3 +674,127 @@ python -m pytest TsModels/tests -v
 $env:PYTHONPATH = (Resolve-Path ..)
 python -c "from Ts.TsModels import STL, STLResult; print(STL, STLResult)"
 ```
+
+## ARIMAX、事件与政策效果
+
+下面的例子同时演示带日期索引的控制变量、自动保存的未来默认路径、
+多个预测情境以及事件设计：
+
+```python
+import numpy as np
+import pandas as pd
+
+from Ts.TsModels import EventSpec, SARIMA
+
+rng = np.random.default_rng(42)
+dates = pd.date_range("2020-01-01", periods=36, freq="MS")
+all_dates = pd.date_range("2020-01-01", periods=42, freq="MS")
+controls = pd.DataFrame(
+    {
+        "rate": np.sin(np.arange(42) / 6),
+        "income": np.linspace(0, 1, 42),
+    },
+    index=all_dates,
+)
+
+policy_level = (np.arange(36) >= 18).astype(float)
+y = pd.Series(
+    2.0
+    + 0.8 * controls.loc[dates, "rate"].to_numpy()
+    + 1.5 * policy_level
+    + rng.normal(scale=0.1, size=36),
+    index=dates,
+)
+
+events = [
+    EventSpec(
+        "announcement",
+        ["2021-04-01"],
+        "pulse",
+        date_rule="exact",
+    ),
+    EventSpec(
+        "policy",
+        ["2021-07-01"],
+        "step",
+        date_rule="exact",
+    ),
+    EventSpec(
+        "implementation",
+        ["2021-07-01"],
+        "pulse",
+        window=(-2, 2),
+        reference=-1,
+        date_rule="exact",
+    ),
+]
+
+model = SARIMA(
+    y,
+    exog=controls,
+    events=events,
+    order=(0, 0, 0),
+    trend="c",
+)
+fitted = model.fit()
+print(fitted.params)
+```
+
+因为 `controls` 比 `y` 多六期，超出 `y` 末期的部分会自动保存为默认未来
+外生变量。使用默认路径时不需要再次传入：
+
+```python
+default_forecast = fitted.predict(start=36, end=41)
+print(default_forecast.mean)
+```
+
+也可以一次提供多个命名情境。此时返回结果同时包含自动保存的
+`"default"` 路径以及用户指定的情境：
+
+```python
+future_dates = all_dates[36:]
+baseline = controls.loc[future_dates].copy()
+stress = baseline.copy()
+stress["rate"] += 0.5
+
+scenario_forecast = fitted.predict(
+    start=36,
+    end=41,
+    future_exog={
+        "baseline": baseline,
+        "stress": stress,
+    },
+)
+print(scenario_forecast.summary())
+print(scenario_forecast["default"].mean)
+print(scenario_forecast["baseline"].mean)
+print(scenario_forecast["stress"].mean)
+```
+
+`policy_effect()` 只改变选定事件的设计列；普通外生变量和未选事件在事实与
+反事实路径中保持相同。支持 Delta、联合参数模拟和参数化 Bootstrap：
+
+```python
+delta = fitted.policy_effect("policy", method="delta")
+simulation = fitted.policy_effect(
+    "policy",
+    method="simulation",
+    n_draws=2_000,
+    seed=7,
+)
+bootstrap = fitted.policy_effect(
+    "policy",
+    method="bootstrap",
+    n_draws=200,
+    seed=7,
+)
+
+print(delta.summary())
+print(simulation.cumulative_effect)
+print(bootstrap.cumulative_lower, bootstrap.cumulative_upper)
+```
+
+这里报告的是给定模型、控制变量和事件设定下的条件效果。只有外生性、
+无同期未控制冲击、模型设定正确以及反事实稳定等识别条件成立时，才能将其
+解释为政策的因果效果。`PolicyEffectResult.identification_note` 会保留这一
+限制。

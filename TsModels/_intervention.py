@@ -165,25 +165,37 @@ class PolicyEffectResult:
             if self.coefficients.empty
             else self.coefficients.to_string(index=False)
         )
-        return "\n".join(
-            [
-                f"Policy effect method: {self.method}",
-                "",
-                "Event coefficients:",
-                coefficient_text,
-                "",
-                (
-                    "Cumulative effect: "
-                    f"{self.cumulative_effect:.6g} "
-                    f"[{self.cumulative_lower:.6g}, "
-                    f"{self.cumulative_upper:.6g}]"
-                ),
-                "",
-                f"Identification note: {self.identification_note}",
-            ]
+        lines = [
+            f"Policy effect method: {self.method}",
+            "",
+            "Event coefficients:",
+            coefficient_text,
+            "",
+            (
+                "Cumulative effect: "
+                f"{self.cumulative_effect:.6g} "
+                f"[{self.cumulative_lower:.6g}, "
+                f"{self.cumulative_upper:.6g}]"
+            ),
+        ]
+        if self.pretrend_test is not None:
+            lines.extend(
+                [
+                    "",
+                    (
+                        "Pretrend Wald test: "
+                        f"chi2({self.pretrend_test['df']})="
+                        f"{self.pretrend_test['statistic']:.6g}, "
+                        f"p={self.pretrend_test['p_value']:.6g}"
+                    ),
+                ]
+            )
+        lines.extend(
+            ["", f"Identification note: {self.identification_note}"]
         )
+        return "\n".join(lines)
 
-    def plot(self):
+    def plot(self, title=None):
         """Plot factual/counterfactual paths and the estimated effect."""
         import matplotlib.pyplot as plt
 
@@ -212,6 +224,8 @@ class PolicyEffectResult:
         axes[1].axhline(0.0, color="black", linewidth=0.8)
         axes[1].set_title("Conditional policy effect")
         axes[1].legend(frameon=False)
+        if title is not None:
+            fig.suptitle(title)
         fig.tight_layout()
         return fig, axes
 
@@ -598,10 +612,17 @@ def _simulation_intervals(
         size=n_draws,
         check_valid="raise",
     )
-    paths = draws @ contrast.T
-    cumulative = paths.sum(axis=1)
+    return _empirical_intervals(draws @ contrast.T, alpha)
+
+
+def _empirical_intervals(
+    paths: np.ndarray,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    path_array = np.asarray(paths, dtype=float)
+    cumulative = path_array.sum(axis=1)
     quantiles = (alpha / 2.0, 1.0 - alpha / 2.0)
-    lower, upper = np.quantile(paths, quantiles, axis=0)
+    lower, upper = np.quantile(path_array, quantiles, axis=0)
     cumulative_lower, cumulative_upper = np.quantile(
         cumulative,
         quantiles,
@@ -641,6 +662,8 @@ def _bootstrap_refit(result, rng):
         exog=design,
         **result._model_kwargs,
     ).fit(disp=False)
+    if not refitted.mle_retvals.get("converged", False):
+        raise RuntimeError("bootstrap refit did not converge")
     return (
         tuple(refitted.param_names),
         np.asarray(refitted.params, dtype=float),
@@ -691,20 +714,7 @@ def _bootstrap_intervals(
         )
         raise _BootstrapError(message, failures)
 
-    path_array = np.asarray(paths, dtype=float)
-    cumulative = path_array.sum(axis=1)
-    quantiles = (alpha / 2.0, 1.0 - alpha / 2.0)
-    lower, upper = np.quantile(path_array, quantiles, axis=0)
-    cumulative_lower, cumulative_upper = np.quantile(
-        cumulative,
-        quantiles,
-    )
-    return (
-        lower,
-        upper,
-        float(cumulative_lower),
-        float(cumulative_upper),
-    )
+    return _empirical_intervals(np.asarray(paths), alpha)
 
 
 def _selected_relative_periods(

@@ -1,3 +1,4 @@
+# ruff: noqa: N999
 """TsModels — Time series model estimation toolkit.
 
 This package provides STL decomposition plus unified interfaces for estimating
@@ -62,25 +63,31 @@ Quick start
 >>> result = model.fit()
 """
 
-from ._base import BaseModel, BaseModelResult, PredictResult, ResidualTestResults
+from ._auto import AutoGARCH, AutoModelResult, AutoSARIMA
 from ._backcast import BackcastResult
-from ._sarima import SARIMA, SARIMAResult
+from ._base import BaseModel, BaseModelResult, PredictResult, ResidualTestResults
+from ._compare import compare_models
 from ._garch import GARCH
 from ._garch_result import GARCHResult
+from ._intervention import EventSpec, PolicyEffectResult
+from ._sarima import SARIMA, SARIMAResult, ScenarioForecastResult
+from ._stl import STL, STLResult
+from ._svar import SVAR, SVARResult
 from ._var import (
-    VAR, VARResult, VAROrderResult,
+    VAR,
+    FEVDResult,
     GrangerCausalityResult,
-    IRFResult, FEVDResult,
+    IRFResult,
+    VAROrderResult,
+    VARResult,
 )
 from ._vecm import (
-    VECM, VECMResult, VECMOrderResult,
+    VECM,
+    VECMOrderResult,
+    VECMResult,
 )
-from ._svar import SVAR, SVARResult
-from ._stl import STL, STLResult
-from ._auto import AutoSARIMA, AutoGARCH, AutoModelResult
-from ._compare import compare_models
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - public API is grouped by model family
     'BackcastResult',
     "BaseModel",
     "BaseModelResult",
@@ -88,6 +95,9 @@ __all__ = [
     "ResidualTestResults",
     "SARIMA",
     "SARIMAResult",
+    "ScenarioForecastResult",
+    "EventSpec",
+    "PolicyEffectResult",
     "GARCH",
     "GARCHResult",
     "VAR",

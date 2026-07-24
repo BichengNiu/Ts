@@ -424,8 +424,9 @@ def test_policy_effect_summary_and_plot_are_self_contained():
     assert "Cumulative effect" in summary
     assert "delta" in summary
     assert effect.identification_note in summary
-    fig, axes = effect.plot()
+    fig, axes = effect.plot(title="Policy analysis")
     assert len(axes) == 2
+    assert fig._suptitle.get_text() == "Policy analysis"
     plt.close(fig)
 
 
@@ -549,6 +550,7 @@ def test_event_leads_receive_joint_wald_pretrend_test():
     assert len(reference) == 1
     assert reference.iloc[0]["coef"] == 0.0
     assert bool(reference.iloc[0]["fixed"])
+    assert "Pretrend Wald test" in effect.summary()
 
 
 def test_policy_effect_uses_exact_parameter_names():
@@ -647,3 +649,28 @@ def test_bootstrap_rejects_less_than_eighty_percent_success(monkeypatch):
             n_draws=10,
             seed=9,
         )
+
+
+def test_bootstrap_refit_rejects_nonconvergence(monkeypatch):
+    from statsmodels.tsa.statespace import sarimax
+
+    from Ts.TsModels._intervention import _bootstrap_refit
+
+    fitted = _fitted_policy_model()
+
+    class NonconvergedResult:
+        def __init__(self):
+            self.mle_retvals = {"converged": False}
+
+    class NonconvergedSARIMAX:
+        def __init__(self, *args, **kwargs):
+            del args, kwargs
+
+        def fit(self, disp=False):
+            del disp
+            return NonconvergedResult()
+
+    monkeypatch.setattr(sarimax, "SARIMAX", NonconvergedSARIMAX)
+
+    with pytest.raises(RuntimeError, match="did not converge"):
+        _bootstrap_refit(fitted, np.random.default_rng(3))
