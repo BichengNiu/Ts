@@ -525,8 +525,10 @@ def _event_parameter_table(
 
 
 def _validate_inference_controls(method, n_draws, seed):
-    if method not in {"delta", "simulation"}:
-        raise ValueError("method must be 'delta' or 'simulation'")
+    if method not in {"delta", "simulation", "bootstrap"}:
+        raise ValueError(
+            "method must be 'delta', 'simulation', or 'bootstrap'"
+        )
     if (
         isinstance(n_draws, (bool, np.bool_))
         or not isinstance(n_draws, (int, np.integer))
@@ -600,6 +602,99 @@ def _simulation_intervals(
     cumulative = paths.sum(axis=1)
     quantiles = (alpha / 2.0, 1.0 - alpha / 2.0)
     lower, upper = np.quantile(paths, quantiles, axis=0)
+    cumulative_lower, cumulative_upper = np.quantile(
+        cumulative,
+        quantiles,
+    )
+    return (
+        lower,
+        upper,
+        float(cumulative_lower),
+        float(cumulative_upper),
+    )
+
+
+class _BootstrapError(RuntimeError):
+    """Bootstrap threshold failure with per-attempt diagnostics."""
+
+    def __init__(self, message, failures):
+        super().__init__(message)
+        self.failures = tuple(failures)
+
+
+def _bootstrap_refit(result, rng):
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+    fitted = result._statsmodels_result
+    design = pd.DataFrame(
+        result._design_matrix,
+        columns=result._design_columns,
+    )
+    simulated = fitted.model.simulate(
+        fitted.params,
+        nsimulations=result.nobs,
+        exog=design,
+        random_state=rng,
+    )
+    refitted = SARIMAX(
+        np.asarray(simulated, dtype=float).reshape(-1),
+        exog=design,
+        **result._model_kwargs,
+    ).fit(disp=False)
+    return (
+        tuple(refitted.param_names),
+        np.asarray(refitted.params, dtype=float),
+    )
+
+
+def _bootstrap_intervals(
+    result,
+    contrast: np.ndarray,
+    selected_columns: tuple[str, ...],
+    *,
+    alpha: float,
+    n_draws: int,
+    seed: int | None,
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    paths = []
+    failures = []
+    child_seeds = np.random.SeedSequence(seed).spawn(n_draws)
+    for attempt, child_seed in enumerate(child_seeds, start=1):
+        try:
+            parameter_names, parameters = _bootstrap_refit(
+                result,
+                np.random.default_rng(child_seed),
+            )
+            positions = [
+                parameter_names.index(column)
+                for column in selected_columns
+            ]
+            paths.append(contrast @ parameters[positions])
+        except Exception as error:  # noqa: BLE001 - isolate each refit
+            failures.append(
+                {
+                    "attempt": attempt,
+                    "type": type(error).__name__,
+                    "message": str(error),
+                }
+            )
+
+    success_count = len(paths)
+    if success_count / n_draws < 0.8:
+        diagnostic = " | ".join(
+            f"{failure['type']}: {failure['message']}"
+            for failure in failures[:5]
+        )
+        message = (
+            f"bootstrap produced {success_count}/{n_draws} successful "
+            f"refits, below the required 80%; failures: {diagnostic}"
+        )
+        raise _BootstrapError(message, failures)
+
+    path_array = np.asarray(paths, dtype=float)
+    cumulative = path_array.sum(axis=1)
+    quantiles = (alpha / 2.0, 1.0 - alpha / 2.0)
+    lower, upper = np.quantile(path_array, quantiles, axis=0)
     cumulative_lower, cumulative_upper = np.quantile(
         cumulative,
         quantiles,
@@ -737,18 +832,32 @@ def estimate_policy_effect(
         parameter_positions,
         parameter_positions,
     )]
-    interval_function = (
-        _delta_intervals if method == "delta" else _simulation_intervals
-    )
-    interval_kwargs = {"alpha": alpha}
-    if method == "simulation":
-        interval_kwargs.update(n_draws=n_draws, seed=seed)
-    lower, upper, cumulative_lower, cumulative_upper = interval_function(
-        contrast,
-        selected_parameters,
-        covariance,
-        **interval_kwargs,
-    )
+    if method == "delta":
+        intervals = _delta_intervals(
+            contrast,
+            selected_parameters,
+            covariance,
+            alpha=alpha,
+        )
+    elif method == "simulation":
+        intervals = _simulation_intervals(
+            contrast,
+            selected_parameters,
+            covariance,
+            alpha=alpha,
+            n_draws=n_draws,
+            seed=seed,
+        )
+    else:
+        intervals = _bootstrap_intervals(
+            result,
+            contrast,
+            selected_columns,
+            alpha=alpha,
+            n_draws=n_draws,
+            seed=seed,
+        )
+    lower, upper, cumulative_lower, cumulative_upper = intervals
     relative_periods = _selected_relative_periods(result, selected)
     pretrend_test = _pretrend_wald_test(
         selected_parameters,

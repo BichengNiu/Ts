@@ -589,3 +589,61 @@ def test_policy_effect_rejects_invalid_seed(seed):
 def test_policy_effect_rejects_unknown_inference_method():
     with pytest.raises(ValueError, match="method"):
         _fitted_policy_model().policy_effect("policy", method="unknown")
+
+
+def test_bootstrap_is_reproducible():
+    fitted = _fitted_policy_model()
+
+    first = fitted.policy_effect(
+        "policy",
+        method="bootstrap",
+        n_draws=30,
+        seed=7,
+    )
+    second = fitted.policy_effect(
+        "policy",
+        method="bootstrap",
+        n_draws=30,
+        seed=7,
+    )
+
+    pd.testing.assert_series_equal(first.lower, second.lower)
+    pd.testing.assert_series_equal(first.upper, second.upper)
+    assert first.cumulative_lower == pytest.approx(
+        second.cumulative_lower
+    )
+    assert first.cumulative_upper == pytest.approx(
+        second.cumulative_upper
+    )
+
+
+def test_bootstrap_rejects_less_than_eighty_percent_success(monkeypatch):
+    import Ts.TsModels._intervention as intervention
+
+    fitted = _fitted_policy_model()
+    attempts = 0
+
+    def flaky_refit(result, rng):
+        del rng
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 3:
+            raise RuntimeError(f"forced failure {attempts}")
+        fitted_result = result._statsmodels_result
+        return (
+            tuple(fitted_result.param_names),
+            np.asarray(fitted_result.params, dtype=float),
+        )
+
+    monkeypatch.setattr(intervention, "_bootstrap_refit", flaky_refit)
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"7/10.*80%.*RuntimeError: forced failure 1",
+    ):
+        fitted.policy_effect(
+            "policy",
+            method="bootstrap",
+            n_draws=10,
+            seed=9,
+        )
