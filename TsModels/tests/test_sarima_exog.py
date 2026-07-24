@@ -337,3 +337,236 @@ def test_ordinary_exog_cannot_use_event_namespace():
             exog_names=["event__policy"],
             trend="n",
         )
+
+
+def _dated_model_with_future_exog(include_future=True):
+    rng = np.random.default_rng(17)
+    history_dates = pd.date_range("2020-01-01", periods=36, freq="MS")
+    future_dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+    x = rng.normal(size=39)
+    y = pd.Series(
+        1.5 * x[:36] + rng.normal(scale=0.05, size=36),
+        index=history_dates,
+    )
+    exog_dates = (
+        history_dates.append(future_dates)
+        if include_future
+        else history_dates
+    )
+    exog = pd.DataFrame(
+        {"x": x if include_future else x[:36]},
+        index=exog_dates,
+    )
+    return SARIMA(
+        y,
+        exog=exog,
+        order=(0, 0, 0),
+        trend="n",
+    )
+
+
+def test_default_future_exog_returns_one_predict_result():
+    from Ts.TsModels._base import PredictResult
+
+    model = _dated_model_with_future_exog()
+    result = model.fit().predict(
+        start=len(model.data),
+        end=len(model.data) + 2,
+    )
+
+    assert isinstance(result, PredictResult)
+    assert result.mean.shape == (3,)
+    assert np.all(result.is_oos)
+
+
+def test_mapping_returns_default_and_named_scenarios():
+    from Ts.TsModels._sarima import ScenarioForecastResult
+
+    model = _dated_model_with_future_exog()
+    future_dates = model.future_exog.index
+    custom = {
+        "high": pd.DataFrame({"x": [2.0, 2.0, 2.0]}, index=future_dates),
+        "low": pd.DataFrame({"x": [-2.0, -2.0, -2.0]}, index=future_dates),
+    }
+
+    result = model.fit().predict(
+        start=len(model.data),
+        end=len(model.data) + 2,
+        future_exog=custom,
+    )
+
+    assert isinstance(result, ScenarioForecastResult)
+    assert tuple(result.scenarios) == ("default", "high", "low")
+    assert result.default_name == "default"
+    assert result.dates.equals(future_dates)
+    assert np.all(result["high"].mean > result["low"].mean)
+
+
+def test_custom_only_mapping_has_no_default_scenario():
+    from Ts.TsModels._sarima import ScenarioForecastResult
+
+    model = _dated_model_with_future_exog(include_future=False)
+    dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+    result = model.fit().predict(
+        start=len(model.data),
+        end=len(model.data) + 2,
+        future_exog={
+            "high": pd.DataFrame({"x": [2.0] * 3}, index=dates),
+            "low": pd.DataFrame({"x": [-2.0] * 3}, index=dates),
+        },
+    )
+
+    assert isinstance(result, ScenarioForecastResult)
+    assert result.default_name is None
+    assert tuple(result.scenarios) == ("high", "low")
+
+
+def test_dataframe_future_exog_is_one_custom_scenario():
+    from Ts.TsModels._base import PredictResult
+
+    model = _dated_model_with_future_exog(include_future=False)
+    dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+    result = model.fit().predict(
+        start=len(model.data),
+        end=len(model.data) + 2,
+        future_exog=pd.DataFrame({"x": [1.0, 1.0, 1.0]}, index=dates),
+    )
+
+    assert isinstance(result, PredictResult)
+    assert result.mean.shape == (3,)
+
+
+def test_future_scenarios_reject_reserved_or_invalid_names():
+    fitted = _dated_model_with_future_exog().fit()
+    dates = fitted._default_future_exog.index
+    frame = pd.DataFrame({"x": [1.0] * 3}, index=dates)
+
+    with pytest.raises(ValueError, match="reserved"):
+        fitted.predict(
+            start=fitted.nobs,
+            end=fitted.nobs + 2,
+            future_exog={"default": frame},
+        )
+    with pytest.raises(ValueError, match="must not be empty"):
+        fitted.predict(
+            start=fitted.nobs,
+            end=fitted.nobs + 2,
+            future_exog={},
+        )
+    with pytest.raises(ValueError, match="scenario name"):
+        fitted.predict(
+            start=fitted.nobs,
+            end=fitted.nobs + 2,
+            future_exog={"": frame},
+        )
+
+
+@pytest.mark.parametrize(
+    ("frame", "message"),
+    [
+        (
+            pd.DataFrame(
+                {"wrong": [1.0] * 3},
+                index=pd.date_range("2023-01-01", periods=3, freq="MS"),
+            ),
+            "columns",
+        ),
+        (
+            pd.DataFrame(
+                {"x": [1.0] * 2},
+                index=pd.date_range("2023-01-01", periods=2, freq="MS"),
+            ),
+            "dates|rows",
+        ),
+        (
+            pd.DataFrame(
+                {"x": [1.0, np.nan, 1.0]},
+                index=pd.date_range("2023-01-01", periods=3, freq="MS"),
+            ),
+            "non-finite",
+        ),
+        (
+            pd.DataFrame(
+                {"x": [1.0] * 3, "event__policy": [0.0] * 3},
+                index=pd.date_range("2023-01-01", periods=3, freq="MS"),
+            ),
+            "event|columns",
+        ),
+    ],
+)
+def test_future_scenarios_require_exact_columns_dates_and_values(
+    frame,
+    message,
+):
+    fitted = _dated_model_with_future_exog(include_future=False).fit()
+
+    with pytest.raises(ValueError, match=message):
+        fitted.predict(
+            start=fitted.nobs,
+            end=fitted.nobs + 2,
+            future_exog={"scenario": frame},
+        )
+
+
+def test_array_scenario_requires_future_dates_and_is_copied():
+    fitted = _dated_model_with_future_exog(include_future=False).fit()
+    values = np.ones((3, 1))
+
+    with pytest.raises(ValueError, match="future_dates"):
+        fitted.predict(
+            start=fitted.nobs,
+            end=fitted.nobs + 2,
+            future_exog=values,
+        )
+
+    dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+    prediction = fitted.predict(
+        start=fitted.nobs,
+        end=fitted.nobs + 2,
+        future_exog=values,
+        future_dates=dates,
+    )
+    original = prediction.mean.copy()
+    values[:] = 100
+    np.testing.assert_array_equal(prediction.mean, original)
+
+
+def test_exogenous_forecast_without_coverage_lists_missing_date():
+    fitted = _dated_model_with_future_exog(include_future=False).fit()
+
+    with pytest.raises(ValueError, match="future exog.*2023-01-01"):
+        fitted.predict(start=fitted.nobs, end=fitted.nobs + 1)
+
+
+def test_scenario_result_validates_access_and_plots():
+    import matplotlib.pyplot as plt
+
+    from Ts.TsModels._base import PredictResult
+    from Ts.TsModels._sarima import ScenarioForecastResult
+
+    prediction = PredictResult(
+        mean=np.array([1.0, 2.0]),
+        lower=None,
+        upper=None,
+        is_oos=np.array([True, True]),
+    )
+    dates = pd.date_range("2025-01-01", periods=2, freq="MS")
+    result = ScenarioForecastResult(
+        scenarios={"a": prediction, "b": prediction},
+        default_name=None,
+        dates=dates,
+    )
+
+    assert result["a"] is prediction
+    with pytest.raises(KeyError):
+        result["missing"]
+    fig, ax = result.plot()
+    assert len(ax.lines) == 2
+    plt.close(fig)
+
+    with pytest.raises(ValueError, match="length"):
+        ScenarioForecastResult(
+            scenarios={"a": prediction},
+            default_name=None,
+            dates=dates[:1],
+        )

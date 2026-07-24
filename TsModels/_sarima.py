@@ -5,6 +5,7 @@ Provides :class:`SARIMA` and :class:`SARIMAResult`.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -266,6 +267,183 @@ def _combined_design(inputs, events, trend):
 
 
 @dataclass
+class ScenarioForecastResult:
+    """Forecasts produced from multiple future-exogenous scenarios."""
+
+    scenarios: dict[str, PredictResult]
+    default_name: str | None
+    dates: pd.DatetimeIndex | None
+
+    def __post_init__(self):
+        if not isinstance(self.scenarios, dict) or not self.scenarios:
+            raise ValueError("scenarios must be a non-empty dictionary")
+        if any(
+            not isinstance(name, str) or not name.strip()
+            for name in self.scenarios
+        ):
+            raise ValueError("scenario names must be non-empty strings")
+        lengths = {
+            len(np.asarray(prediction.mean))
+            for prediction in self.scenarios.values()
+        }
+        if len(lengths) != 1:
+            raise ValueError("all scenario predictions must have equal length")
+        if self.default_name is not None and self.default_name not in self.scenarios:
+            raise ValueError("default_name must identify an existing scenario")
+        if self.dates is not None:
+            self.dates = _validate_datetime_index(
+                self.dates,
+                "scenario dates",
+            ).copy()
+            if len(self.dates) != next(iter(lengths)):
+                raise ValueError(
+                    "scenario dates length must match prediction length"
+                )
+        self.scenarios = dict(self.scenarios)
+
+    def __getitem__(self, name):
+        return self.scenarios[name]
+
+    def summary(self):
+        """Return a compact scenario inventory."""
+        default = self.default_name or "none"
+        names = ", ".join(self.scenarios)
+        return (
+            f"Forecast scenarios: {names}\n"
+            f"Default scenario: {default}\n"
+            f"Periods: {len(next(iter(self.scenarios.values())).mean)}"
+        )
+
+    def plot(self, title=None):
+        """Plot all scenario means on shared axes."""
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        first = next(iter(self.scenarios.values()))
+        x = (
+            self.dates
+            if self.dates is not None
+            else np.arange(len(first.mean))
+        )
+        for name, prediction in self.scenarios.items():
+            ax.plot(x, prediction.mean, label=name)
+        ax.set_title(title or "Forecast Scenarios")
+        ax.legend(frameon=False)
+        fig.tight_layout()
+        return fig, ax
+
+
+def _coerce_future_frame(
+    values,
+    *,
+    name,
+    expected_dates,
+    exog_names,
+    array_dates_provided,
+):
+    if isinstance(values, pd.DataFrame):
+        actual_columns = tuple(values.columns)
+        if actual_columns != exog_names:
+            raise ValueError(
+                f"scenario {name!r} columns must be exactly {exog_names}, "
+                f"got {actual_columns}"
+            )
+        index = _validate_datetime_index(
+            values.index,
+            f"scenario {name!r} dates",
+        )
+        if len(index) != len(expected_dates) or not index.equals(expected_dates):
+            raise ValueError(
+                f"scenario {name!r} dates/rows must exactly match "
+                "the requested future dates"
+            )
+        array = _numeric_array(values, f"scenario {name!r}")
+    else:
+        if not array_dates_provided:
+            raise ValueError("array future_exog requires future_dates")
+        array = _numeric_array(values, f"scenario {name!r}")
+        if array.ndim != 2:
+            raise ValueError(
+                f"scenario {name!r} must be two-dimensional"
+            )
+        if array.shape != (len(expected_dates), len(exog_names)):
+            raise ValueError(
+                f"scenario {name!r} has shape {array.shape}; expected "
+                f"{(len(expected_dates), len(exog_names))}"
+            )
+    if array.ndim != 2 or array.shape != (
+        len(expected_dates),
+        len(exog_names),
+    ):
+        raise ValueError(
+            f"scenario {name!r} rows/columns do not match the forecast"
+        )
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"scenario {name!r} contains non-finite values")
+    return pd.DataFrame(
+        np.array(array, dtype=float, copy=True),
+        index=expected_dates.copy(),
+        columns=exog_names,
+    )
+
+
+def _normalise_future_scenarios(
+    future_exog,
+    *,
+    future_dates,
+    expected_dates,
+    exog_names,
+    default_future_exog,
+):
+    scenarios = {}
+    default_name = None
+    if default_future_exog is not None:
+        missing = expected_dates.difference(default_future_exog.index)
+        if len(missing):
+            raise ValueError(
+                "default future exog is missing date "
+                f"{missing[0].isoformat()}"
+            )
+        scenarios["default"] = _coerce_future_frame(
+            default_future_exog.loc[expected_dates],
+            name="default",
+            expected_dates=expected_dates,
+            exog_names=exog_names,
+            array_dates_provided=True,
+        )
+        default_name = "default"
+
+    if future_exog is None:
+        if not scenarios:
+            missing_date = expected_dates[0].isoformat()
+            raise ValueError(
+                f"future exog is required starting at {missing_date}"
+            )
+        return scenarios, default_name
+
+    if isinstance(future_exog, Mapping):
+        if not future_exog:
+            raise ValueError("future_exog scenario mapping must not be empty")
+        items = tuple(future_exog.items())
+    else:
+        items = (("custom", future_exog),)
+
+    for name, values in items:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("scenario names must be non-empty strings")
+        if name == "default":
+            raise ValueError("'default' is a reserved scenario name")
+        scenarios[name] = _coerce_future_frame(
+            values,
+            name=name,
+            expected_dates=expected_dates,
+            exog_names=exog_names,
+            array_dates_provided=future_dates is not None,
+        )
+    return scenarios, default_name
+
+
+@dataclass
 class SARIMAResult(BaseModelResult):
     """Result container for SARIMA model estimation.
 
@@ -332,53 +510,84 @@ class SARIMAResult(BaseModelResult):
             header_lines.append(f"Seasonal Order: {self._seasonal_order}")
         return "\n".join(header_lines + lines[1:])
 
-    def predict(self, start=0, end=None, dynamic=False, alpha=0.05):
-        """Return in-sample predictions and forecasts beyond the sample.
+    def _resolve_future_dates(self, steps, future_dates):
+        if future_dates is not None:
+            dates = _validate_datetime_index(future_dates, "future_dates")
+            if len(dates) != steps:
+                raise ValueError(
+                    f"future_dates has {len(dates)} rows; expected {steps}"
+                )
+            if self._dates is not None and dates[0] <= self._dates[-1]:
+                raise ValueError("future_dates must begin after the sample")
+            return dates.copy()
+        if self._dates is None:
+            return None
+        frequency = self._dates.freq or pd.infer_freq(self._dates)
+        if frequency is None:
+            raise ValueError(
+                "future_dates is required when date frequency cannot be inferred"
+            )
+        return pd.date_range(
+            start=self._dates[-1],
+            periods=steps + 1,
+            freq=frequency,
+        )[1:]
 
-        Parameters
-        ----------
-        start : int
-            Start index for prediction (0-based).
-        end : int, optional
-            End index. If > nobs-1, performs out-of-sample forecast.
-            Default: nobs-1.
-        dynamic : bool
-            If True, use dynamic (multi-step) predictions throughout
-            the entire prediction range.
-        alpha : float
-            Significance level for confidence intervals (default 0.05).
+    def _future_design(self, ordinary_exog, future_dates):
+        frames = []
+        if ordinary_exog is not None:
+            frames.append(ordinary_exog)
+        if self._event_specs:
+            if future_dates is None or self._dates is None:
+                raise ValueError("future event generation requires future_dates")
+            calendar = self._dates.append(future_dates)
+            event_frame, _ = build_event_matrix(
+                future_dates,
+                self._event_specs,
+                calendar=calendar,
+                reserved_names=self._ordinary_exog_names,
+            )
+            frames.append(event_frame)
+        if not frames:
+            return None
+        design = pd.concat(frames, axis=1)
+        if tuple(design.columns) != self._design_columns:
+            raise RuntimeError(
+                "future design columns do not match the fitted design"
+            )
+        return design
 
-        Returns
-        -------
-        PredictResult
-        """
-        if self._statsmodels_result is None:
-            raise RuntimeError("No fitted statsmodels result available")
-
-        nobs = self.nobs
-        window = _resolve_prediction_window(nobs, start, end)
-        alpha = _validate_prediction_alpha(alpha)
+    def _predict_one(
+        self,
+        window,
+        *,
+        dynamic,
+        alpha,
+        future_design,
+    ):
         start, end = window.start, window.end
         mean = np.full(window.size, np.nan)
         lower = np.full(window.size, np.nan)
         upper = np.full(window.size, np.nan)
         is_oos = np.zeros(window.size, dtype=bool)
-        has_ci = False
 
         if window.has_forecast:
             n_in = window.in_sample_size
             if n_in > 0:
                 pred_in = self._statsmodels_result.get_prediction(
-                    start=start, end=nobs - 1, dynamic=dynamic
+                    start=start, end=self.nobs - 1, dynamic=dynamic
                 )
                 summary_in = pred_in.summary_frame(alpha=alpha)
                 mean[:n_in] = np.asarray(summary_in["mean"])
                 lower[:n_in] = np.asarray(summary_in["mean_ci_lower"])
                 upper[:n_in] = np.asarray(summary_in["mean_ci_upper"])
-                has_ci = True
 
+            forecast_kwargs = {}
+            if future_design is not None:
+                forecast_kwargs["exog"] = future_design
             fc = self._statsmodels_result.get_forecast(
-                steps=window.forecast_steps
+                steps=window.forecast_steps,
+                **forecast_kwargs,
             )
             fc_frame = fc.summary_frame(alpha=alpha)
             forecast_slice = slice(window.forecast_skip, None)
@@ -389,11 +598,9 @@ class SARIMAResult(BaseModelResult):
             upper[n_in:] = np.asarray(
                 fc_frame["mean_ci_upper"]
             )[forecast_slice]
-            has_ci = True
             is_oos[n_in:] = True
 
         else:
-            # Pure in-sample prediction
             pred = self._statsmodels_result.get_prediction(
                 start=start, end=end, dynamic=dynamic
             )
@@ -401,13 +608,7 @@ class SARIMAResult(BaseModelResult):
             mean = np.asarray(summary["mean"])
             lower = np.asarray(summary["mean_ci_lower"])
             upper = np.asarray(summary["mean_ci_upper"])
-            has_ci = True
 
-        if not has_ci:
-            lower = None
-            upper = None
-
-        # Compute in-sample fitted CI for plot
         _full_lower = None
         _full_upper = None
         if self._statsmodels_result is not None and self.fitted_values is not None:
@@ -428,6 +629,83 @@ class SARIMAResult(BaseModelResult):
             _full_lower=_full_lower,
             _full_upper=_full_upper,
             _start=start,
+        )
+
+    def predict(
+        self,
+        start=0,
+        end=None,
+        dynamic=False,
+        alpha=0.05,
+        *,
+        future_exog=None,
+        future_dates=None,
+    ):
+        """Return predictions under one or more exogenous scenarios."""
+        if self._statsmodels_result is None:
+            raise RuntimeError("No fitted statsmodels result available")
+
+        window = _resolve_prediction_window(self.nobs, start, end)
+        alpha = _validate_prediction_alpha(alpha)
+        if not window.has_forecast:
+            if future_exog is not None or future_dates is not None:
+                raise ValueError(
+                    "future_exog and future_dates require an out-of-sample range"
+                )
+            return self._predict_one(
+                window,
+                dynamic=dynamic,
+                alpha=alpha,
+                future_design=None,
+            )
+
+        resolved_dates = self._resolve_future_dates(
+            window.forecast_steps,
+            future_dates,
+        )
+        if self._ordinary_exog_names:
+            if resolved_dates is None:
+                raise ValueError(
+                    "future_dates is required for exogenous forecasting"
+                )
+            ordinary_scenarios, default_name = _normalise_future_scenarios(
+                future_exog,
+                future_dates=future_dates,
+                expected_dates=resolved_dates,
+                exog_names=self._ordinary_exog_names,
+                default_future_exog=self._default_future_exog,
+            )
+        else:
+            if future_exog is not None:
+                raise ValueError(
+                    "future_exog is invalid because the model has no "
+                    "ordinary exogenous variables"
+                )
+            ordinary_scenarios = {"default": None}
+            default_name = "default"
+
+        predictions = {}
+        for name, ordinary_exog in ordinary_scenarios.items():
+            predictions[name] = self._predict_one(
+                window,
+                dynamic=dynamic,
+                alpha=alpha,
+                future_design=self._future_design(
+                    ordinary_exog,
+                    resolved_dates,
+                ),
+            )
+        if len(predictions) == 1:
+            return next(iter(predictions.values()))
+        scenario_dates = (
+            resolved_dates[window.forecast_skip:]
+            if window.in_sample_size == 0 and resolved_dates is not None
+            else None
+        )
+        return ScenarioForecastResult(
+            scenarios=predictions,
+            default_name=default_name,
+            dates=scenario_dates,
         )
 
     @property
