@@ -1,9 +1,11 @@
 # Ts/TsUtils
 
-时间序列预处理工具包。当前提供两类能力：
+时间序列预处理工具包。当前提供四类能力：
 
 - STL（Seasonal-Trend decomposition using LOESS）分解；
-- 缺失值内插及可审计的填补结果。
+- 缺失值内插及可审计的填补结果；
+- 普通、对数及显式周期的差分；
+- 时间序列统计摘要与诊断图。
 
 `TsUtils` 只负责进入模型前的数据处理，不估计预测模型。本版本不提供
 X-12/X-13 或其他季节调整接口；STL 只做分解，不等同于官方统计口径的季节调整。
@@ -14,12 +16,60 @@ X-12/X-13 或其他季节调整接口；STL 只做分解，不等同于官方统
 from Ts.TsUtils import (
     STL,
     STLResult,
+    difference,
     interpolate_missing,
     InterpolationResult,
 )
 ```
 
 这些符号也可以从 `Ts` 顶层导入。
+
+## 差分
+
+`difference()` 用三个正交参数组合普通差分、对数差分和同比差分：
+
+```python
+from Ts.TsUtils import difference
+
+first = difference(series)
+second_log = difference(series, order=2, log=True)
+monthly_yoy = difference(series, lag=12)
+quarterly_yoy_log = difference(frame, log=True, lag=4)
+```
+
+公共签名：
+
+```python
+difference(data, *, order=1, log=False, lag=1)
+```
+
+| 操作 | 参数 |
+|---|---|
+| 一阶差分 | `order=1, log=False, lag=1` |
+| 一阶对数差分 | `order=1, log=True, lag=1` |
+| 二阶差分 | `order=2, log=False, lag=1` |
+| 二阶对数差分 | `order=2, log=True, lag=1` |
+| 同比差分（月度） | `order=1, log=False, lag=12` |
+| 同比对数差分（月度） | `order=1, log=True, lag=12` |
+| 同比二阶差分（月度） | `order=2, log=False, lag=12` |
+| 同比二阶对数差分（月度） | `order=2, log=True, lag=12` |
+
+同比周期不自动猜测，应按数据频率显式设置：月度 `lag=12`、季度
+`lag=4`、年度 `lag=1`。`lag` 表示观测位置差，不按日历标签自动对齐。
+
+设同比周期为 \(s\)，同比二阶差分定义为：
+
+\[
+(1-L^s)^2x_t=x_t-2x_{t-s}+x_{t-2s}
+\]
+
+对数版本先计算自然对数，再应用相同的差分算子。因此，`log=True` 要求全部
+非缺失观测严格大于零。
+
+输入只接受数值型 `pandas.Series` 或 `pandas.DataFrame`。DataFrame 按列独立
+计算；返回值保持原容器类型、索引、Series 名称、DataFrame 列名和行数，不修改
+调用方数据。差分产生的前置缺失值不会被删除，输入中的缺失值按 pandas 的标准
+差分规则传播；正负无穷、布尔值、复数和非数值列会被拒绝。
 
 ## STL 分解
 

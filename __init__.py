@@ -33,6 +33,7 @@ from .TsUtils import (
     STL,
     STLResult,
     TimeSeriesSummary,
+    difference,
     interpolate_missing,
 )
 
@@ -126,6 +127,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "STL",
     "STLResult",
     "TimeSeriesSummary",
+    "difference",
     "interpolate_missing",
     "InterpolationResult",
     # TsSims — base
