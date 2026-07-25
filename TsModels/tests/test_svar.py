@@ -1,5 +1,7 @@
 """Tests for Ts.TsModels._svar — SVAR and SVARResult."""
+
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -56,6 +58,7 @@ class TestSVARInit:
         assert model.C_lr is not None
         assert model.A is None
         assert model.B is None
+
     def test_longrun_rejects_below_diagonal_restriction(self, var2_data):
         """Unsupported lower-triangular restrictions are rejected early.
 
@@ -83,7 +86,6 @@ class TestSVARInit:
             match="canonical Blanchard-Quah",
         ):
             SVAR(var2_data, lags=2, C_lr=C_lr)
-
 
     def test_no_constraint_raises(self, var2_data):
         """SVAR without A, B, or C_lr raises ValueError.
@@ -382,4 +384,3 @@ class TestSVARCovers:
         covers: code/python/Ts/TsModels/_svar.py::SVARResult.__repr__ [function]
         covers: code/python/Ts/TsModels/_svar.py::SVAR.summary [function]
         """
-        pass

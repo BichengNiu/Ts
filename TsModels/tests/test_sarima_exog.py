@@ -107,21 +107,19 @@ def test_series_rejects_conflicting_dates_argument():
     dates = pd.date_range("2025-01-01", periods=12, freq="MS")
     y = pd.Series(np.arange(12.0), index=dates)
 
-    with pytest.raises(ValueError, match="dates.*Series"):
+    with pytest.raises(ValueError, match=r"dates.*Series"):
         SARIMA(y, dates=dates)
 
 
 @pytest.mark.parametrize(
     "dates",
     [
-        pd.DatetimeIndex(
-            ["2025-01-01", "2025-01-02", "2025-01-02"] * 4
-        ),
+        pd.DatetimeIndex(["2025-01-01", "2025-01-02", "2025-01-02"] * 4),
         pd.date_range("2025-01-01", periods=12, freq="D")[::-1],
     ],
 )
 def test_dates_must_be_unique_and_increasing(dates):
-    with pytest.raises(ValueError, match="unique|increasing"):
+    with pytest.raises(ValueError, match=r"unique|increasing"):
         SARIMA(np.arange(12.0), dates=dates)
 
 
@@ -149,7 +147,7 @@ def test_dataframe_columns_are_authoritative():
     y = pd.Series(np.arange(12.0), index=dates)
     x = pd.DataFrame({"x": np.arange(12.0)}, index=dates)
 
-    with pytest.raises(ValueError, match="exog_names.*DataFrame"):
+    with pytest.raises(ValueError, match=r"exog_names.*DataFrame"):
         SARIMA(y, exog=x, exog_names=["renamed"])
 
 
@@ -352,7 +350,7 @@ def test_design_validation_rejects_unidentified_or_collinear_columns():
     dates = pd.date_range("2025-01-01", periods=30, freq="MS")
     y = pd.Series(np.arange(30.0), index=dates)
 
-    with pytest.raises(ValueError, match="all-zero.*event__future"):
+    with pytest.raises(ValueError, match=r"all-zero.*event__future"):
         SARIMA(
             y,
             events=[EventSpec("future", ["2030-01-01"], "pulse")],
@@ -366,7 +364,7 @@ def test_design_validation_rejects_unidentified_or_collinear_columns():
             exog_names=["x", "twice_x"],
         )
 
-    with pytest.raises(ValueError, match="constant.*trend"):
+    with pytest.raises(ValueError, match=r"constant.*trend"):
         SARIMA(
             y,
             exog=np.ones((30, 1)),
@@ -394,11 +392,7 @@ def _dated_model_with_future_exog(include_future=True):
         1.5 * x[:36] + rng.normal(scale=0.05, size=36),
         index=history_dates,
     )
-    exog_dates = (
-        history_dates.append(future_dates)
-        if include_future
-        else history_dates
-    )
+    exog_dates = history_dates.append(future_dates) if include_future else history_dates
     exog = pd.DataFrame(
         {"x": x if include_future else x[:36]},
         index=exog_dates,
@@ -580,7 +574,7 @@ def test_array_scenario_requires_future_dates_and_is_copied():
 def test_exogenous_forecast_without_coverage_lists_missing_date():
     fitted = _dated_model_with_future_exog(include_future=False).fit()
 
-    with pytest.raises(ValueError, match="future exog.*2023-01-01"):
+    with pytest.raises(ValueError, match=r"future exog.*2023-01-01"):
         fitted.predict(start=fitted.nobs, end=fitted.nobs + 1)
 
 
@@ -651,9 +645,7 @@ def test_multi_scenario_mixed_prediction_keeps_all_dates():
     )
 
     assert isinstance(prediction, ScenarioForecastResult)
-    assert prediction.dates.equals(
-        pd.date_range("2022-11-01", periods=5, freq="MS")
-    )
+    assert prediction.dates.equals(pd.date_range("2022-11-01", periods=5, freq="MS"))
 
 
 def test_future_event_is_generated_without_future_exog_column():

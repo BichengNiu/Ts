@@ -11,10 +11,9 @@ from ._evaluation import (
     model_data,
     training_dates,
     training_exog,
-    validate_alpha,
     validate_model_protocol,
-    validate_positive_int,
 )
+from Ts.TsUtils._validation import validate_alpha, validate_positive_int
 from ._periods import validated_model_dates
 from ._results import BacktestResult
 

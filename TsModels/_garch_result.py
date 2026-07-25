@@ -10,13 +10,20 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from Ts.TsUtils._validation import validate_alpha as _validate_prediction_alpha
+
 from Ts.TsModels._base import (
     BaseModelResult,
     PredictResult,
     _resolve_prediction_window,
 )
 
-_DIST_LABELS = {"normal": "Normal", "t": "Student's t", "skewt": "Skewed-t", "ged": "GED"}
+_DIST_LABELS = {
+    "normal": "Normal",
+    "t": "Student's t",
+    "skewt": "Skewed-t",
+    "ged": "GED",
+}
 
 
 @dataclass
@@ -62,7 +69,7 @@ class GARCHResult(BaseModelResult):
         np.ndarray
             Squared conditional volatility, length *nobs*.
         """
-        return self.conditional_volatility ** 2
+        return self.conditional_volatility**2
 
     def summary(self) -> str:
         """Return a formatted parameter summary string.
@@ -73,7 +80,9 @@ class GARCHResult(BaseModelResult):
         base = super().summary()
         model_label = self.model_type
         if self._o and self._o > 0:
-            model_label = f"{model_label}({self._p},{self._o},{self._q if self._q else 0})"
+            model_label = (
+                f"{model_label}({self._p},{self._o},{self._q if self._q else 0})"
+            )
         elif self._q and self._q > 0:
             model_label = f"{model_label}({self._p},{self._q})"
         elif self._p is not None:
@@ -96,8 +105,12 @@ class GARCHResult(BaseModelResult):
         ):
             best_aic = int(self.individual_lags[np.argmin(self.individual_aic)])
             best_bic = int(self.individual_lags[np.argmin(self.individual_bic)])
-            lines[4] = f"AIC                : {self.aic:.4f}    Lowest AIC: P = {best_aic}"
-            lines[5] = f"BIC                : {self.bic:.4f}    Lowest BIC: P = {best_bic}"
+            lines[4] = (
+                f"AIC                : {self.aic:.4f}    Lowest AIC: P = {best_aic}"
+            )
+            lines[5] = (
+                f"BIC                : {self.bic:.4f}    Lowest BIC: P = {best_bic}"
+            )
 
         if (
             self._arch_result is not None
@@ -126,7 +139,7 @@ class GARCHResult(BaseModelResult):
 
         return "\n".join(lines)
 
-    def predict(self, start=0, end=None, dynamic=False, alpha=0.05):
+    def predict(self, start=0, end=None, alpha=0.05):
         """Return conditional volatility and forecasts beyond the sample.
 
         Parameters
@@ -136,10 +149,9 @@ class GARCHResult(BaseModelResult):
         end : int, optional
             End index. If > nobs-1, performs out-of-sample forecast.
             Default: nobs-1.
-        dynamic : bool
-            Not used for GARCH (reserved for API compatibility).
         alpha : float
-            Significance level (reserved for API compatibility).
+            Significance level required by the shared prediction protocol.
+            GARCH volatility forecasts do not currently include intervals.
 
         Returns
         -------
@@ -147,6 +159,7 @@ class GARCHResult(BaseModelResult):
         """
         nobs = self.nobs
         window = _resolve_prediction_window(nobs, start, end)
+        _validate_prediction_alpha(alpha)
         start, end = window.start, window.end
         mean = np.full(window.size, np.nan)
         is_oos = np.zeros(window.size, dtype=bool)
@@ -159,12 +172,12 @@ class GARCHResult(BaseModelResult):
                 mean[:n_in] = cond_vol[start:nobs]
 
             _, fc_vol = self._forecast(horizon=window.forecast_steps)
-            mean[n_in:] = fc_vol[window.forecast_skip:]
+            mean[n_in:] = fc_vol[window.forecast_skip :]
             is_oos[n_in:] = True
 
         else:
             # Pure in-sample
-            mean = cond_vol[start:end + 1].copy()
+            mean = cond_vol[start : end + 1].copy()
 
         return PredictResult(
             mean=mean,
@@ -225,8 +238,8 @@ class GARCHResult(BaseModelResult):
         q = self._q or 0
         o = self._o or 0
 
-        eps2 = resid ** 2
-        sigma2 = cond_vol ** 2
+        eps2 = resid**2
+        sigma2 = cond_vol**2
         forecasts = np.empty(n_steps)
 
         for h in range(n_steps):
@@ -252,9 +265,8 @@ class GARCHResult(BaseModelResult):
                     if observed_idx < 0:
                         continue
                     indicator = 1.0 if resid[observed_idx] < 0 else 0.0
-                    asymmetric_shock = (
-                        indicator
-                        * np.nan_to_num(eps2[observed_idx], nan=0.0)
+                    asymmetric_shock = indicator * np.nan_to_num(
+                        eps2[observed_idx], nan=0.0
                     )
                 s2 += gamma_i * asymmetric_shock
             for j in range(q):
@@ -424,8 +436,7 @@ class GARCHResult(BaseModelResult):
             name: i for i, name in enumerate(self._arch_result.param_cov.index)
         }
         idx = [
-            param_name_to_idx[name] for name in coef_names
-            if name in param_name_to_idx
+            param_name_to_idx[name] for name in coef_names if name in param_name_to_idx
         ]
 
         if len(idx) == 0:
@@ -438,17 +449,15 @@ class GARCHResult(BaseModelResult):
             }
 
         sub_vcov = vcov[np.ix_(idx, idx)]
-        name_to_weight = dict(zip(coef_names, weights))
+        name_to_weight = dict(zip(coef_names, weights, strict=False))
         idx_to_name = {v: k for k, v in param_name_to_idx.items()}
         w = np.array([name_to_weight[idx_to_name[i]] for i in idx])
         var_sum = float(w @ sub_vcov @ w)
 
-        if var_sum <= 0:
-            chi2 = 0.0
-        else:
-            chi2 = (persistence_sum - 1.0) ** 2 / var_sum
+        chi2 = 0.0 if var_sum <= 0 else (persistence_sum - 1.0) ** 2 / var_sum
 
         from scipy import stats as scipy_stats
+
         pvalue = 1.0 - scipy_stats.chi2.cdf(chi2, 1)
         reject = bool(pvalue < 0.05)
 
@@ -499,16 +508,13 @@ class GARCHResult(BaseModelResult):
 
         # Compute persistence with correct GJR-GARCH weighting
         alpha_sum = sum(
-            self.params.get(f"alpha[{i}]", 0.0)
-            for i in range(1, (self._p or 0) + 1)
+            self.params.get(f"alpha[{i}]", 0.0) for i in range(1, (self._p or 0) + 1)
         )
         gamma_sum = sum(
-            self.params.get(f"gamma[{k}]", 0.0)
-            for k in range(1, (self._o or 0) + 1)
+            self.params.get(f"gamma[{k}]", 0.0) for k in range(1, (self._o or 0) + 1)
         )
         beta_sum = sum(
-            self.params.get(f"beta[{j}]", 0.0)
-            for j in range(1, (self._q or 0) + 1)
+            self.params.get(f"beta[{j}]", 0.0) for j in range(1, (self._q or 0) + 1)
         )
 
         if (self._o or 0) > 0:
@@ -542,16 +548,12 @@ def _scale_params_back(fitted, scale, form):
     s = scale
     s2 = s * s
 
-    if form == "var":
-        _param_scale = {"omega": s2, "kappa": 1.0 / s}
-    else:
-        _param_scale = {"omega": s2}
+    _param_scale = {"omega": s2, "kappa": 1.0 / s} if form == "var" else {"omega": s2}
 
     for name in fitted.params.index:
         mult = _param_scale.get(name)
-        if mult is None:
-            if name in ("Const", "mu") or name.startswith("phi"):
-                mult = s
+        if mult is None and (name in ("Const", "mu") or name.startswith("phi")):
+            mult = s
         if mult is not None and mult != 1.0:
             fitted.params[name] = float(fitted.params[name]) * mult
             if name in fitted.std_err.index:
@@ -574,8 +576,12 @@ def _get_dist_object(dist):
     arch.univariate.distribution.Distribution or None
     """
     from arch.univariate.distribution import (
-        Normal, StudentsT, GeneralizedError, SkewStudent,
+        Normal,
+        StudentsT,
+        GeneralizedError,
+        SkewStudent,
     )
+
     mapping = {
         "normal": Normal,
         "t": StudentsT,

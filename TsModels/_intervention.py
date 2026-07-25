@@ -66,9 +66,7 @@ class EventSpec:
         if not parsed_dates:
             raise ValueError("event dates must not be empty")
         if len(set(parsed_dates)) != len(parsed_dates):
-            raise ValueError(
-                f"event {self.name.strip()!r} contains duplicate dates"
-            )
+            raise ValueError(f"event {self.name.strip()!r} contains duplicate dates")
 
         if self.kind == "step" and self.window is not None:
             raise ValueError("window is only valid for pulse events")
@@ -76,9 +74,7 @@ class EventSpec:
             raise ValueError("window and reference must be specified together")
         if self.window is not None:
             if not isinstance(self.window, tuple) or len(self.window) != 2:
-                raise ValueError(
-                    "window must be an ordered pair of integers"
-                )
+                raise ValueError("window must be an ordered pair of integers")
             start, end = self.window
             invalid_bound = (
                 isinstance(start, bool)
@@ -87,9 +83,7 @@ class EventSpec:
                 or not isinstance(end, int)
             )
             if invalid_bound or start > end:
-                raise ValueError(
-                    "window must be an ordered pair of integers"
-                )
+                raise ValueError("window must be an ordered pair of integers")
             if (
                 isinstance(self.reference, bool)
                 or not isinstance(self.reference, int)
@@ -190,9 +184,7 @@ class PolicyEffectResult:
                     ),
                 ]
             )
-        lines.extend(
-            ["", f"Identification note: {self.identification_note}"]
-        )
+        lines.extend(["", f"Identification note: {self.identification_note}"])
         return "\n".join(lines)
 
     def plot(self, title=None):
@@ -277,9 +269,7 @@ def _period_label(
 ) -> pd.Timestamp:
     frequency = calendar.freq or pd.infer_freq(calendar)
     if frequency is None:
-        raise ValueError(
-            "date_rule='period' requires a regular calendar frequency"
-        )
+        raise ValueError("date_rule='period' requires a regular calendar frequency")
     offset = to_offset(frequency)
     normalized = event_date.normalize()
     if isinstance(offset, Tick):
@@ -288,9 +278,7 @@ def _period_label(
         return offset.rollback(normalized)
     if isinstance(offset, _END_OFFSETS):
         return offset.rollforward(normalized)
-    raise ValueError(
-        f"date_rule='period' does not support frequency {frequency!r}"
-    )
+    raise ValueError(f"date_rule='period' does not support frequency {frequency!r}")
 
 
 def _mapped_position(
@@ -310,9 +298,7 @@ def _mapped_position(
             return position
         if candidate < calendar[0] or candidate > calendar[-1]:
             return None
-        raise ValueError(
-            f"period mapping for {event_date} is absent from the calendar"
-        )
+        raise ValueError(f"period mapping for {event_date} is absent from the calendar")
 
     if event_date < calendar[0] or event_date > calendar[-1]:
         return None
@@ -320,8 +306,7 @@ def _mapped_position(
         position = int(calendar.get_indexer([event_date])[0])
         if position < 0:
             raise ValueError(
-                f"exact event date {event_date.date()} is absent "
-                "from the calendar"
+                f"exact event date {event_date.date()} is absent from the calendar"
             )
         return position
     if rule == "next":
@@ -343,13 +328,10 @@ def _event_schema(
         return (base,), None
     start, end = event.window
     relative_periods = tuple(
-        relative
-        for relative in range(start, end + 1)
-        if relative != event.reference
+        relative for relative in range(start, end + 1) if relative != event.reference
     )
     columns = tuple(
-        f"{base}__{_relative_suffix(relative)}"
-        for relative in relative_periods
+        f"{base}__{_relative_suffix(relative)}" for relative in relative_periods
     )
     return columns, relative_periods
 
@@ -488,10 +470,7 @@ def _event_parameter_table(
             )
             table_entries = tuple(
                 (
-                    (
-                        f"event__{event.name}__"
-                        f"{_relative_suffix(relative_period)}"
-                    ),
+                    (f"event__{event.name}__{_relative_suffix(relative_period)}"),
                     relative_period,
                     relative_period == event.reference,
                 )
@@ -540,9 +519,7 @@ def _event_parameter_table(
 
 def _validate_inference_controls(method, n_draws, seed):
     if method not in {"delta", "simulation", "bootstrap"}:
-        raise ValueError(
-            "method must be 'delta', 'simulation', or 'bootstrap'"
-        )
+        raise ValueError("method must be 'delta', 'simulation', or 'bootstrap'")
     if (
         isinstance(n_draws, (bool, np.bool_))
         or not isinstance(n_draws, (int, np.integer))
@@ -688,12 +665,9 @@ def _bootstrap_intervals(
                 result,
                 np.random.default_rng(child_seed),
             )
-            positions = [
-                parameter_names.index(column)
-                for column in selected_columns
-            ]
+            positions = [parameter_names.index(column) for column in selected_columns]
             paths.append(contrast @ parameters[positions])
-        except Exception as error:  # noqa: BLE001 - isolate each refit
+        except Exception as error:
             failures.append(
                 {
                     "attempt": attempt,
@@ -705,8 +679,7 @@ def _bootstrap_intervals(
     success_count = len(paths)
     if success_count / n_draws < 0.8:
         diagnostic = " | ".join(
-            f"{failure['type']}: {failure['message']}"
-            for failure in failures[:5]
+            f"{failure['type']}: {failure['message']}" for failure in failures[:5]
         )
         message = (
             f"bootstrap produced {success_count}/{n_draws} successful "
@@ -726,10 +699,7 @@ def _selected_relative_periods(
         if event.name not in selected:
             continue
         metadata = result._event_metadata[event.name]
-        periods.extend(
-            metadata.relative_periods
-            or (None,) * len(metadata.columns)
-        )
+        periods.extend(metadata.relative_periods or (None,) * len(metadata.columns))
     return tuple(periods)
 
 
@@ -748,9 +718,7 @@ def _pretrend_wald_test(
         return None
     lead_beta = beta[lead_positions]
     lead_covariance = covariance[np.ix_(lead_positions, lead_positions)]
-    statistic = float(
-        lead_beta @ np.linalg.pinv(lead_covariance) @ lead_beta
-    )
+    statistic = float(lead_beta @ np.linalg.pinv(lead_covariance) @ lead_beta)
     degrees_of_freedom = len(lead_positions)
     return {
         "statistic": statistic,
@@ -772,9 +740,10 @@ def estimate_policy_effect(
     seed=None,
 ) -> PolicyEffectResult:
     """Estimate a conditional fitted-event contrast."""
+    from Ts.TsUtils._validation import validate_alpha as _validate_prediction_alpha
+
     from Ts.TsModels._base import (
         _resolve_prediction_window,
-        _validate_prediction_alpha,
     )
 
     n_draws, seed = _validate_inference_controls(method, n_draws, seed)
@@ -808,9 +777,7 @@ def estimate_policy_effect(
         raise RuntimeError("policy effects require a single forecast scenario")
 
     calendar = (
-        result._dates
-        if future_dates is None
-        else result._dates.append(future_dates)
+        result._dates if future_dates is None else result._dates.append(future_dates)
     )
     event_frame, _ = build_event_matrix(
         target_dates,
@@ -824,9 +791,7 @@ def estimate_policy_effect(
         alpha=alpha,
     )
     parameter_names = tuple(result._statsmodels_result.param_names)
-    parameter_positions = [
-        parameter_names.index(column) for column in selected_columns
-    ]
+    parameter_positions = [parameter_names.index(column) for column in selected_columns]
     selected_parameters = np.asarray(
         result._statsmodels_result.params,
         dtype=float,
@@ -838,10 +803,12 @@ def estimate_policy_effect(
         result._statsmodels_result.cov_params(),
         dtype=float,
     )
-    covariance = full_covariance[np.ix_(
-        parameter_positions,
-        parameter_positions,
-    )]
+    covariance = full_covariance[
+        np.ix_(
+            parameter_positions,
+            parameter_positions,
+        )
+    ]
     if method == "delta":
         intervals = _delta_intervals(
             contrast,
@@ -890,9 +857,7 @@ def estimate_policy_effect(
     return PolicyEffectResult(
         coefficients=coefficients,
         factual_mean=factual,
-        counterfactual_mean=(factual - effect).rename(
-            "counterfactual_mean"
-        ),
+        counterfactual_mean=(factual - effect).rename("counterfactual_mean"),
         effect=effect,
         lower=pd.Series(
             lower,

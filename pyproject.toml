@@ -1,9 +1,14 @@
 [tool.ruff]
 target-version = "py313"
 line-length = 88
-extend-exclude = ["**/__pycache__"]
+extend-exclude = ["**/__pycache__", "**/*.ipynb"]
 
 [tool.ruff.lint]
+ignore = [
+    "RUF001",  # intentional Chinese text
+    "RUF002",  # intentional mathematical notation
+    "RUF003",  # intentional explanatory comments
+]
 select = [
     "E4",
     "E7",

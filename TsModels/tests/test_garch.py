@@ -1,6 +1,7 @@
 """Tests for Ts.TsModels._garch — GARCH and GARCHResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -12,8 +13,13 @@ from Ts.TsSims import simulate_garch
 def arch_data():
     """Generate ARCH(2) data (GARCH with q=0)."""
     r = simulate_garch(
-        n=200, p=2, q=0, omega=0.4, alpha=[0.3, 0.2],
-        seed=42, burn=200,
+        n=200,
+        p=2,
+        q=0,
+        omega=0.4,
+        alpha=[0.3, 0.2],
+        seed=42,
+        burn=200,
     )
     return r.data
 
@@ -22,8 +28,14 @@ def arch_data():
 def garch11_data():
     """Generate GARCH(1,1) data."""
     r = simulate_garch(
-        n=300, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-        seed=42, burn=200,
+        n=300,
+        p=1,
+        q=1,
+        omega=0.1,
+        alpha=[0.2],
+        beta=[0.7],
+        seed=42,
+        burn=200,
     )
     return r.data
 
@@ -272,8 +284,14 @@ class TestGARCHInMean:
     def garch11_data(self):
         """Generate GARCH(1,1) data for GARCH-M testing."""
         r = simulate_garch(
-            n=300, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.7],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -330,8 +348,14 @@ class TestGARCHExog:
     def garch11_data(self):
         """Generate GARCH(1,1) data."""
         r = simulate_garch(
-            n=300, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.7],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -372,9 +396,12 @@ class TestGJR_GARCH:
         e[0] = np.sqrt(sigma2[0]) * eps[0]
         for t in range(1, n):
             I_neg = 1.0 if e[t - 1] < 0 else 0.0
-            sigma2[t] = omega + alpha * e[t - 1]**2 \
-                       + gamma * I_neg * e[t - 1]**2 \
-                       + beta * sigma2[t - 1]
+            sigma2[t] = (
+                omega
+                + alpha * e[t - 1] ** 2
+                + gamma * I_neg * e[t - 1] ** 2
+                + beta * sigma2[t - 1]
+            )
             e[t] = np.sqrt(max(sigma2[t], 1e-10)) * eps[t]
         return 1.0 + e
 
@@ -475,9 +502,11 @@ class TestGJR_GARCH:
             _q=2,
         )
 
-        forecast_vol = result._garch_forecast_vol(3, 3, residuals, conditional_volatility)
+        forecast_vol = result._garch_forecast_vol(
+            3, 3, residuals, conditional_volatility
+        )
         expected_variance = np.array([11.6, 10.72, 9.924])
-        np.testing.assert_allclose(forecast_vol ** 2, expected_variance)
+        np.testing.assert_allclose(forecast_vol**2, expected_variance)
 
 
 class TestEGARCH:
@@ -498,10 +527,12 @@ class TestEGARCH:
         e[0] = np.sqrt(sigma2_0) * z_0
         for t in range(1, n):
             z = eps[t]
-            ln_sigma2[t] = (omega
-                           + alpha * (abs(z) - np.sqrt(2.0 / np.pi))
-                           + gamma * z
-                           + beta * ln_sigma2[t - 1])
+            ln_sigma2[t] = (
+                omega
+                + alpha * (abs(z) - np.sqrt(2.0 / np.pi))
+                + gamma * z
+                + beta * ln_sigma2[t - 1]
+            )
             sigma2_t = np.exp(ln_sigma2[t])
             e[t] = np.sqrt(sigma2_t) * z
         return 1.0 + e
@@ -576,8 +607,14 @@ class TestIGARCH:
     def igarch11_data(self):
         """Generate IGARCH(1,1) data: alpha+beta=1."""
         r = simulate_garch(
-            n=300, p=1, q=1, omega=0.05, alpha=[0.30], beta=[0.70],
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            omega=0.05,
+            alpha=[0.30],
+            beta=[0.70],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -619,12 +656,8 @@ class TestIGARCH:
 
         model = GARCH(igarch11_data, p=1, q=1, igarch=True)
         result = model.fit()
-        alpha_sum = sum(
-            v for k, v in result.params.items() if k.startswith("alpha")
-        )
-        beta_sum = sum(
-            v for k, v in result.params.items() if k.startswith("beta")
-        )
+        alpha_sum = sum(v for k, v in result.params.items() if k.startswith("alpha"))
+        beta_sum = sum(v for k, v in result.params.items() if k.startswith("beta"))
         assert abs(alpha_sum + beta_sum - 1.0) < 1e-10
 
     def test_igarch11_summary_shows_igarch(self, igarch11_data):
@@ -664,12 +697,10 @@ class TestIGARCH:
         result = GARCH(data, p=1, q=2, igarch=True).fit()
 
         alpha_sum = sum(
-            value for name, value in result.params.items()
-            if name.startswith("alpha")
+            value for name, value in result.params.items() if name.startswith("alpha")
         )
         beta_sum = sum(
-            value for name, value in result.params.items()
-            if name.startswith("beta")
+            value for name, value in result.params.items() if name.startswith("beta")
         )
         assert abs(alpha_sum + beta_sum - 1.0) < 1e-10
         assert {"beta[1]", "beta[2]"} <= result.params.keys()
@@ -678,8 +709,9 @@ class TestIGARCH:
         """simulate_igarch generates data with alpha+beta=1 by construction."""
         from Ts.TsSims import simulate_igarch
 
-        r = simulate_igarch(n=200, p=1, q=1, omega=0.05,
-                            alpha=[0.30], beta=[0.70], seed=42)
+        r = simulate_igarch(
+            n=200, p=1, q=1, omega=0.05, alpha=[0.30], beta=[0.70], seed=42
+        )
         params = r.get_params()
         alpha_sum = sum(params["alpha"])
         beta_sum = sum(params["beta"])
@@ -695,6 +727,7 @@ class TestPersistenceErrorHandling:
         """If test_persistence fails, summary should include error info, not silently pass."""
         import numpy as np
         from Ts.TsModels import GARCH
+
         # Use very short series where persistence test might have issues
         data = np.random.randn(50)
         model = GARCH(data, p=1, q=1)
@@ -709,7 +742,7 @@ class TestIGARCHHessian:
 
     def test_igarch_singular_hessian_raises_meaningful_error(self):
         """IGARCH with problematic data should give meaningful error, not crash."""
-        pass  # Skip if IGARCH fitting is not available in tests
+        # Skip if IGARCH fitting is not available in tests
 
 
 class TestGARCHCovers:
@@ -727,7 +760,6 @@ class TestGARCHCovers:
         covers: code/python/Ts/TsModels/_garch_result.py::_scale_params_back [function]
         covers: code/python/Ts/TsModels/_garch_result.py::_get_dist_object [function]
         """
-        pass
 
 
 class TestGARCHPredict:
@@ -737,6 +769,7 @@ class TestGARCHPredict:
     def garch_result(self, garch11_data):
         """Fit GARCH(1,1) and return result."""
         from Ts.TsModels._garch import GARCH
+
         model = GARCH(garch11_data, p=1, q=1)
         return model.fit()
 
@@ -759,6 +792,16 @@ class TestGARCHPredict:
         assert pr.lower is None
         assert pr.upper is None
         assert np.all(pr.mean > 0)
+
+    def test_predict_rejects_removed_dynamic_argument(self, garch_result):
+        """GARCH prediction rejects the removed dynamic compatibility mode."""
+        with pytest.raises(TypeError):
+            garch_result.predict(dynamic=True)
+
+    def test_predict_validates_protocol_alpha(self, garch_result):
+        """The shared evaluation alpha contract is explicit and validated."""
+        with pytest.raises(ValueError, match="alpha must be between 0 and 1"):
+            garch_result.predict(alpha=0)
 
     def test_predict_out_of_sample_volatility(self, garch_result):
         """predict() beyond sample returns variance forecasts."""
@@ -803,8 +846,7 @@ class TestGARCHPredict:
         )
 
         expected = np.abs(
-            garch_result.data[split:]
-            - np.mean(garch_result.data[:split])
+            garch_result.data[split:] - np.mean(garch_result.data[:split])
         )
         np.testing.assert_allclose(evaluation.actual, expected)
         assert evaluation.target == "absolute_demeaned_return_proxy"

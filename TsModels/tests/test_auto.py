@@ -1,6 +1,7 @@
 """Tests for Ts.TsModels._auto — AutoSARIMA, AutoGARCH, AutoModelResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -11,6 +12,7 @@ from Ts.TsSims import simulate_sarima, simulate_garch
 # ============================================================
 # Test Group 1: _get_criterion_value()
 # ============================================================
+
 
 class TestGetCriterionValue:
     """Tests for _get_criterion_value helper."""
@@ -128,6 +130,7 @@ class TestGetCriterionValue:
 # Test Group 2: AutoModelResult
 # ============================================================
 
+
 class TestAutoModelResult:
     """Tests for AutoModelResult construction and methods."""
 
@@ -135,6 +138,7 @@ class TestAutoModelResult:
     def base_result(self):
         """Create a minimal BaseModelResult with adequate obs for diagnostics."""
         from Ts.TsModels._base import BaseModelResult
+
         n = 200
         rng = np.random.default_rng(42)
         resid = rng.normal(0, 1, size=n)
@@ -156,6 +160,7 @@ class TestAutoModelResult:
     def auto_result(self, base_result):
         """Create a sample AutoModelResult via from_search()."""
         from Ts.TsModels._auto import AutoModelResult
+
         return AutoModelResult.from_search(
             best_result=base_result,
             best_order=(1, 0, 0),
@@ -169,6 +174,7 @@ class TestAutoModelResult:
     def test_isinstance_base_model_result(self, auto_result):
         """AutoModelResult is an instance of BaseModelResult."""
         from Ts.TsModels._base import BaseModelResult
+
         assert isinstance(auto_result, BaseModelResult)
 
     def test_fields_copied_from_best(self, auto_result):
@@ -214,6 +220,7 @@ class TestAutoModelResult:
 # Test Group 3: AutoSARIMA
 # ============================================================
 
+
 class TestAutoSARIMA:
     """Tests for AutoSARIMA construction and fit()."""
 
@@ -251,8 +258,7 @@ class TestAutoSARIMA:
         """Best model's criterion is minimum among candidates (AR1 data)."""
         from Ts.TsModels._auto import AutoSARIMA
 
-        auto = AutoSARIMA(ar1_data, p=(0, 2), d=(0, 0), q=(0, 2),
-                          criterion="aic")
+        auto = AutoSARIMA(ar1_data, p=(0, 2), d=(0, 0), q=(0, 2), criterion="aic")
         result = auto.fit()
         best_val = result.aic
         for val in result.criterion_values:
@@ -262,8 +268,7 @@ class TestAutoSARIMA:
         """Best model's criterion is minimum among candidates (MA1 data)."""
         from Ts.TsModels._auto import AutoSARIMA
 
-        auto = AutoSARIMA(ma1_data, p=(0, 2), d=(0, 0), q=(0, 2),
-                          criterion="bic")
+        auto = AutoSARIMA(ma1_data, p=(0, 2), d=(0, 0), q=(0, 2), criterion="bic")
         result = auto.fit()
         best_val = result.bic
         for val in result.criterion_values:
@@ -312,8 +317,7 @@ class TestAutoSARIMA:
         """candidate_orders list has correct length."""
         from Ts.TsModels._auto import AutoSARIMA
 
-        auto = AutoSARIMA(ar1_data, p=(1, 2), d=(0, 0), q=(0, 1),
-                          criterion="aic")
+        auto = AutoSARIMA(ar1_data, p=(1, 2), d=(0, 0), q=(0, 1), criterion="aic")
         result = auto.fit()
         assert len(result.candidate_orders) == 4  # 2*1*2 = 4
         assert result.candidate_orders[0] == (1, 0, 0)
@@ -324,8 +328,13 @@ class TestAutoSARIMA:
 
         result = AutoSARIMA(
             ar1_data,
-            p=(0, 0), d=(0, 0), q=(0, 0),
-            P=(0, 0), D=(0, 0), Q=(0, 1), s=4,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 1),
+            s=4,
         ).fit()
 
         assert result.best_seasonal_order in {(0, 0, 0, 4), (0, 0, 1, 4)}
@@ -337,6 +346,7 @@ class TestAutoSARIMA:
 # Test Group 4: AutoGARCH
 # ============================================================
 
+
 class TestAutoGARCH:
     """Tests for AutoGARCH construction and fit()."""
 
@@ -344,8 +354,13 @@ class TestAutoGARCH:
     def arch2_data(self):
         """Generate ARCH(2) data."""
         r = simulate_garch(
-            n=300, p=2, q=0, omega=0.4, alpha=[0.3, 0.2],
-            seed=42, burn=200,
+            n=300,
+            p=2,
+            q=0,
+            omega=0.4,
+            alpha=[0.3, 0.2],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -353,8 +368,14 @@ class TestAutoGARCH:
     def garch11_data(self):
         """Generate GARCH(1,1) data."""
         r = simulate_garch(
-            n=300, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.7],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -371,8 +392,7 @@ class TestAutoGARCH:
         """Best model's aic is minimum among candidates (ARCH2 data)."""
         from Ts.TsModels._auto import AutoGARCH
 
-        auto = AutoGARCH(arch2_data, p=(1, 3), q=(0, 0),
-                         criterion="aic")
+        auto = AutoGARCH(arch2_data, p=(1, 3), q=(0, 0), criterion="aic")
         result = auto.fit()
         best_val = result.aic
         for val in result.criterion_values:
@@ -382,8 +402,7 @@ class TestAutoGARCH:
         """Best model's bic is minimum among candidates (GARCH(1,1) data)."""
         from Ts.TsModels._auto import AutoGARCH
 
-        auto = AutoGARCH(garch11_data, p=(1, 2), q=(1, 2),
-                         criterion="bic")
+        auto = AutoGARCH(garch11_data, p=(1, 2), q=(1, 2), criterion="bic")
         result = auto.fit()
         best_val = result.bic
         for val in result.criterion_values:
@@ -395,9 +414,7 @@ class TestAutoGARCH:
 
         auto = AutoGARCH(arch2_data, p=(1, 3), q=(0, 0))
         result = auto.fit()
-        all_arch = all(
-            order[1] == 0 for order in result.candidate_orders
-        )
+        all_arch = all(order[1] == 0 for order in result.candidate_orders)
         assert all_arch
 
     def test_candidates_tracked(self, garch11_data):
@@ -451,6 +468,7 @@ class TestAutoGARCH:
 # Test Group 5: AutoGARCH -- EGARCH auto-selection
 # ============================================================
 
+
 class TestAutoGARCH_EGARCH:
     """Tests for AutoGARCH with vol='EGARCH'."""
 
@@ -458,10 +476,18 @@ class TestAutoGARCH_EGARCH:
     def egarch_data(self):
         """Generate EGARCH(1,1,1) data."""
         from Ts.TsSims import simulate_egarch
+
         r = simulate_egarch(
-            n=300, p=1, q=1, o=1,
-            omega=0.0, alpha=[0.15], gamma=[0.05], beta=[0.30],
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.0,
+            alpha=[0.15],
+            gamma=[0.05],
+            beta=[0.30],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -469,8 +495,7 @@ class TestAutoGARCH_EGARCH:
         """AutoGARCH(vol='EGARCH') fit returns AutoModelResult."""
         from Ts.TsModels._auto import AutoGARCH, AutoModelResult
 
-        auto = AutoGARCH(egarch_data, p=(1, 1), q=(1, 1), o=(1, 1),
-                         vol="EGARCH")
+        auto = AutoGARCH(egarch_data, p=(1, 1), q=(1, 1), o=(1, 1), vol="EGARCH")
         result = auto.fit()
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
@@ -479,8 +504,9 @@ class TestAutoGARCH_EGARCH:
         """Best EGARCH model has minimum criterion among candidates."""
         from Ts.TsModels._auto import AutoGARCH
 
-        auto = AutoGARCH(egarch_data, p=(1, 2), q=(1, 2), o=(1, 1),
-                         vol="EGARCH", criterion="aic")
+        auto = AutoGARCH(
+            egarch_data, p=(1, 2), q=(1, 2), o=(1, 1), vol="EGARCH", criterion="aic"
+        )
         result = auto.fit()
         best_val = result.aic
         for val in result.criterion_values:
@@ -491,6 +517,7 @@ class TestAutoGARCH_EGARCH:
 # Test Group 6: AutoGARCH -- IGARCH auto-selection
 # ============================================================
 
+
 class TestAutoGARCH_IGARCH:
     """Tests for AutoGARCH with igarch=True."""
 
@@ -498,9 +525,16 @@ class TestAutoGARCH_IGARCH:
     def igarch_data(self):
         """Generate IGARCH(1,1) data."""
         from Ts.TsSims import simulate_igarch
+
         r = simulate_igarch(
-            n=300, p=1, q=1, omega=0.10, alpha=[0.20], beta=[0.80],
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            omega=0.10,
+            alpha=[0.20],
+            beta=[0.80],
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -508,8 +542,7 @@ class TestAutoGARCH_IGARCH:
         """AutoGARCH(igarch=True) fit returns AutoModelResult."""
         from Ts.TsModels._auto import AutoGARCH, AutoModelResult
 
-        auto = AutoGARCH(igarch_data, p=(1, 1), q=(1, 1),
-                         igarch=True)
+        auto = AutoGARCH(igarch_data, p=(1, 1), q=(1, 1), igarch=True)
         result = auto.fit()
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
@@ -518,9 +551,7 @@ class TestAutoGARCH_IGARCH:
         """Search diagnostics retain skipped invalid candidate orders."""
         from Ts.TsModels._auto import AutoGARCH
 
-        result = AutoGARCH(
-            igarch_data, p=(1, 1), q=(0, 1), igarch=True
-        ).fit()
+        result = AutoGARCH(igarch_data, p=(1, 1), q=(0, 1), igarch=True).fit()
 
         assert result.search_messages
         assert "IGARCH requires q >= 1" in result.search_messages[0]
@@ -531,21 +562,20 @@ class TestAutoGARCH_IGARCH:
         from Ts.TsModels._auto import AutoGARCH
 
         with pytest.raises(ValueError):
-            AutoGARCH(igarch_data, p=(1, 1), q=(1, 1),
-                      igarch=True, vol="EGARCH")
+            AutoGARCH(igarch_data, p=(1, 1), q=(1, 1), igarch=True, vol="EGARCH")
 
     def test_igarch_rejects_garch_m(self, igarch_data):
         """igarch=True with garch_m=True raises ValueError."""
         from Ts.TsModels._auto import AutoGARCH
 
         with pytest.raises(ValueError):
-            AutoGARCH(igarch_data, p=(1, 1), q=(1, 1),
-                      igarch=True, garch_m=True)
+            AutoGARCH(igarch_data, p=(1, 1), q=(1, 1), igarch=True, garch_m=True)
 
 
 # ============================================================
 # Test Group 7: AutoGARCH -- GARCH-M auto-selection
 # ============================================================
+
 
 class TestAutoGARCH_GARCHM:
     """Tests for AutoGARCH with garch_m=True."""
@@ -554,10 +584,18 @@ class TestAutoGARCH_GARCHM:
     def garch_m_data(self):
         """Generate GARCH-M(1,1) data."""
         from Ts.TsSims import simulate_garch_m
+
         r = simulate_garch_m(
-            n=300, p=1, q=1, omega=0.10, alpha=[0.20], beta=[0.60],
-            garch_m_kappa=0.20, garch_m_form="vol",
-            seed=42, burn=200,
+            n=300,
+            p=1,
+            q=1,
+            omega=0.10,
+            alpha=[0.20],
+            beta=[0.60],
+            garch_m_kappa=0.20,
+            garch_m_form="vol",
+            seed=42,
+            burn=200,
         )
         return r.data
 
@@ -565,8 +603,7 @@ class TestAutoGARCH_GARCHM:
         """AutoGARCH(garch_m=True) fit returns AutoModelResult."""
         from Ts.TsModels._auto import AutoGARCH, AutoModelResult
 
-        auto = AutoGARCH(garch_m_data, p=(1, 1), q=(1, 1),
-                         garch_m=True)
+        auto = AutoGARCH(garch_m_data, p=(1, 1), q=(1, 1), garch_m=True)
         result = auto.fit()
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
@@ -576,13 +613,13 @@ class TestAutoGARCH_GARCHM:
         from Ts.TsModels._auto import AutoGARCH
 
         with pytest.raises(ValueError):
-            AutoGARCH(garch_m_data, p=(1, 1), q=(1, 1),
-                      garch_m=True, vol="EGARCH")
+            AutoGARCH(garch_m_data, p=(1, 1), q=(1, 1), garch_m=True, vol="EGARCH")
 
 
 # ============================================================
 # Test Group 8: AutoGARCH -- parameter validation
 # ============================================================
+
 
 class TestAutoGARCH_Validation:
     """Tests for new parameter validation in AutoGARCH."""
@@ -591,6 +628,7 @@ class TestAutoGARCH_Validation:
     def simple_data(self):
         """Generate simple GARCH(1,1) data for validation tests."""
         from Ts.TsSims import simulate_garch
+
         r = simulate_garch(n=200, p=1, q=1, seed=42, burn=100)
         return r.data
 
@@ -606,8 +644,7 @@ class TestAutoGARCH_Validation:
         """vol='EGARCH' produces EGARCH model type in result."""
         from Ts.TsModels._auto import AutoGARCH
 
-        auto = AutoGARCH(simple_data, p=(1, 1), q=(1, 1), o=(1, 1),
-                         vol="EGARCH")
+        auto = AutoGARCH(simple_data, p=(1, 1), q=(1, 1), o=(1, 1), vol="EGARCH")
         result = auto.fit()
         assert result.model_type == "EGARCH"
 
@@ -616,6 +653,5 @@ class TestAutoGARCH_Validation:
         from Ts.TsModels._auto import AutoGARCH
 
         with pytest.raises(ValueError):
-            auto = AutoGARCH(simple_data, p=(1, 1), q=(1, 1),
-                             vol="INVALID")
+            auto = AutoGARCH(simple_data, p=(1, 1), q=(1, 1), vol="INVALID")
             auto.fit()

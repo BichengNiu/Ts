@@ -16,29 +16,10 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+
 # Shared constants used by _garch.py and _auto.py
 _VOL_TYPES = frozenset({"GARCH", "EGARCH"})
 _GARCH_M_FORMS = frozenset({"vol", "var", "log"})
-
-
-def _resolve_missing_rows(finite_rows, missing, *, name="data"):
-    """Validate a missing-value policy and return dropped row positions."""
-    if missing not in {"raise", "drop"}:
-        raise ValueError("missing must be 'raise' or 'drop'")
-
-    finite_rows = np.asarray(finite_rows, dtype=bool)
-    if finite_rows.ndim != 1:
-        raise ValueError("finite_rows must be one-dimensional")
-
-    dropped_positions = tuple(
-        int(position) for position in np.flatnonzero(~finite_rows)
-    )
-    if dropped_positions and missing == "raise":
-        positions = ", ".join(str(position) for position in dropped_positions)
-        raise ValueError(
-            f"{name} contains non-finite values at row positions: {positions}"
-        )
-    return dropped_positions
 
 
 def _normalise_model_dates(data, dates, expected_length):
@@ -112,17 +93,6 @@ def _resolve_prediction_window(nobs, start, end):
         forecast_steps=max(0, end - nobs + 1),
         forecast_skip=max(0, start - nobs),
     )
-
-
-def _validate_prediction_alpha(alpha):
-    """Return a finite prediction-interval level between zero and one."""
-    try:
-        alpha = float(alpha)
-    except (TypeError, ValueError) as error:
-        raise ValueError("alpha must be between 0 and 1") from error
-    if not np.isfinite(alpha) or not 0.0 < alpha < 1.0:
-        raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
-    return alpha
 
 
 @dataclass
@@ -532,8 +502,8 @@ class BaseModelResult:
         -------
         ResidualTestResults
             Container with ``.white_noise``, ``.normality``, ``.ljung_box``,
-            ``.engle_lm`` attributes. Supports dict-style access and ``print()``
-            for formatted summary + detailed output.
+            `.engle_lm` attributes and supports `print()` for a formatted
+            summary with detailed output.
         """
         from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
 

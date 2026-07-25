@@ -1,6 +1,7 @@
 """Tests for Ts.TsModels._compare — compare_models function."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import pytest
@@ -13,8 +14,14 @@ def garch11_result():
     from Ts.TsModels._garch import GARCH
 
     r = simulate_garch(
-        n=300, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-        seed=42, burn=200,
+        n=300,
+        p=1,
+        q=1,
+        omega=0.1,
+        alpha=[0.2],
+        beta=[0.7],
+        seed=42,
+        burn=200,
     )
     model = GARCH(r.data, p=1, q=1)
     return model.fit()
@@ -26,8 +33,13 @@ def arch2_result():
     from Ts.TsModels._garch import GARCH
 
     r = simulate_garch(
-        n=200, p=2, q=0, omega=0.4, alpha=[0.3, 0.2],
-        seed=42, burn=200,
+        n=200,
+        p=2,
+        q=0,
+        omega=0.4,
+        alpha=[0.3, 0.2],
+        seed=42,
+        burn=200,
     )
     model = GARCH(r.data, p=2, q=0)
     return model.fit()

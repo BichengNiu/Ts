@@ -33,8 +33,8 @@ from .sc_plot import plot_scatter
 from .acf_plot import plot_acf, plot_pacf
 
 __all__ = [
-    "plot_series",
-    "plot_scatter",
     "plot_acf",
     "plot_pacf",
+    "plot_scatter",
+    "plot_series",
 ]

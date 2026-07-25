@@ -42,6 +42,8 @@ import pandas as pd
 from .style import (
     _ensure_fonts,
     _FigureContext,
+    _resolve_colors,
+    _validate_positive_step,
     DEFAULT_PALETTE,
     DEFAULT_MARKERS,
     AXIS_LABEL_FONTSIZE,
@@ -60,9 +62,7 @@ def _resolve_scatter_input(data, x, y, group):
     """
     if isinstance(data, pd.DataFrame):
         if not isinstance(x, str) or not isinstance(y, str):
-            raise ValueError(
-                "For a DataFrame, pass x and y as column-name strings."
-            )
+            raise ValueError("For a DataFrame, pass x and y as column-name strings.")
         if x not in data.columns:
             raise KeyError(f"Column {x!r} not found in DataFrame.")
         if y not in data.columns:
@@ -73,9 +73,7 @@ def _resolve_scatter_input(data, x, y, group):
                 raise KeyError(f"Column {group!r} not found in DataFrame.")
             series = []
             for key, sub in data.groupby(group, sort=False):
-                series.append(
-                    (str(key), sub[x].to_numpy(), sub[y].to_numpy())
-                )
+                series.append((str(key), sub[x].to_numpy(), sub[y].to_numpy()))
             return series, x, y
 
         return [(str(y), data[x].to_numpy(), data[y].to_numpy())], x, y
@@ -267,20 +265,18 @@ def plot_scatter(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
     """
-    series, default_xlabel, default_ylabel = _resolve_scatter_input(
-        data, x, y, group
-    )
+    series, default_xlabel, default_ylabel = _resolve_scatter_input(data, x, y, group)
+    colors = _resolve_colors(colors, len(series))
+    xtick_step = _validate_positive_step("xtick_step", xtick_step)
+    ytick_step = _validate_positive_step("ytick_step", ytick_step)
 
     if labels is not None:
         labels = list(labels)
         if len(labels) != len(series):
             raise ValueError(
-                f"labels has {len(labels)} entries but there are "
-                f"{len(series)} series."
+                f"labels has {len(labels)} entries but there are {len(series)} series."
             )
-        series = [
-            (labels[i], xv, yv) for i, (_, xv, yv) in enumerate(series)
-        ]
+        series = [(labels[i], xv, yv) for i, (_, xv, yv) in enumerate(series)]
 
     _ensure_fonts()
     ctx = _FigureContext(ax=ax)
@@ -301,7 +297,7 @@ def plot_scatter(
         ax.scatter(
             x_vals,
             y_vals,
-            s=markersize ** 2,
+            s=markersize**2,
             marker=marker,
             facecolors=color if is_even else "white",
             edgecolors=color,
@@ -344,12 +340,12 @@ def plot_scatter(
                     # Direction away from the nearest neighbouring point.
                     dx_all = xn - xn[j]
                     dy_all = yn - yn[j]
-                    dists = np.sqrt(dx_all ** 2 + dy_all ** 2)
+                    dists = np.sqrt(dx_all**2 + dy_all**2)
                     dists[j] = np.inf
                     nn = int(np.argmin(dists))
                     dx = xn[j] - xn[nn]
                     dy = yn[j] - yn[nn]
-                    mag = np.sqrt(dx ** 2 + dy ** 2)
+                    mag = np.sqrt(dx**2 + dy**2)
                     if mag > 0:
                         dx, dy = dx / mag, dy / mag
                     else:
@@ -361,7 +357,8 @@ def plot_scatter(
                 off_y = dy * (markersize + 6)
                 va = "bottom" if off_y >= 0 else "top"
                 ha = (
-                    "center" if abs(off_x) < markersize / 2
+                    "center"
+                    if abs(off_x) < markersize / 2
                     else ("left" if off_x > 0 else "right")
                 )
                 ax.annotate(
@@ -396,11 +393,13 @@ def plot_scatter(
         x_all = np.concatenate([xv for _, xv, _ in series], dtype=float)
         x_min = float(np.nanmin(x_all))
         x_max = float(np.nanmax(x_all))
-        ax.set_xticks(np.arange(
-            np.floor(x_min / xtick_step) * xtick_step,
-            x_max + xtick_step,
-            xtick_step,
-        ))
+        ax.set_xticks(
+            np.arange(
+                np.floor(x_min / xtick_step) * xtick_step,
+                x_max + xtick_step,
+                xtick_step,
+            )
+        )
     else:
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
@@ -408,11 +407,13 @@ def plot_scatter(
         y_all = np.concatenate([yv for _, _, yv in series], dtype=float)
         y_data_min = float(np.nanmin(y_all))
         y_data_max = float(np.nanmax(y_all))
-        ax.set_yticks(np.arange(
-            np.floor(y_data_min / ytick_step) * ytick_step,
-            y_data_max + ytick_step,
-            ytick_step,
-        ))
+        ax.set_yticks(
+            np.arange(
+                np.floor(y_data_min / ytick_step) * ytick_step,
+                y_data_max + ytick_step,
+                ytick_step,
+            )
+        )
     else:
         ax.yaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 

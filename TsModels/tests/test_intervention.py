@@ -61,7 +61,7 @@ def test_event_spec_rejects_unknown_date_rule():
 def test_step_rejects_dynamic_window():
     from Ts.TsModels._intervention import EventSpec
 
-    with pytest.raises(ValueError, match="window.*pulse"):
+    with pytest.raises(ValueError, match=r"window.*pulse"):
         EventSpec(
             name="policy",
             dates=["2025-03-15"],
@@ -85,7 +85,7 @@ def test_step_rejects_dynamic_window():
 def test_event_spec_rejects_invalid_window_reference(window, reference):
     from Ts.TsModels._intervention import EventSpec
 
-    with pytest.raises(ValueError, match="window|reference"):
+    with pytest.raises(ValueError, match=r"window|reference"):
         EventSpec(
             name="policy",
             dates=["2025-03-15"],
@@ -149,9 +149,7 @@ def test_period_mapping_supports_common_regular_frequencies(
         [EventSpec("policy", [event_date], "pulse")],
     )
 
-    assert np.flatnonzero(matrix["event__policy"]).tolist() == [
-        expected_position
-    ]
+    assert np.flatnonzero(matrix["event__policy"]).tolist() == [expected_position]
 
 
 @pytest.mark.parametrize(
@@ -185,7 +183,7 @@ def test_exact_rejects_missing_date_inside_calendar():
 
     dates = pd.DatetimeIndex(["2025-01-01", "2025-01-03", "2025-01-04"])
 
-    with pytest.raises(ValueError, match="exact.*2025-01-02"):
+    with pytest.raises(ValueError, match=r"exact.*2025-01-02"):
         build_event_matrix(
             dates,
             [
@@ -202,9 +200,7 @@ def test_exact_rejects_missing_date_inside_calendar():
 def test_period_rejects_irregular_calendar():
     from Ts.TsModels._intervention import EventSpec, build_event_matrix
 
-    dates = pd.DatetimeIndex(
-        ["2025-01-01", "2025-01-02", "2025-01-04"]
-    )
+    dates = pd.DatetimeIndex(["2025-01-01", "2025-01-02", "2025-01-04"])
 
     with pytest.raises(ValueError, match="frequency"):
         build_event_matrix(
@@ -369,10 +365,7 @@ def test_policy_effect_is_event_design_contrast():
         method="delta",
     )
     column = fitted.design_columns.index("event__policy")
-    expected = (
-        fitted._design_matrix[:, column]
-        * fitted.params["event__policy"]
-    )
+    expected = fitted._design_matrix[:, column] * fitted.params["event__policy"]
 
     assert isinstance(effect, PolicyEffectResult)
     np.testing.assert_allclose(effect.effect.to_numpy(), expected)
@@ -508,9 +501,7 @@ def test_delta_cumulative_interval_uses_summed_contrast():
 
     cumulative_contrast = contrast.sum(axis=0)
     cumulative = float(cumulative_contrast @ beta)
-    cumulative_se = np.sqrt(
-        cumulative_contrast @ covariance @ cumulative_contrast
-    )
+    cumulative_se = np.sqrt(cumulative_contrast @ covariance @ cumulative_contrast)
     margin = norm.ppf(0.975) * cumulative_se
     assert cumulative_lower == pytest.approx(cumulative - margin)
     assert cumulative_upper == pytest.approx(cumulative + margin)
@@ -611,12 +602,8 @@ def test_bootstrap_is_reproducible():
 
     pd.testing.assert_series_equal(first.lower, second.lower)
     pd.testing.assert_series_equal(first.upper, second.upper)
-    assert first.cumulative_lower == pytest.approx(
-        second.cumulative_lower
-    )
-    assert first.cumulative_upper == pytest.approx(
-        second.cumulative_upper
-    )
+    assert first.cumulative_lower == pytest.approx(second.cumulative_lower)
+    assert first.cumulative_upper == pytest.approx(second.cumulative_upper)
 
 
 def test_bootstrap_rejects_less_than_eighty_percent_success(monkeypatch):

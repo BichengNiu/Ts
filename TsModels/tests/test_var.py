@@ -1,5 +1,7 @@
 """Tests for Ts.TsModels._var — VAR and VARResult."""
+
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -63,10 +65,12 @@ class TestVARInit:
         """
         from Ts.TsModels._var import VAR
 
-        short = np.column_stack([
-            np.arange(5, dtype=float),
-            np.arange(5, dtype=float),
-        ])
+        short = np.column_stack(
+            [
+                np.arange(5, dtype=float),
+                np.arange(5, dtype=float),
+            ]
+        )
         with pytest.raises(ValueError):
             VAR(short, lags=2)
 
@@ -326,6 +330,7 @@ class TestVARResultMethods:
     def test_granger_causality_partial_args_raises(self, fitted_var):
         """granger_causality() raises ValueError when only one arg given."""
         import pytest
+
         with pytest.raises(ValueError, match="Both 'caused' and 'causing'"):
             fitted_var.granger_causality(caused=0)
         with pytest.raises(ValueError, match="Both 'caused' and 'causing'"):
@@ -348,7 +353,7 @@ class TestVARResultMethods:
         """
         results = fitted_var.test_residuals(lags=5)
         assert isinstance(results, dict)
-        for name, result_obj in results.items():
+        for name in results:
             assert name in fitted_var._data_names
 
     def test_build_param_names_coverage(self, var2_data):
@@ -369,26 +374,22 @@ class TestVARSelectOrder:
     """Test VAR.select_order static method."""
 
     def test_select_order_returns_varorderresult(self, var2_data):
-        """select_order() returns VAROrderResult with dict-style access.
+        """select_order() returns a typed VAROrderResult.
 
         covers: code/python/Ts/TsModels/_var.py::VAROrderResult [class]
         covers: code/python/Ts/TsModels/_var.py::VAR.select_order [function]
         covers: code/python/Ts/TsModels/_var.py::VAROrderResult.summary [function]
         covers: code/python/Ts/TsModels/_var.py::VAROrderResult.__repr__ [function]
-        covers: code/python/Ts/TsModels/_var.py::VAROrderResult.__getitem__ [function]
-        covers: code/python/Ts/TsModels/_var.py::VAROrderResult.__contains__ [function]
-        covers: code/python/Ts/TsModels/_var.py::VAROrderResult.get [function]
         """
         from Ts.TsModels._var import VAR, VAROrderResult
 
         result = VAR.select_order(var2_data, max_lags=4, criterion="aic")
         assert isinstance(result, VAROrderResult)
-        # Backward-compatible dict access
-        assert "selected_lag" in result
-        assert "values" in result
-        assert result["criterion"] == "aic"
-        assert 1 <= result["selected_lag"] <= 4
-        # New attributes
+        assert result.criterion == "aic"
+        assert 1 <= result.selected_lag <= 4
+        assert not hasattr(result, "values")
+        with pytest.raises(TypeError):
+            result["selected_lag"]
         assert result.max_lags == 4
         assert result.nobs > 0
         assert "aic" in result.criteria_table
@@ -479,7 +480,6 @@ class TestVARCovers:
         covers: code/python/Ts/TsModels/_var.py::FEVDResult.summary._row [function]
         covers: code/python/Ts/TsModels/_var.py::_stata_fmt [function]
         """
-        pass
 
 
 class TestVARResultRoots:
@@ -554,7 +554,7 @@ class TestVARPredict:
 
     def test_predict_rejects_unsupported_dynamic_mode(self, fitted_var):
         """VAR does not silently ignore a requested dynamic mode."""
-        with pytest.raises(NotImplementedError, match="dynamic"):
+        with pytest.raises(TypeError, match="dynamic"):
             fitted_var.predict(dynamic=True)
 
     def test_oos_uses_separate_evaluation_result(self, fitted_var):

@@ -52,6 +52,7 @@ from .style import (
 # Input normalisation
 # ---------------------------------------------------------------------------
 
+
 def _to_1d(data) -> np.ndarray:
     """Convert supported input types to a 1-D numpy array.
 
@@ -81,15 +82,14 @@ def _to_1d(data) -> np.ndarray:
         return data.to_numpy(dtype=float)
     arr = np.asarray(data, dtype=float)
     if arr.ndim != 1:
-        raise ValueError(
-            f"Data must be 1-D; got shape {arr.shape}."
-        )
+        raise ValueError(f"Data must be 1-D; got shape {arr.shape}.")
     return arr
 
 
 # ---------------------------------------------------------------------------
 # Shared rendering core
 # ---------------------------------------------------------------------------
+
 
 def _draw_correlogram(
     ax,
@@ -206,6 +206,7 @@ def _draw_correlogram(
 # Public functions
 # ---------------------------------------------------------------------------
 
+
 def plot_acf(
     data,
     nlags: int = 40,
@@ -301,7 +302,10 @@ def plot_acf(
         fig = ax.figure
 
     _draw_correlogram(
-        ax, lags, acf_vals, conf_band,
+        ax,
+        lags,
+        acf_vals,
+        conf_band,
         bar_color=color,
         band_color=band_color,
         band_alpha=band_alpha,
@@ -407,7 +411,10 @@ def plot_pacf(
         fig = ax.figure
 
     _draw_correlogram(
-        ax, lags, pacf_vals, conf_band,
+        ax,
+        lags,
+        pacf_vals,
+        conf_band,
         bar_color=color,
         band_color=band_color,
         band_alpha=band_alpha,

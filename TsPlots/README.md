@@ -84,10 +84,13 @@ from Ts.TsPlots import plot_series
 
 # 基础用法：DataFrame，多系列
 t = np.arange(2000, 2026)
-df = pd.DataFrame({
-    "GDP增长率": np.random.normal(6.5, 1, 26),
-    "CPI增长率": np.random.normal(2.3, 0.8, 26),
-}, index=t)
+df = pd.DataFrame(
+    {
+        "GDP增长率": np.random.normal(6.5, 1, 26),
+        "CPI增长率": np.random.normal(2.3, 0.8, 26),
+    },
+    index=t,
+)
 fig, ax = plot_series(df, title="宏观经济指标", ytitle="增长率（%）", grid=True)
 
 # 高级用法：阴影 + 参考线 + 注释
@@ -165,25 +168,41 @@ import numpy as np, pandas as pd
 from Ts.TsPlots import plot_scatter
 
 # 基础用法：DataFrame + 趋势线 + 单位标签
-df = pd.DataFrame({
-    "收入": np.random.normal(50, 10, 80),
-    "消费": np.random.normal(35, 8, 80),
-    "地区": np.random.choice(["东部", "西部", "中部"], 80),
-})
-fig, ax = plot_scatter(df, x="收入", y="消费",
-                       fit_line=True, x_unit="千元", y_unit="千元",
-                       title="收入与消费关系")
+df = pd.DataFrame(
+    {
+        "收入": np.random.normal(50, 10, 80),
+        "消费": np.random.normal(35, 8, 80),
+        "地区": np.random.choice(["东部", "西部", "中部"], 80),
+    }
+)
+fig, ax = plot_scatter(
+    df,
+    x="收入",
+    y="消费",
+    fit_line=True,
+    x_unit="千元",
+    y_unit="千元",
+    title="收入与消费关系",
+)
 
 # 分组散点图
-fig, ax = plot_scatter(df, x="收入", y="消费",
-                       group="地区", fit_line=True,
-                       legend_bbox=(1.02, 1), legend_loc="upper left")
+fig, ax = plot_scatter(
+    df,
+    x="收入",
+    y="消费",
+    group="地区",
+    fit_line=True,
+    legend_bbox=(1.02, 1),
+    legend_loc="upper left",
+)
 
 # 直接传入数组
 fig, ax = plot_scatter(
     x=np.random.normal(0, 1, 100),
     y=np.random.normal(0, 1, 100),
-    hlines=0, vlines=0, fit_line=True,
+    hlines=0,
+    vlines=0,
+    fit_line=True,
 )
 ```
 
@@ -240,6 +259,7 @@ fig, ax = plot_pacf(residuals, nlags=20, alpha=0.01)
 
 # 嵌入子图网格
 import matplotlib.pyplot as plt
+
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 plot_acf(series, ax=ax1)
 plot_pacf(series, ax=ax2)

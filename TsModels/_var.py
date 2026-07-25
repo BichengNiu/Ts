@@ -10,14 +10,17 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import stats as scipy_stats
 
+from Ts.TsUtils._validation import (
+    _resolve_missing_rows,
+    validate_alpha as _validate_prediction_alpha,
+)
+
 from Ts.TsModels._base import (
     BaseModel,
     BaseModelResult,
     PredictResult,
     _normalise_model_dates,
-    _resolve_missing_rows,
     _resolve_prediction_window,
-    _validate_prediction_alpha,
 )
 
 
@@ -124,9 +127,7 @@ class IRFResult:
         def _row(cells):
             return "|" + "|".join(cells) + "|"
 
-        total_inner = (
-            len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
-        )
+        total_inner = len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
         top_border = "+" + "-" * total_inner + "+"
         hdr_sep = (
             "|"
@@ -148,17 +149,14 @@ class IRFResult:
         # header row 2: "step" + col label
         col_label = "sirf" if self.label == "Structural IRF" else "irf"
         lines.append(
-            _row(
-                [_step_cell("step")]
-                + [_val_cell(col_label) for _ in range(n_cols)]
-            )
+            _row([_step_cell("step")] + [_val_cell(col_label) for _ in range(n_cols)])
         )
 
         lines.append(hdr_sep)
 
         # data rows (step 0 .. periods)
         for h in range(self.periods + 1):
-            lines.append(
+            lines.append(  # noqa: PERF401 - explicit table rows are clearer
                 _row(
                     [_step_cell(str(h))]
                     + [
@@ -176,8 +174,7 @@ class IRFResult:
         for j in range(self.k):
             for i in range(self.k):
                 lines.append(
-                    f"({idx}) impulse = {self.names[j]},"
-                    f" response = {self.names[i]}"
+                    f"({idx}) impulse = {self.names[j]}, response = {self.names[i]}"
                 )
                 idx += 1
 
@@ -220,14 +217,10 @@ class IRFResult:
             "step": steps,
             "value": self.values[:, resp_idx, shock_idx],
             "lower": (
-                self.lower[:, resp_idx, shock_idx]
-                if self.lower is not None
-                else None
+                self.lower[:, resp_idx, shock_idx] if self.lower is not None else None
             ),
             "upper": (
-                self.upper[:, resp_idx, shock_idx]
-                if self.upper is not None
-                else None
+                self.upper[:, resp_idx, shock_idx] if self.upper is not None else None
             ),
         }
 
@@ -259,8 +252,8 @@ class FEVDResult:
         Variable names.
     method : str
         CI method (``"mc"`` for Monte Carlo).
-    alpha : float
-        Significance level for confidence bands.
+    alpha : float or None
+        Significance level for confidence bands; `None` for point estimates.
     n_draws : int
         Number of Monte Carlo draws.
     """
@@ -272,7 +265,7 @@ class FEVDResult:
     k: int
     names: list
     method: str
-    alpha: float
+    alpha: float | None
     n_draws: int
 
     def summary(self) -> str:
@@ -285,9 +278,13 @@ class FEVDResult:
         -------
         str
         """
-        ci_pct = int((1 - self.alpha) * 100)
+        if self.alpha is None:
+            title = "FEVD Results (point estimates)"
+        else:
+            ci_pct = int((1 - self.alpha) * 100)
+            title = f"FEVD Results ({ci_pct}% CI)"
         lines = [
-            f"FEVD Results ({ci_pct}% CI)",
+            title,
             "=" * 65,
             f"Variables: {', '.join(self.names)}",
             f"Periods: {self.periods}",
@@ -317,9 +314,7 @@ class FEVDResult:
             return "|" + "|".join(cells) + "|"
 
         # --- borders ---
-        total_inner = (
-            len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
-        )
+        total_inner = len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
         top_border = "+" + "-" * total_inner + "+"
         hdr_sep = (
             "|"
@@ -341,25 +336,17 @@ class FEVDResult:
         )
         # header row 2: "step" + "fevd" × n
         lines.append(
-            _row(
-                [_step_cell("step")]
-                + [_val_cell("fevd") for _ in range(n_cols)]
-            )
+            _row([_step_cell("step")] + [_val_cell("fevd") for _ in range(n_cols)])
         )
 
         lines.append(hdr_sep)
 
         # step 0 (all zeros, display only)
-        lines.append(
-            _row(
-                [_step_cell("0")]
-                + [_val_cell("0") for _ in range(n_cols)]
-            )
-        )
+        lines.append(_row([_step_cell("0")] + [_val_cell("0") for _ in range(n_cols)]))
 
         # data rows (step 1 .. periods)
         for h in range(self.periods):
-            lines.append(
+            lines.append(  # noqa: PERF401 - explicit table rows are clearer
                 _row(
                     [_step_cell(str(h + 1))]
                     + [
@@ -377,8 +364,7 @@ class FEVDResult:
         for j in range(self.k):
             for i in range(self.k):
                 lines.append(
-                    f"({idx}) impulse = {self.names[j]},"
-                    f" response = {self.names[i]}"
+                    f"({idx}) impulse = {self.names[j]}, response = {self.names[i]}"
                 )
                 idx += 1
 
@@ -416,14 +402,10 @@ class FEVDResult:
             "step": steps,
             "value": self.values[:, resp_idx, shock_idx],
             "lower": (
-                self.lower[:, resp_idx, shock_idx]
-                if self.lower is not None
-                else None
+                self.lower[:, resp_idx, shock_idx] if self.lower is not None else None
             ),
             "upper": (
-                self.upper[:, resp_idx, shock_idx]
-                if self.upper is not None
-                else None
+                self.upper[:, resp_idx, shock_idx] if self.upper is not None else None
             ),
         }
 
@@ -441,9 +423,6 @@ class VAROrderResult:
         Lag length that minimizes the chosen criterion.
     criterion : str
         Criterion used for selection (``"aic"``, ``"bic"``, ``"hqic"``, ``"fpe"``).
-    values : dict
-        Criterion values per lag ``{"1": val1, "2": val2, ...}``.
-        Maintained for backward compatibility.
     criteria_table : dict
         All criteria values: ``{"aic": {lag: val}, "bic": {...}, ...}``.
     endogenous : list of str
@@ -456,7 +435,6 @@ class VAROrderResult:
 
     selected_lag: int
     criterion: str
-    values: dict
     criteria_table: dict
     endogenous: list = field(default_factory=list)
     max_lags: int = 1
@@ -539,27 +517,6 @@ class VAROrderResult:
     def __repr__(self) -> str:
         return self.summary()
 
-    def __getitem__(self, key):
-        """Dict-style access for backward compatibility."""
-        if key == "selected_lag":
-            return self.selected_lag
-        if key == "criterion":
-            return self.criterion
-        if key == "values":
-            return self.values
-        raise KeyError(key)
-
-    def __contains__(self, key):
-        """Support ``in`` operator for backward compatibility."""
-        return key in ("selected_lag", "criterion", "values")
-
-    def get(self, key, default=None):
-        """Dict-style .get() for backward compatibility."""
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
 
 @dataclass
 class _GrangerEntry:
@@ -630,7 +587,11 @@ class GrangerCausalityResult:
 def _format_single(entry, kind):
     """Format a single Granger test entry as a compact table."""
     stat_label = "F" if kind == "f" else "chi2"
-    df_str = f"{entry.df[0]}, {entry.df[1]}" if isinstance(entry.df, tuple) else str(entry.df)
+    df_str = (
+        f"{entry.df[0]}, {entry.df[1]}"
+        if isinstance(entry.df, tuple)
+        else str(entry.df)
+    )
     sig = _sig_star(entry.p_value)
     cause_str = ", ".join(entry.causing)
     eq_w = max(len(entry.caused), 8) + 2
@@ -639,14 +600,16 @@ def _format_single(entry, kind):
     top_rule = "=" * 60
     sep_rule = "-" * 60
 
-    return "\n".join([
-        "Granger Causality Test",
-        top_rule,
-        f"{'Equation':<{eq_w}s} {'Excluded':<{ex_w}s} {stat_label:>10s} {'df':>10s} {'p-value':>10s}",
-        sep_rule,
-        f"{entry.caused:<{eq_w}s} {cause_str:<{ex_w}s} {entry.test_statistic:>10.4f} {df_str:>10s} {entry.p_value:>10.4f} {sig}",
-        sep_rule,
-    ])
+    return "\n".join(
+        [
+            "Granger Causality Test",
+            top_rule,
+            f"{'Equation':<{eq_w}s} {'Excluded':<{ex_w}s} {stat_label:>10s} {'df':>10s} {'p-value':>10s}",
+            sep_rule,
+            f"{entry.caused:<{eq_w}s} {cause_str:<{ex_w}s} {entry.test_statistic:>10.4f} {df_str:>10s} {entry.p_value:>10.4f} {sig}",
+            sep_rule,
+        ]
+    )
 
 
 def _format_table(entries, kind):
@@ -685,10 +648,7 @@ def _format_table(entries, kind):
         )
 
     lines.append(top_rule)
-    lines.append(
-        "Significance codes:  "
-        "** p<0.01  * p<0.05  . p<0.10"
-    )
+    lines.append("Significance codes:  ** p<0.01  * p<0.05  . p<0.10")
     return "\n".join(lines)
 
 
@@ -838,9 +798,7 @@ class VARResult(BaseModelResult):
                 pv = pv_flat.get(name)
                 se_str = f"{se:.4f}" if se is not None else "N/A"
                 pv_str = f"{pv:.4f}" if pv is not None else "N/A"
-                lines.append(
-                    f"  {display:<30s} {val:>10.4f}  ({se_str})  p={pv_str}"
-                )
+                lines.append(f"  {display:<30s} {val:>10.4f}  ({se_str})  p={pv_str}")
             for prefix in ("const", "trend", "trend2"):
                 det_name = f"{prefix}.{var_name}"
                 if det_name in params_flat:
@@ -876,7 +834,7 @@ class VARResult(BaseModelResult):
         fig, axes = plt.subplots(k, 1, figsize=(10, 3 * k), squeeze=False)
         axes = axes[:, 0]
 
-        data_aligned = self.data[-self.fitted_values.shape[0]:]
+        data_aligned = self.data[-self.fitted_values.shape[0] :]
 
         for i in range(k):
             name = self._data_names[i]
@@ -1012,8 +970,7 @@ class VARResult(BaseModelResult):
             raise RuntimeError("No fitted VAR result available")
 
         cache_hit = (
-            self._irf_cache is not None
-            and self._irf_cache["periods"] == periods
+            self._irf_cache is not None and self._irf_cache["periods"] == periods
         )
 
         if not cache_hit:
@@ -1166,7 +1123,7 @@ class VARResult(BaseModelResult):
             A_mats = []
             for lag_i in range(lags):
                 start = n_det + lag_i * k
-                A_lag = params_d[start:start + k, :].T  # (k, k)
+                A_lag = params_d[start : start + k, :].T  # (k, k)
                 A_mats.append(A_lag)
 
             # MA coefficients via recursion
@@ -1242,8 +1199,10 @@ class VARResult(BaseModelResult):
             for j in range(k):
                 ax = axes[i, j]
                 ax.plot(
-                    range(periods + 1), irf_result.values[:, i, j],
-                    color=color, linewidth=1.2,
+                    range(periods + 1),
+                    irf_result.values[:, i, j],
+                    color=color,
+                    linewidth=1.2,
                 )
                 ax.axhline(0, color="#999999", linewidth=0.5, linestyle="--")
 
@@ -1252,7 +1211,9 @@ class VARResult(BaseModelResult):
                         range(periods + 1),
                         irf_result.lower[:, i, j],
                         irf_result.upper[:, i, j],
-                        color=color, alpha=0.15, linewidth=0,
+                        color=color,
+                        alpha=0.15,
+                        linewidth=0,
                     )
 
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -1275,7 +1236,8 @@ class VARResult(BaseModelResult):
         model_label = self.model_type
         fig.suptitle(
             f"{model_label}({self._lags}): {irf_type} ({periods} periods, {ci_label} CI)",
-            fontsize=TITLE_FONTSIZE, fontweight="bold",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
         )
         fig.tight_layout(pad=1.5)
         return fig, axes
@@ -1329,7 +1291,7 @@ class VARResult(BaseModelResult):
         if isinstance(causing, str):
             causing = [causing]
         causing_idx = []
-        for c in (causing if isinstance(causing, list) else [causing]):
+        for c in causing if isinstance(causing, list) else [causing]:
             if isinstance(c, str):
                 causing_idx.append(self._data_names.index(c))
             else:
@@ -1424,17 +1386,25 @@ class VARResult(BaseModelResult):
 
         theta = np.linspace(0, 2 * np.pi, 400)
         ax.plot(
-            np.cos(theta), np.sin(theta),
-            color=DEFAULT_PALETTE[1], linewidth=1.0, linestyle="--",
+            np.cos(theta),
+            np.sin(theta),
+            color=DEFAULT_PALETTE[1],
+            linewidth=1.0,
+            linestyle="--",
         )
 
         ax.axhline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
         ax.axvline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
 
         ax.scatter(
-            inv_roots.real, inv_roots.imag,
-            color=DEFAULT_PALETTE[0], marker="o", s=50,
-            edgecolors=DEFAULT_PALETTE[7], linewidth=0.5, zorder=5,
+            inv_roots.real,
+            inv_roots.imag,
+            color=DEFAULT_PALETTE[0],
+            marker="o",
+            s=50,
+            edgecolors=DEFAULT_PALETTE[7],
+            linewidth=0.5,
+            zorder=5,
         )
 
         ax.set_aspect("equal")
@@ -1456,7 +1426,7 @@ class VARResult(BaseModelResult):
         fig.tight_layout(pad=1.5)
         return fig, ax
 
-    def predict(self, start=0, end=None, dynamic=False, alpha=0.05):
+    def predict(self, start=0, end=None, alpha=0.05):
         """Return in-sample predictions and forecasts beyond the sample.
 
         Parameters
@@ -1466,8 +1436,6 @@ class VARResult(BaseModelResult):
         end : int, optional
             End index. If > nobs-1, performs out-of-sample forecast.
             Default: nobs-1.
-        dynamic : bool
-            Dynamic prediction is not supported for VAR.
         alpha : float
             Significance level for confidence intervals (default 0.05).
 
@@ -1477,11 +1445,6 @@ class VARResult(BaseModelResult):
         """
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
-        if dynamic:
-            raise NotImplementedError(
-                "dynamic prediction is not supported for VAR"
-            )
-
         nobs = self.nobs
         k = self._k
         window = _resolve_prediction_window(nobs, start, end)
@@ -1513,7 +1476,7 @@ class VARResult(BaseModelResult):
 
         else:
             # Pure in-sample
-            mean = self.fitted_values[start:end + 1].copy()
+            mean = self.fitted_values[start : end + 1].copy()
 
         return PredictResult(
             mean=mean,
@@ -1541,7 +1504,7 @@ class VARResult(BaseModelResult):
         lower : np.ndarray (steps, k)
         upper : np.ndarray (steps, k)
         """
-        fc = self._var_result.forecast(self.data[-self._lags:], steps=steps)
+        fc = self._var_result.forecast(self.data[-self._lags :], steps=steps)
         mean = np.asarray(fc)
         fc_lower, fc_upper = self._forecast_ci(mean=mean, steps=steps, z_val=z_val)
         return mean, fc_lower, fc_upper
@@ -1630,8 +1593,7 @@ class VARResult(BaseModelResult):
         except np.linalg.LinAlgError:
             return None
 
-        mu = inv_mat @ c_vec
-        return mu
+        return inv_mat @ c_vec
 
 
 class VAR(BaseModel):
@@ -1680,9 +1642,7 @@ class VAR(BaseModel):
 
         y = np.asarray(data, dtype=float)
         if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+            raise ValueError(f"data must be 2-D (nobs, k), got shape {y.shape}")
 
         # Resolve variable names
         if cols is not None:
@@ -1752,28 +1712,20 @@ class VAR(BaseModel):
         Returns
         -------
         VAROrderResult
-            Result object with ``summary()`` for formatted table display,
-            and dict-style access for backward compatibility.
+            Result object with ``summary()`` for formatted table display.
         """
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
 
         # Column selection for DataFrame inputs (consistent with VAR.__init__)
-        if hasattr(data, "columns"):
-            if cols is not None:
-                data = data[cols]
+        if hasattr(data, "columns") and cols is not None:
+            data = data[cols]
 
         y = np.asarray(data, dtype=float)
         if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+            raise ValueError(f"data must be 2-D (nobs, k), got shape {y.shape}")
         finite_rows = np.all(np.isfinite(y), axis=1)
         dropped_positions = _resolve_missing_rows(finite_rows, missing)
-        if missing == "drop":
-            y = y[finite_rows]
-        else:
-            y = y.copy()
-
+        y = y[finite_rows] if missing == "drop" else y.copy()
 
         sm_model = _SM_VAR(y)
         result = sm_model.select_order(max_lags)
@@ -1781,8 +1733,7 @@ class VAR(BaseModel):
         valid_criteria = {"aic", "bic", "hqic", "fpe"}
         if criterion not in valid_criteria:
             raise ValueError(
-                f"criterion must be one of {sorted(valid_criteria)}, "
-                f"got {criterion!r}"
+                f"criterion must be one of {sorted(valid_criteria)}, got {criterion!r}"
             )
 
         # Collect all criteria values (ics values are lists, indexed by lag)
@@ -1806,6 +1757,7 @@ class VAR(BaseModel):
             if lag == 0:
                 # VAR(0): intercept only regression per equation
                 import statsmodels.api as sm_lm
+
                 ll_total = 0.0
                 n_params_total = 0
                 for eq in range(k):
@@ -1847,10 +1799,8 @@ class VAR(BaseModel):
         crit_vals = criteria_table[criterion]
         best_lag = 1
         best_val = float("inf")
-        lag_values = {}
         for lag in range(1, max_lags + 1):
             val = float(crit_vals[lag])
-            lag_values[str(lag)] = val
             if val < best_val:
                 best_val = val
                 best_lag = lag
@@ -1864,7 +1814,6 @@ class VAR(BaseModel):
         return VAROrderResult(
             selected_lag=best_lag,
             criterion=criterion,
-            values=lag_values,
             criteria_table=criteria_table,
             endogenous=endogenous,
             max_lags=max_lags,
@@ -1952,7 +1901,7 @@ class VAR(BaseModel):
             regressor_names.append("trend2")
         for lag in range(1, lags + 1):
             for vj in range(k):
-                regressor_names.append(f"L{lag}.{self.data_names[vj]}")
+                regressor_names.append(f"L{lag}.{self.data_names[vj]}")  # noqa: PERF401 - explicit ordering
 
         for reg_name in regressor_names:
             for eq_idx in range(k):

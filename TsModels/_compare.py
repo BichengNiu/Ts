@@ -6,6 +6,7 @@ comparison tables across multiple fitted model results.
 
 from __future__ import annotations
 
+
 def _significance_stars(pvalue):
     """Return significance stars for a p-value.
 
@@ -25,6 +26,7 @@ def _significance_stars(pvalue):
 # ---------------------------------------------------------------------------
 # Parameter grouping
 # ---------------------------------------------------------------------------
+
 
 def _param_group(name):
     """Return the group label for a parameter name."""
@@ -55,6 +57,7 @@ def _group_params(all_params):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def compare_models(models):
     """Compare multiple fitted model results in a Stata-style regression table.
 
@@ -80,9 +83,7 @@ def compare_models(models):
         If *models* is empty.
     """
     if not isinstance(models, dict):
-        raise TypeError(
-            f"models must be a dict, got {type(models).__name__}"
-        )
+        raise TypeError(f"models must be a dict, got {type(models).__name__}")
     if len(models) == 0:
         raise ValueError("models dict must not be empty")
 

@@ -10,9 +10,8 @@ from Ts.TsMetrics._evaluation import (
     expected_forecast_shape,
     model_data,
     prediction_arrays,
-    validate_alpha,
-    validate_positive_int,
 )
+from Ts.TsUtils._validation import validate_alpha, validate_positive_int
 
 
 def _optional_array(values):

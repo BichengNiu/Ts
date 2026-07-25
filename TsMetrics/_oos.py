@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from Ts.TsUtils._validation import validate_alpha
+
 from ._evaluation import (
     evaluation_actual,
     expected_forecast_shape,
@@ -11,7 +13,6 @@ from ._evaluation import (
     model_data,
     training_dates,
     training_exog,
-    validate_alpha,
     validate_model_protocol,
 )
 from ._periods import resolve_evaluation_periods

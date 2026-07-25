@@ -1,5 +1,7 @@
 """Tests for Ts.TsModels._vecm -- VECM and VECMResult."""
+
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -9,6 +11,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def vecm_data_2d():
@@ -52,6 +55,7 @@ def vecm_data_3d():
 # ---------------------------------------------------------------------------
 # TestVECMInit
 # ---------------------------------------------------------------------------
+
 
 class TestVECMInit:
     """Test VECM construction and parameter validation.
@@ -159,6 +163,7 @@ class TestVECMInit:
 # TestVECMFit
 # ---------------------------------------------------------------------------
 
+
 class TestVECMFit:
     """Test VECM.fit() estimation.
 
@@ -224,13 +229,12 @@ class TestVECMFit:
         assert isinstance(result.bic, float)
         assert isinstance(result.log_likelihood, float)
         assert result.sigma_u.shape == (3, 3)
+
     def test_info_criteria_count_only_free_parameters(self, vecm_data_3d):
         """AIC/BIC count normalized beta and deterministic terms correctly."""
         from Ts.TsModels._vecm import VECM
 
-        result = VECM(
-            vecm_data_3d, lags=2, coint_rank=2, trend="c"
-        ).fit()
+        result = VECM(vecm_data_3d, lags=2, coint_rank=2, trend="c").fit()
         k, rank, k_ar_diff = 3, 2, 1
         n_params = k * rank + (k - rank) * rank
         n_params += k * k * k_ar_diff
@@ -248,6 +252,7 @@ class TestVECMFit:
         model = VECM(vecm_data_3d, lags=2, coint_rank=2, trend="n")
         result = model.fit()
         assert result is not None
+
     @pytest.mark.parametrize(
         ("trend", "deterministic", "expected_keys"),
         [
@@ -264,14 +269,11 @@ class TestVECMFit:
         """Every public trend maps correctly and produces a valid summary."""
         from Ts.TsModels._vecm import VECM
 
-        result = VECM(
-            vecm_data_3d, lags=2, coint_rank=2, trend=trend
-        ).fit()
+        result = VECM(vecm_data_3d, lags=2, coint_rank=2, trend=trend).fit()
 
         assert result._vecm_result.model.deterministic == deterministic
         assert expected_keys <= result.params.keys()
         assert "Vector error-correction model" in result.summary()
-
 
     def test_fit_with_custom_cols(self, vecm_data_3d):
         """Custom column names appear in result.
@@ -280,8 +282,9 @@ class TestVECMFit:
         """
         from Ts.TsModels._vecm import VECM
 
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         result = model.fit()
         assert result._data_names == ["Z", "Y", "X"]
 
@@ -289,6 +292,7 @@ class TestVECMFit:
 # ---------------------------------------------------------------------------
 # TestVECMResultSummary
 # ---------------------------------------------------------------------------
+
 
 class TestVECMResultSummary:
     """Test VECMResult.summary() output format.
@@ -300,8 +304,10 @@ class TestVECMResultSummary:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for summary tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_summary_contains_header(self, fitted):
@@ -352,6 +358,7 @@ class TestVECMResultSummary:
 # TestVECMResultIRF
 # ---------------------------------------------------------------------------
 
+
 class TestVECMResultIRF:
     """Test VECM impulse response functions.
 
@@ -362,8 +369,10 @@ class TestVECMResultIRF:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for IRF tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_irf_returns_irf_result(self, fitted):
@@ -372,6 +381,7 @@ class TestVECMResultIRF:
         covers: code/python/Ts/TsModels/_vecm.py::VECMResult.irf [function]
         """
         from Ts.TsModels._var import IRFResult
+
         irf = fitted.irf(periods=10, orth=False)
         assert isinstance(irf, IRFResult)
 
@@ -397,6 +407,7 @@ class TestVECMResultIRF:
 # TestVECMResultPredict
 # ---------------------------------------------------------------------------
 
+
 class TestVECMResultPredict:
     """Test VECM predict method.
 
@@ -407,8 +418,10 @@ class TestVECMResultPredict:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for predict tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_predict_in_sample_shape(self, fitted):
@@ -440,13 +453,14 @@ class TestVECMResultPredict:
 
     def test_predict_rejects_unsupported_dynamic_mode(self, fitted):
         """VECM does not silently ignore a requested dynamic mode."""
-        with pytest.raises(NotImplementedError, match="dynamic"):
+        with pytest.raises(TypeError, match="dynamic"):
             fitted.predict(dynamic=True)
 
 
 # ---------------------------------------------------------------------------
 # TestVECMResultDiagnostics
 # ---------------------------------------------------------------------------
+
 
 class TestVECMResultDiagnostics:
     """Test VECM diagnostic plots and residual tests.
@@ -459,8 +473,10 @@ class TestVECMResultDiagnostics:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for diagnostics tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_plot_diagnostics_returns_fig_axes(self, fitted):
@@ -470,6 +486,7 @@ class TestVECMResultDiagnostics:
         """
         fig, axes = fitted.plot_diagnostics()
         import matplotlib.pyplot as plt
+
         assert isinstance(fig, plt.Figure)
         assert axes is not None
 
@@ -488,6 +505,7 @@ class TestVECMResultDiagnostics:
 # TestVECMSelectOrder
 # ---------------------------------------------------------------------------
 
+
 class TestVECMSelectOrder:
     """Test VECM.select_order static method.
 
@@ -503,8 +521,9 @@ class TestVECMSelectOrder:
         """
         from Ts.TsModels._vecm import VECM
 
-        result = VECM.select_order(vecm_data_3d, max_lags=4,
-                                   coint_rank=2, criterion="aic")
+        result = VECM.select_order(
+            vecm_data_3d, max_lags=4, coint_rank=2, criterion="aic"
+        )
         assert result.selected_lag >= 1
 
     def test_vecm_order_result_summary(self, vecm_data_3d):
@@ -514,8 +533,9 @@ class TestVECMSelectOrder:
         """
         from Ts.TsModels._vecm import VECM
 
-        result = VECM.select_order(vecm_data_3d, max_lags=3,
-                                   coint_rank=2, criterion="aic")
+        result = VECM.select_order(
+            vecm_data_3d, max_lags=3, coint_rank=2, criterion="aic"
+        )
         s = result.summary()
         assert "VECM Lag Order" in s
         assert "AIC" in s
@@ -527,8 +547,9 @@ class TestVECMSelectOrder:
         """
         from Ts.TsModels._vecm import VECM
 
-        result = VECM.select_order(vecm_data_3d, max_lags=3,
-                                   coint_rank=2, criterion="aic")
+        result = VECM.select_order(
+            vecm_data_3d, max_lags=3, coint_rank=2, criterion="aic"
+        )
         r = repr(result)
         assert isinstance(r, str)
         assert "VECM Lag Order" in r
@@ -537,17 +558,12 @@ class TestVECMSelectOrder:
         """BIC selection reports BIC values rather than relabelled AIC."""
         from Ts.TsModels._vecm import VECM
 
-        aic = VECM.select_order(
-            vecm_data_3d, max_lags=3, coint_rank=2, criterion="aic"
-        )
-        bic = VECM.select_order(
-            vecm_data_3d, max_lags=3, coint_rank=2, criterion="bic"
-        )
+        aic = VECM.select_order(vecm_data_3d, max_lags=3, coint_rank=2, criterion="aic")
+        bic = VECM.select_order(vecm_data_3d, max_lags=3, coint_rank=2, criterion="bic")
 
         assert bic.criterion == "bic"
         assert any(
-            bic.values[lag] != pytest.approx(aic.values[lag])
-            for lag in bic.values
+            bic.values[lag] != pytest.approx(aic.values[lag]) for lag in bic.values
         )
 
     def test_select_order_rejects_invalid_criterion(self, vecm_data_3d):
@@ -555,9 +571,7 @@ class TestVECMSelectOrder:
         from Ts.TsModels._vecm import VECM
 
         with pytest.raises(ValueError, match="criterion"):
-            VECM.select_order(
-                vecm_data_3d, max_lags=3, coint_rank=2, criterion="hqic"
-            )
+            VECM.select_order(vecm_data_3d, max_lags=3, coint_rank=2, criterion="hqic")
 
     def test_select_order_raises_when_all_candidates_fail(self):
         """A failed search cannot silently report lag one as successful."""
@@ -571,6 +585,7 @@ class TestVECMSelectOrder:
 # TestVECMResultFEVD
 # ---------------------------------------------------------------------------
 
+
 class TestVECMResultFEVD:
     """Test VECM FEVD method.
 
@@ -581,8 +596,10 @@ class TestVECMResultFEVD:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for FEVD tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_fevd_returns_fevd_result(self, fitted):
@@ -591,6 +608,7 @@ class TestVECMResultFEVD:
         covers: code/python/Ts/TsModels/_vecm.py::VECMResult.fevd [function]
         """
         from Ts.TsModels._var import FEVDResult
+
         f = fitted.fevd(periods=5)
         assert isinstance(f, FEVDResult)
 
@@ -602,10 +620,16 @@ class TestVECMResultFEVD:
         f = fitted.fevd(periods=5)
         assert f.values.shape == (5, 3, 3)
 
+    def test_fevd_rejects_removed_alpha_argument(self, fitted):
+        """Point-only VECM FEVD does not accept an unused alpha argument."""
+        with pytest.raises(TypeError):
+            fitted.fevd(periods=5, alpha=0.1)
+
 
 # ---------------------------------------------------------------------------
 # TestVECMResultGranger
 # ---------------------------------------------------------------------------
+
 
 class TestVECMResultGranger:
     """Test VECM Granger causality.
@@ -617,8 +641,10 @@ class TestVECMResultGranger:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for Granger tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_granger_single_pair(self, fitted):
@@ -672,6 +698,7 @@ class TestVECMResultGranger:
 # TestVECMResultIsStable
 # ---------------------------------------------------------------------------
 
+
 class TestVECMResultIsStable:
     """Test VECM is_stable property.
 
@@ -682,8 +709,10 @@ class TestVECMResultIsStable:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for stability tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_is_stable_returns_bool(self, fitted):
@@ -699,6 +728,7 @@ class TestVECMResultIsStable:
 # TestVECMResultPlotRoots
 # ---------------------------------------------------------------------------
 
+
 class TestVECMResultPlotRoots:
     """Test VECM plot_roots method.
 
@@ -709,8 +739,10 @@ class TestVECMResultPlotRoots:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for plot_roots tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_plot_roots_returns_fig_ax(self, fitted):
@@ -719,13 +751,15 @@ class TestVECMResultPlotRoots:
         covers: code/python/Ts/TsModels/_vecm.py::VECMResult.plot_roots [function]
         """
         import matplotlib.pyplot as plt
-        fig, ax = fitted.plot_roots()
+
+        fig, _ax = fitted.plot_roots()
         assert isinstance(fig, plt.Figure)
 
 
 # ---------------------------------------------------------------------------
 # TestVECMResultRepr
 # ---------------------------------------------------------------------------
+
 
 class TestVECMResultRepr:
     """Test VECMResult __repr__.
@@ -737,8 +771,10 @@ class TestVECMResultRepr:
     def fitted(self, vecm_data_3d):
         """Return a fitted VECMResult for repr tests."""
         from Ts.TsModels._vecm import VECM
-        model = VECM(vecm_data_3d, lags=2, coint_rank=2,
-                    trend="c", cols=["Z", "Y", "X"])
+
+        model = VECM(
+            vecm_data_3d, lags=2, coint_rank=2, trend="c", cols=["Z", "Y", "X"]
+        )
         return model.fit()
 
     def test_repr_returns_string(self, fitted):
@@ -755,6 +791,7 @@ class TestVECMResultRepr:
 # TestPrivateHelpers
 # ---------------------------------------------------------------------------
 
+
 class TestPrivateHelpers:
     """Test private helper functions.
 
@@ -765,7 +802,7 @@ class TestPrivateHelpers:
     @pytest.fixture
     def _dummy(self):
         """Dummy fixture for injectable tests."""
-        return None
+        return
 
     def test_compute_equation_stats(self, _dummy):
         """_compute_equation_stats returns dict with expected keys.

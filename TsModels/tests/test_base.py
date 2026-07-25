@@ -1,6 +1,7 @@
 """Tests for Ts.TsModels._base — BaseModel ABC and BaseModelResult dataclass."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -116,7 +117,7 @@ class TestBaseModelResult:
 
     def test_plot_diagnostics_shows_test_results(self, result):
         """plot_diagnostics() residuals panel must annotate WN + JB test results."""
-        fig, axes = result.plot_diagnostics()
+        _fig, axes = result.plot_diagnostics()
         ax_resid = axes[0]
         texts = [t.get_text() for t in ax_resid.texts]
         combined = " ".join(texts)
@@ -140,7 +141,6 @@ class TestBaseModelResult:
         covers: code/python/Ts/TsModels/_base.py::BaseModel.fit [function]
         covers: code/python/Ts/TsModels/_base.py::BaseModel.summary [function]
         """
-        pass
 
 
 class TestBaseModel:
@@ -312,6 +312,7 @@ class TestPredictResultPlot:
         assert fig is not None
         assert ax is not None
         import matplotlib.pyplot as plt
+
         plt.close(fig)
 
     def test_plot_with_ci(self):
@@ -340,9 +341,10 @@ class TestPredictResultPlot:
             _start=100,
         )
 
-        fig, ax = pr.plot(ci=True)
+        fig, _ax = pr.plot(ci=True)
         assert fig is not None
         import matplotlib.pyplot as plt
+
         plt.close(fig)
 
     def test_plot_forecast_ci_has_fitted_boundary_anchor(self):
@@ -374,6 +376,7 @@ class TestPredictResultPlot:
         assert 9 in band_x
         assert 10 in band_x
         import matplotlib.pyplot as plt
+
         plt.close(fig)
 
     def test_plot_first_forecast_uses_preceding_sample_point(self):
@@ -391,10 +394,13 @@ class TestPredictResultPlot:
         )
 
         fig, ax = pr.plot()
-        forecast_line = next(line for line in ax.lines if line.get_label() == "Forecast")
+        forecast_line = next(
+            line for line in ax.lines if line.get_label() == "Forecast"
+        )
 
         assert np.array_equal(forecast_line.get_xdata(), np.array([4, 5]))
         import matplotlib.pyplot as plt
+
         plt.close(fig)
 
     def test_plot_no_full_data(self):
@@ -413,9 +419,10 @@ class TestPredictResultPlot:
             is_oos=is_oos,
         )
 
-        fig, ax = pr.plot()
+        fig, _ax = pr.plot()
         assert fig is not None
         import matplotlib.pyplot as plt
+
         plt.close(fig)
 
     def test_plot_custom_title(self):
@@ -433,4 +440,5 @@ class TestPredictResultPlot:
         fig, ax = pr.plot(title="Custom Title")
         assert ax.get_title() == "Custom Title"
         import matplotlib.pyplot as plt
+
         plt.close(fig)

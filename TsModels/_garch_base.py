@@ -12,12 +12,13 @@ import types
 import numpy as np
 import pandas as pd
 
+from Ts.TsUtils._validation import _resolve_missing_rows
+
 from Ts.TsModels._base import (
     _GARCH_M_FORMS,
     _VOL_TYPES,
     BaseModel,
     _normalise_model_dates,
-    _resolve_missing_rows,
 )
 from Ts.TsModels._garch_result import (
     _DIST_LABELS,
@@ -35,21 +36,19 @@ class _BaseVolModel(BaseModel):
     IGARCH (custom MLE), and exogenous regressors.
     """
 
-    _evaluation_target_name = 'absolute_demeaned_return_proxy'
-    _backcast_target_name = 'conditional_volatility'
+    _evaluation_target_name = "absolute_demeaned_return_proxy"
+    _backcast_target_name = "conditional_volatility"
 
     def _evaluation_actual(self, observed, train_data):
-        '''Use absolute returns centred on the active training-window mean.'''
-        return np.abs(
-            np.asarray(observed, dtype=float) - np.mean(train_data)
-        )
+        """Use absolute returns centred on the active training-window mean."""
+        return np.abs(np.asarray(observed, dtype=float) - np.mean(train_data))
 
     def _validate_evaluation(self, context):
-        '''Reject evaluation that lacks required future exogenous values.'''
+        """Reject evaluation that lacks required future exogenous values."""
         if self.exog is not None:
             raise NotImplementedError(
-                f'GARCH {context} with exog requires explicit future '
-                'or pre-sample exogenous values'
+                f"GARCH {context} with exog requires explicit future "
+                "or pre-sample exogenous values"
             )
 
     def __init__(
@@ -98,7 +97,6 @@ class _BaseVolModel(BaseModel):
         else:
             y = raw_data.copy()
 
-
         if p < 1:
             raise ValueError(f"p must be >= 1, got {p}")
         if q < 0:
@@ -106,13 +104,9 @@ class _BaseVolModel(BaseModel):
         if o < 0:
             raise ValueError(f"o must be >= 0, got {o}")
         if vol not in _VOL_TYPES:
-            raise ValueError(
-                f"vol must be one of {sorted(_VOL_TYPES)}, got {vol!r}"
-            )
+            raise ValueError(f"vol must be one of {sorted(_VOL_TYPES)}, got {vol!r}")
         if len(y) < 10:
-            raise ValueError(
-                f"Need at least 10 observations, got {len(y)}"
-            )
+            raise ValueError(f"Need at least 10 observations, got {len(y)}")
         if garch_m and garch_m_form not in _GARCH_M_FORMS:
             raise ValueError(
                 f"garch_m_form must be one of {sorted(_GARCH_M_FORMS)}, "
@@ -126,14 +120,9 @@ class _BaseVolModel(BaseModel):
                     "Use vol='GARCH' for IGARCH estimation."
                 )
             if garch_m:
-                raise ValueError(
-                    "IGARCH is not supported for GARCH-M (garch_m=True)."
-                )
+                raise ValueError("IGARCH is not supported for GARCH-M (garch_m=True).")
             if q < 1:
-                raise ValueError(
-                    f"IGARCH requires q >= 1 (GARCH component), got q={q}"
-                )
-
+                raise ValueError(f"IGARCH requires q >= 1 (GARCH component), got q={q}")
 
         self.data = y
         self.missing = missing
@@ -179,30 +168,16 @@ class _BaseVolModel(BaseModel):
         """
         from scipy.optimize import minimize
 
-        try:
-            garch_fit = self._fit_standard()
-            garch_params = garch_fit.params
-        except Exception:
-            garch_params = None
-
-        if garch_params is not None and "omega" in garch_params:
-            omega0 = max(garch_params["omega"], 1e-6)
-            alpha0 = [max(garch_params.get(f"alpha[{i}]", 0.05), 0.01)
-                      for i in range(1, self.p + 1)]
-            beta0 = [max(garch_params.get(f"beta[{j}]", 0.05), 0.01)
-                     for j in range(1, self.q)]
-        else:
-            var = float(np.var(self.data))
-            omega0 = max(var * 0.05, 1e-6)
-            alpha0 = [0.10 / self.p] * self.p
-            n_free_beta = self.q - 1
-            beta0 = (
-                [0.80 / n_free_beta] * n_free_beta
-                if n_free_beta > 0
-                else []
+        garch_params = self._fit_standard().params
+        if "omega" not in garch_params:
+            raise RuntimeError(
+                "Unconstrained GARCH initialization did not return omega"
             )
+        omega0 = max(garch_params["omega"], 1e-6)
+        alpha0 = [max(garch_params[f"alpha[{i}]"], 0.01) for i in range(1, self.p + 1)]
+        beta0 = [max(garch_params[f"beta[{j}]"], 0.01) for j in range(1, self.q)]
 
-        x0 = np.array([omega0] + alpha0 + beta0, dtype=float)
+        x0 = np.array([omega0, *alpha0, *beta0], dtype=float)
         bounds = [(1e-6, None)] + [(1e-6, None)] * (self.p + max(self.q - 1, 0))
 
         res = minimize(
@@ -215,18 +190,13 @@ class _BaseVolModel(BaseModel):
         )
 
         if not res.success or not np.isfinite(res.fun):
-            raise RuntimeError(
-                "IGARCH optimization failed to converge: "
-                f"{res.message}"
-            )
+            raise RuntimeError(f"IGARCH optimization failed to converge: {res.message}")
 
-        std_errors, p_values = self._igarch_std_errors(
-            res.x, self.data, self.p, self.q
-        )
+        std_errors, p_values = self._igarch_std_errors(res.x, self.data, self.p, self.q)
 
         omega = res.x[0]
-        alphas = res.x[1:1 + self.p]
-        betas_free = res.x[1 + self.p:]
+        alphas = res.x[1 : 1 + self.p]
+        betas_free = res.x[1 + self.p :]
         beta_last = 1.0 - sum(alphas) - sum(betas_free)
 
         params = {"omega": omega}
@@ -283,8 +253,8 @@ class _BaseVolModel(BaseModel):
         """
         n = len(data)
         omega = x[0]
-        alpha = x[1:1 + p]
-        beta_free = x[1 + p:]
+        alpha = x[1 : 1 + p]
+        beta_free = x[1 + p :]
         beta_last = 1.0 - sum(alpha) - sum(beta_free)
         all_beta = np.append(beta_free, beta_last)
 
@@ -307,7 +277,7 @@ class _BaseVolModel(BaseModel):
 
         Soft-penalty when derived beta_q < 0.
         """
-        beta_last = 1.0 - sum(x[1:1 + p]) - sum(x[1 + p:])
+        beta_last = 1.0 - sum(x[1 : 1 + p]) - sum(x[1 + p :])
 
         if beta_last < 0:
             return 1e15 * (1.0 - beta_last)
@@ -316,8 +286,7 @@ class _BaseVolModel(BaseModel):
         sigma2 = np.maximum(sigma2, 1e-10)
         eps = data - np.mean(data)
 
-        nll = 0.5 * np.sum(np.log(2.0 * np.pi) + np.log(sigma2) + eps ** 2 / sigma2)
-        return nll
+        return 0.5 * np.sum(np.log(2.0 * np.pi) + np.log(sigma2) + eps**2 / sigma2)
 
     def _igarch_std_errors(self, x, data, p, q):
         """Compute standard errors from numerical Hessian at the optimum.
@@ -386,7 +355,9 @@ class _BaseVolModel(BaseModel):
         p_values = {}
 
         std_errors["omega"] = float(se[0])
-        p_values["omega"] = float(1.0 - chi2_dist.cdf((x[0] / max(se[0], 1e-10)) ** 2, 1))
+        p_values["omega"] = float(
+            1.0 - chi2_dist.cdf((x[0] / max(se[0], 1e-10)) ** 2, 1)
+        )
 
         for i in range(p):
             name = f"alpha[{i + 1}]"
@@ -416,10 +387,7 @@ class _BaseVolModel(BaseModel):
         """Fit standard GARCH/ARCH via :func:`arch.arch_model`."""
         from arch import arch_model
 
-        if self.vol == "EGARCH":
-            q_arg = self.q
-        else:
-            q_arg = self.q if self.q > 0 else 1
+        q_arg = self.q if self.vol == "EGARCH" or self.q > 0 else 1
 
         am = arch_model(
             self.data,
@@ -592,13 +560,15 @@ class _BaseVolModel(BaseModel):
                     ind_aic[k - 1] = float(fitted.aic)
                     ind_bic[k - 1] = float(fitted.bic)
                 else:
-                    if self.vol == "EGARCH":
-                        q_k = 0
-                    else:
-                        q_k = 1
+                    q_k = 0 if self.vol == "EGARCH" else 1
                     am_k = arch_model(
-                        self.data, x=self.exog, mean=self.mean,
-                        vol=vol_str, p=k, o=self.o, q=q_k,
+                        self.data,
+                        x=self.exog,
+                        mean=self.mean,
+                        vol=vol_str,
+                        p=k,
+                        o=self.o,
+                        q=q_k,
                         dist=self.dist,
                     )
                     f_k = am_k.fit(disp="off")

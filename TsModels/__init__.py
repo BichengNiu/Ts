@@ -1,4 +1,3 @@
-# ruff: noqa: N999
 """TsModels — Time series model estimation toolkit.
 
 This package provides unified interfaces for estimating SARIMA, GARCH, VAR,
@@ -82,7 +81,7 @@ from ._vecm import (
 )
 
 __all__ = [  # noqa: RUF022 - public API is grouped by model family
-    'BackcastResult',
+    "BackcastResult",
     "BaseModel",
     "BaseModelResult",
     "PredictResult",

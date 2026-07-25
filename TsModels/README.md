@@ -111,7 +111,7 @@ result.test_residuals(lags=10)
 | | `.fixed_params` | 因稀疏滞后设定而固定为 0 的系数 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.long_run_equilibrium()` | 无条件均值 (平稳 ARMA, d=0, trend="c" → float；否则 None) |
-| `GARCH` / `GARCHResult` | `.predict(start, end, dynamic, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
+| `GARCH` / `GARCHResult` | `.predict(start, end, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
 | | `.conditional_volatility` | 条件波动率 σ_t |
 | | `.test_persistence()` | IGARCH 持久性 Wald 检验 |
 | | `.long_run_equilibrium()` | 无条件方差 (协方差平稳 GARCH/GJR → float；EGARCH/IGARCH → None) |
@@ -120,7 +120,7 @@ result.test_residuals(lags=10)
 | | `.fevd(periods, alpha, n_draws, seed)` | 预测误差方差分解，返回 `FEVDResult`（含 Monte Carlo 置信带） |
 | | `.plot_irf(periods, orth, alpha)` | IRF 图（含置信带） |
 | | `.granger_causality(caused, causing, kind)` | Granger 因果检验（单对/联合/全部两两）——无参数时运行全部检验（等价于 Stata `vargranger`）|
-| | `.predict(start, end, dynamic, alpha)` | 多步预测与置信区间；`dynamic=True` 尚不支持并会明确报错；性能评估由 `TsMetrics` 负责 |
+| | `.predict(start, end, alpha)` | 多步预测与置信区间；性能评估由 `TsMetrics` 负责 |
 | | `.is_stable` | 逆特征根是否全部在单位圆内 (bool) |
 | | `.plot_roots(title)` | 逆特征根单位圆图 |
 | | `.long_run_equilibrium()` | 无条件均值向量 (stable, trend="c"/"n" → ndarray(k,)；否则 None) |
@@ -129,8 +129,8 @@ result.test_residuals(lags=10)
 | | `.structural_residuals` | 结构冲击序列 (ndarray nobs×k) |
 | | `.sigma_u` | 简化式残差协方差矩阵 (ndarray k×k) |
 | `VECM` / `VECMResult` | `.irf(periods, orth, alpha)` | 脉冲响应函数，返回 `IRFResult` |
-| | `.fevd(periods, alpha)` | 预测误差方差分解，返回 `FEVDResult` |
-| | `.predict(start, end, dynamic, alpha)` | 多步预测；`dynamic=True` 尚不支持，当前不提供预测区间 |
+| | `.fevd(periods)` | 预测误差方差分解，返回 `FEVDResult` |
+| | `.predict(start, end, alpha)` | 多步预测；当前不提供预测区间 |
 | | `.granger_causality(...)` | Granger 因果检验 |
 | | `.alpha` / `.beta` / `.gamma` | VECM 参数矩阵 |
 | | `.sigma_u` | 残差协方差矩阵 (ndarray k×k) |
@@ -182,10 +182,10 @@ model.backtest(
     initial_window,
     horizon=1,
     step=1,
-    window='expanding',
+    window="expanding",
     window_size=None,
     alpha=0.05,
-    on_error='raise',
+    on_error="raise",
 )
 
 model.backcast(steps, alpha=0.05)
@@ -212,9 +212,9 @@ rolling = model.backtest(
     initial_window=80,
     horizon=4,
     step=4,
-    window='rolling',
+    window="rolling",
     window_size=80,
-    on_error='record',
+    on_error="record",
 )
 ```
 
@@ -284,8 +284,21 @@ AR 多项式平稳性、MA 多项式可逆性，以及估计时是否强制这�
 ### GARCH
 
 ```python
-GARCH(data, p=1, q=1, o=0, vol="GARCH", mean="Constant", dist="normal",
-      garch_m=False, garch_m_form="vol", ar_lags=None, exog=None, dates=None, missing="raise")
+GARCH(
+    data,
+    p=1,
+    q=1,
+    o=0,
+    vol="GARCH",
+    mean="Constant",
+    dist="normal",
+    garch_m=False,
+    garch_m_form="vol",
+    ar_lags=None,
+    exog=None,
+    dates=None,
+    missing="raise",
+)
 ```
 
 纯 ARCH(p) 模型通过 `q=0` 实现：`GARCH(data, p=2, q=0)` 等价于原 ARCH(2)。
@@ -417,9 +430,21 @@ best = result.best_result  # SARIMAResult 或 GARCHResult
 ### AutoSARIMA
 
 ```python
-AutoSARIMA(data, p=(0,3), d=(0,1), q=(0,3),
-           P=(0,1), D=(0,1), Q=(0,1), s=0,
-           trend="c", criterion="aic", method="grid", dates=None, missing="raise")
+AutoSARIMA(
+    data,
+    p=(0, 3),
+    d=(0, 1),
+    q=(0, 3),
+    P=(0, 1),
+    D=(0, 1),
+    Q=(0, 1),
+    s=0,
+    trend="c",
+    criterion="aic",
+    method="grid",
+    dates=None,
+    missing="raise",
+)
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -432,11 +457,24 @@ AutoSARIMA(data, p=(0,3), d=(0,1), q=(0,3),
 ### AutoGARCH
 
 ```python
-AutoGARCH(data, p=(1,4), q=(0,4), o=(0,0),
-          vol="GARCH", mean="Constant", dist="normal",
-          criterion="aic", method="grid",
-          igarch=False, garch_m=False, garch_m_form="vol",
-          ar_lags=None, exog=None, dates=None, missing="raise")
+AutoGARCH(
+    data,
+    p=(1, 4),
+    q=(0, 4),
+    o=(0, 0),
+    vol="GARCH",
+    mean="Constant",
+    dist="normal",
+    criterion="aic",
+    method="grid",
+    igarch=False,
+    garch_m=False,
+    garch_m_form="vol",
+    ar_lags=None,
+    exog=None,
+    dates=None,
+    missing="raise",
+)
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -462,17 +500,17 @@ from Ts.TsSims import simulate_egarch, simulate_igarch, simulate_garch_m
 
 # EGARCH 自动选择
 data = simulate_egarch(n=300, p=1, q=1, o=1, seed=42).data
-auto = AutoGARCH(data, p=(1,2), q=(1,2), o=(1,1), vol="EGARCH", criterion="aic")
+auto = AutoGARCH(data, p=(1, 2), q=(1, 2), o=(1, 1), vol="EGARCH", criterion="aic")
 result = auto.fit()
 
 # IGARCH 自动选择
 data = simulate_igarch(n=300, p=1, q=1, seed=42).data
-auto = AutoGARCH(data, p=(1,2), q=(1,2), igarch=True, criterion="bic")
+auto = AutoGARCH(data, p=(1, 2), q=(1, 2), igarch=True, criterion="bic")
 result = auto.fit()
 
 # GARCH-M 自动选择
 data = simulate_garch_m(n=300, p=1, q=1, seed=42).data
-auto = AutoGARCH(data, p=(1,2), q=(1,2), garch_m=True, criterion="aic")
+auto = AutoGARCH(data, p=(1, 2), q=(1, 2), garch_m=True, criterion="aic")
 result = auto.fit()
 ```
 
@@ -517,7 +555,7 @@ order_info = VAR.select_order(data_2d, max_lags=8, criterion="aic")
 
 # 脉冲响应函数（返回 IRFResult，含 .values / .lower / .upper / .summary() / .get()）
 irf_result = result.irf(periods=10, orth=False)
-print(irf_result.summary())          # Stata 风格表格
+print(irf_result.summary())  # Stata 风格表格
 irf_data = irf_result.get("gnp", "m1")  # 提取单对数据
 
 # 正交化 IRF
@@ -528,7 +566,7 @@ fig, axes = result.plot_irf(periods=10, orth=True)
 
 # 方差分解（返回 FEVDResult，含 Monte Carlo 置信区间）
 fevd_result = result.fevd(periods=10)
-print(fevd_result.summary())         # Stata 风格表格
+print(fevd_result.summary())  # Stata 风格表格
 fevd_data = fevd_result.get("gnp", "m1")  # 提取单对数据
 
 # Granger 因果检验
@@ -541,8 +579,8 @@ print(gc_all)
 pr = result.predict(start=result.nobs, end=result.nobs + 3)
 
 # 单位根稳定性诊断
-result.is_stable        # True = 平稳
-result.plot_roots()     # 逆特征根单位圆图
+result.is_stable  # True = 平稳
+result.plot_roots()  # 逆特征根单位圆图
 ```
 
 | 方法 | 说明 |
@@ -559,7 +597,17 @@ result.plot_roots()     # 逆特征根单位圆图
 ### SVAR
 
 ```python
-SVAR(data, lags=1, A=None, B=None, C_lr=None, trend="c", cols=None, dates=None, missing="raise")
+SVAR(
+    data,
+    lags=1,
+    A=None,
+    B=None,
+    C_lr=None,
+    trend="c",
+    cols=None,
+    dates=None,
+    missing="raise",
+)
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -584,11 +632,11 @@ import numpy as np
 data = np.random.randn(200, 2)
 
 # === 短期约束 AB-model（递归识别 / Cholesky） ===
-A = np.array([[1, 0], [np.nan, 1]])         # 下三角 A（1 个自由参数）
-B = np.array([[np.nan, 0], [0, np.nan]])     # 对角 B（2 个自由参数）
+A = np.array([[1, 0], [np.nan, 1]])  # 下三角 A（1 个自由参数）
+B = np.array([[np.nan, 0], [0, np.nan]])  # 对角 B（2 个自由参数）
 svar_ab = SVAR(data, lags=2, A=A, B=B)
 result_ab = svar_ab.fit()
-print(result_ab.summary())                   # 显示 A/B 矩阵 + VAR 参数
+print(result_ab.summary())  # 显示 A/B 矩阵 + VAR 参数
 
 # === 长期约束（Blanchard-Quah） ===
 C_lr = np.array([[np.nan, 0], [np.nan, np.nan]])  # C[0,1]=0 长期零约束
@@ -600,12 +648,12 @@ sirf_result = result_ab.irf(periods=10, orth=True)  # Theta_h = Psi_h * A^{-1} B
 print(sirf_result.summary())
 
 # === 继承全部 VARResult 方法 ===
-result_ab.irf(periods=10, orth=False)        # 简化式 IRF
-result_ab.fevd(periods=10)                   # 简化式 FEVD
-result_ab.granger_causality()                # Granger 因果检验
-result_ab.predict()                          # 预测
-result_ab.is_stable                          # 稳定性
-result_ab.plot_diagnostics()                 # 残差诊断图
+result_ab.irf(periods=10, orth=False)  # 简化式 IRF
+result_ab.fevd(periods=10)  # 简化式 FEVD
+result_ab.granger_causality()  # Granger 因果检验
+result_ab.predict()  # 预测
+result_ab.is_stable  # 稳定性
+result_ab.plot_diagnostics()  # 残差诊断图
 ```
 
 | 方法 | 说明 |

@@ -13,10 +13,11 @@ import numpy as np
 from numpy.linalg import det
 from scipy.optimize import minimize
 
+from Ts.TsUtils._validation import _resolve_missing_rows
+
 from Ts.TsModels._base import (
     BaseModel,
     _normalise_model_dates,
-    _resolve_missing_rows,
 )
 from Ts.TsModels._var import VAR, IRFResult, VARResult
 
@@ -83,9 +84,11 @@ def _nll_ab(params, A_mask, B_mask, A_template, B_template, sigma_u, nobs):
     W = np.linalg.solve(B, A)  # B^{-1} A
     trace_term = np.trace(W.T @ W @ sigma_u)
 
-    nll = -nobs * np.log(np.abs(A_det)) + nobs * np.log(np.abs(B_det)) \
-          + 0.5 * nobs * trace_term
-    return nll
+    return (
+        -nobs * np.log(np.abs(A_det))
+        + nobs * np.log(np.abs(B_det))
+        + 0.5 * nobs * trace_term
+    )
 
 
 def _solve_blanchard_quah(sigma_u, coefs):
@@ -118,8 +121,7 @@ def _solve_blanchard_quah(sigma_u, coefs):
     psi1 = np.linalg.inv(np.eye(k) - A_sum)
     S_lr = psi1 @ sigma_u @ psi1.T
     C = np.linalg.cholesky(S_lr)  # lower triangular
-    B = np.linalg.solve(psi1, C)
-    return B
+    return np.linalg.solve(psi1, C)
 
 
 @dataclass
@@ -190,13 +192,15 @@ class SVARResult(VARResult):
             lines.append("Structural parameters (A @ u = B @ eps):")
             lines.append("-" * 40)
             a_rows = ", ".join(
-                "[" + "  ".join(f"{self.A[i, j]:10.4f}"
-                                for j in range(self.A.shape[1])) + "]"
+                "["
+                + "  ".join(f"{self.A[i, j]:10.4f}" for j in range(self.A.shape[1]))
+                + "]"
                 for i in range(self.A.shape[0])
             )
             b_rows = ", ".join(
-                "[" + "  ".join(f"{self.B[i, j]:10.4f}"
-                                for j in range(self.B.shape[1])) + "]"
+                "["
+                + "  ".join(f"{self.B[i, j]:10.4f}" for j in range(self.B.shape[1]))
+                + "]"
                 for i in range(self.B.shape[0])
             )
             lines.append(f"  A = [{a_rows}]")
@@ -228,9 +232,7 @@ class SVARResult(VARResult):
                     pv = self.p_values.get(name)
                     se_s = f"{se:.4f}" if se is not None else "N/A"
                     pv_s = f"{pv:.4f}" if pv is not None else "N/A"
-                    lines.append(
-                        f"  {display:<30s} {val:>10.4f}  ({se_s})  p={pv_s}"
-                    )
+                    lines.append(f"  {display:<30s} {val:>10.4f}  ({se_s})  p={pv_s}")
                 for prefix in ("const", "trend", "trend2"):
                     det_name = f"{prefix}.{var_name}"
                     if det_name in params_flat:
@@ -316,8 +318,7 @@ class SVARResult(VARResult):
             label="Structural IRF",
         )
 
-    def plot_irf(self, periods=10, orth=False, alpha=0.05,
-                 n_draws=200, seed=None):
+    def plot_irf(self, periods=10, orth=False, alpha=0.05, n_draws=200, seed=None):
         """Plot impulse response functions.
 
         Parameters
@@ -338,8 +339,9 @@ class SVARResult(VARResult):
         fig : matplotlib.figure.Figure
         axes : numpy.ndarray of matplotlib.axes.Axes
         """
-        return super().plot_irf(periods=periods, orth=orth, alpha=alpha,
-                                n_draws=n_draws, seed=seed)
+        return super().plot_irf(
+            periods=periods, orth=orth, alpha=alpha, n_draws=n_draws, seed=seed
+        )
 
     def _sirf_mc(self, periods, alpha, n_draws, seed):
         """Parametric bootstrap CI for structural IRFs.
@@ -373,7 +375,7 @@ class SVARResult(VARResult):
         fitted = self._var_result
 
         all_params = np.asarray(fitted.params)  # (n_regressors, k)
-        endog = np.asarray(fitted.endog)        # (T, k)
+        endog = np.asarray(fitted.endog)  # (T, k)
         n_obs = endog.shape[0]
         n_eff = n_obs - lags
 
@@ -390,12 +392,12 @@ class SVARResult(VARResult):
             trend = np.arange(lags + 1, n_obs + 1, dtype=float).reshape(-1, 1)
             Z_parts.append(trend)
         if has_trend2:
-            Z_parts.append(trend ** 2)
+            Z_parts.append(trend**2)
         for p in range(lags):
-            lag_data = endog[lags - 1 - p:n_obs - 1 - p]
+            lag_data = endog[lags - 1 - p : n_obs - 1 - p]
             Z_parts.append(lag_data)
         Z = np.column_stack(Z_parts)  # (n_eff, n_regressors)
-        y_eff = endog[lags:]          # (n_eff, k)
+        y_eff = endog[lags:]  # (n_eff, k)
 
         # Coefficient covariance
         beta_flat = all_params.ravel()
@@ -427,7 +429,7 @@ class SVARResult(VARResult):
                     A_mats = []
                     for lag_i in range(lags):
                         start = n_det + lag_i * k
-                        A_lag = params_d[start:start + k, :].T
+                        A_lag = params_d[start : start + k, :].T
                         A_mats.append(A_lag)
                     coefs_d = np.stack(A_mats)
                     B_d = _solve_blanchard_quah(sigma_u_d, coefs_d)
@@ -465,9 +467,7 @@ class SVARResult(VARResult):
                         for i in range(k):
                             for j in range(k):
                                 if a_mask[i, j] and i > j and L_chol[j, j] > 0:
-                                    init_A[i, j] = (
-                                        -L_chol[i, j] / L_chol[j, j]
-                                    )
+                                    init_A[i, j] = -L_chol[i, j] / L_chol[j, j]
 
                     if n_b > 0:
                         for i in range(k):
@@ -486,15 +486,23 @@ class SVARResult(VARResult):
                         res = minimize(
                             _nll_ab,
                             init_params,
-                            args=(a_mask, b_mask,
-                                  self._A_template, self._B_template,
-                                  sigma_u_d, n_eff),
+                            args=(
+                                a_mask,
+                                b_mask,
+                                self._A_template,
+                                self._B_template,
+                                sigma_u_d,
+                                n_eff,
+                            ),
                             method="BFGS",
                         )
                         if res.success:
                             A_d, B_d = _param_to_matrices(
-                                res.x, a_mask, b_mask,
-                                self._A_template, self._B_template,
+                                res.x,
+                                a_mask,
+                                b_mask,
+                                self._A_template,
+                                self._B_template,
                             )
                         else:
                             n_bad += 1
@@ -509,7 +517,7 @@ class SVARResult(VARResult):
             A_mats = []
             for lag_i in range(lags):
                 start = n_det + lag_i * k
-                A_lag = params_d[start:start + k, :].T  # (k, k)
+                A_lag = params_d[start : start + k, :].T  # (k, k)
                 A_mats.append(A_lag)
 
             ma_coefs = [np.eye(k)]  # Psi_0 = I
@@ -535,6 +543,7 @@ class SVARResult(VARResult):
                 f"failed to converge. Using point estimates for "
                 f"those draws.",
                 RuntimeWarning,
+                stacklevel=2,
             )
 
         lower = np.percentile(sirf_draws, alpha / 2.0 * 100.0, axis=0)
@@ -604,9 +613,7 @@ class SVAR(BaseModel):
 
         y = np.asarray(data, dtype=float)
         if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+            raise ValueError(f"data must be 2-D (nobs, k), got shape {y.shape}")
 
         if lags < 1:
             raise ValueError(f"lags must be >= 1, got {lags}")
@@ -617,14 +624,12 @@ class SVAR(BaseModel):
 
         if A is None and B is None and C_lr is None:
             raise ValueError(
-                "At least one of A, B (short-run) or C_lr (long-run) "
-                "must be provided."
+                "At least one of A, B (short-run) or C_lr (long-run) must be provided."
             )
 
         if C_lr is not None and (A is not None or B is not None):
             raise ValueError(
-                "C_lr (long-run) is mutually exclusive with A/B "
-                "(short-run)."
+                "C_lr (long-run) is mutually exclusive with A/B (short-run)."
             )
 
         if cols is not None:
@@ -652,35 +657,30 @@ class SVAR(BaseModel):
             A = np.asarray(A, dtype=float)
             if A.shape != (y.shape[1], y.shape[1]):
                 raise ValueError(
-                    f"A must be ({y.shape[1]}, {y.shape[1]}), "
-                    f"got {A.shape}"
+                    f"A must be ({y.shape[1]}, {y.shape[1]}), got {A.shape}"
                 )
         if B is not None:
             B = np.asarray(B, dtype=float)
             if B.shape != (y.shape[1], y.shape[1]):
                 raise ValueError(
-                    f"B must be ({y.shape[1]}, {y.shape[1]}), "
-                    f"got {B.shape}"
+                    f"B must be ({y.shape[1]}, {y.shape[1]}), got {B.shape}"
                 )
         if C_lr is not None:
             C_lr = np.asarray(C_lr, dtype=float)
             if C_lr.shape != (y.shape[1], y.shape[1]):
                 raise ValueError(
-                    f"C_lr must be ({y.shape[1]}, {y.shape[1]}), "
-                    f"got {C_lr.shape}"
+                    f"C_lr must be ({y.shape[1]}, {y.shape[1]}), got {C_lr.shape}"
                 )
             upper = np.triu_indices(y.shape[1], k=1)
             lower_and_diag = np.tril_indices(y.shape[1])
-            if (
-                not np.all(C_lr[upper] == 0.0)
-                or not np.all(np.isnan(C_lr[lower_and_diag]))
+            if not np.all(C_lr[upper] == 0.0) or not np.all(
+                np.isnan(C_lr[lower_and_diag])
             ):
                 raise NotImplementedError(
                     "Only the canonical Blanchard-Quah C_lr mask is "
                     "supported: strict upper-triangular entries must be "
                     "0 and diagonal/lower-triangular entries must be np.nan."
                 )
-
 
         self.data = y
         self.dates = model_dates
@@ -767,9 +767,7 @@ class SVAR(BaseModel):
                     for i in range(k):
                         for j in range(k):
                             if A_mask[i, j] and i > j and L_chol[j, j] > 0:
-                                init_A[i, j] = (
-                                    -L_chol[i, j] / L_chol[j, j]
-                                )
+                                init_A[i, j] = -L_chol[i, j] / L_chol[j, j]
 
                 # Fill remaining B off-diagonal entries from Cholesky
                 if np.any(B_mask):
@@ -787,8 +785,7 @@ class SVAR(BaseModel):
                 res = minimize(
                     _nll_ab,
                     init_params,
-                    args=(A_mask, B_mask, A_tpl, B_tpl, sigma_u,
-                          var_result.nobs),
+                    args=(A_mask, B_mask, A_tpl, B_tpl, sigma_u, var_result.nobs),
                     method="BFGS",
                 )
 
@@ -797,11 +794,10 @@ class SVAR(BaseModel):
                         f"SVAR MLE optimization did not converge: "
                         f"{res.message}. Results may be unreliable.",
                         RuntimeWarning,
+                        stacklevel=2,
                     )
 
-                A_est, B_est = _param_to_matrices(
-                    res.x, A_mask, B_mask, A_tpl, B_tpl
-                )
+                A_est, B_est = _param_to_matrices(res.x, A_mask, B_mask, A_tpl, B_tpl)
 
             # Compute structural log-likelihood
             W = np.linalg.solve(B_est, A_est)

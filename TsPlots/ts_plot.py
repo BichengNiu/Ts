@@ -39,6 +39,8 @@ import pandas as pd
 from .style import (
     _ensure_fonts,
     _FigureContext,
+    _resolve_colors,
+    _validate_positive_step,
     DEFAULT_PALETTE,
     DEFAULT_LINESTYLES,
     DEFAULT_MARKERS,
@@ -63,28 +65,33 @@ def _make_chinese_formatter(freq: str) -> FuncFormatter:
     year    : XXXX年             e.g. 2026年
     """
     if freq == "day":
+
         def _fmt(x, pos):
             dt = mdates.num2date(x)
             return f"{dt.year}年{dt.month}月{dt.day}日"
 
     elif freq == "week":
+
         def _fmt(x, pos):
             dt = mdates.num2date(x)
             week_of_month = (dt.day - 1) // 7 + 1
             return f"{dt.year}年{dt.month}月第{week_of_month}周"
 
     elif freq == "month":
+
         def _fmt(x, pos):
             dt = mdates.num2date(x)
             return f"{dt.year}年{dt.month}月"
 
     elif freq == "quarter":
+
         def _fmt(x, pos):
             dt = mdates.num2date(x)
             quarter = (dt.month - 1) // 3 + 1
             return f"{dt.year}年第{quarter}季度"
 
     elif freq == "year":
+
         def _fmt(x, pos):
             dt = mdates.num2date(x)
             return f"{dt.year}年"
@@ -183,9 +190,7 @@ def _resolve_input(data, x, y) -> tuple[np.ndarray, dict, str]:
 
     if isinstance(data, pd.Series):
         x_values = np.asarray(x) if x is not None else data.index.to_numpy()
-        default_xlabel = (
-            "Time" if x is not None else (data.index.name or "Time")
-        )
+        default_xlabel = "Time" if x is not None else (data.index.name or "Time")
         label = data.name if data.name is not None else "Series 1"
         return x_values, {str(label): data.to_numpy()}, default_xlabel
 
@@ -343,13 +348,18 @@ def plot_series(
     ax : matplotlib.axes.Axes
     """
     x_values, series, default_xlabel = _resolve_input(data, x, y)
+    colors = _resolve_colors(colors, len(series))
+    xtick_step = _validate_positive_step(
+        "xtick_step",
+        xtick_step,
+        integer=True,
+    )
 
     if labels is not None:
         labels = list(labels)
         if len(labels) != len(series):
             raise ValueError(
-                f"labels has {len(labels)} entries but there are "
-                f"{len(series)} series."
+                f"labels has {len(labels)} entries but there are {len(series)} series."
             )
         series = {labels[i]: v for i, v in enumerate(series.values())}
 
@@ -386,7 +396,7 @@ def plot_series(
         if show_values:
             fmt = f".{value_decimals}f"
             n_pts = len(values)
-            for idx, (xv, yv) in enumerate(zip(x_values, values)):
+            for idx, (xv, yv) in enumerate(zip(x_values, values, strict=False)):
                 # Place label above a local low, below a local high so it does
                 # not collide with the adjacent line segments.
                 prev_y = float(values[idx - 1]) if idx > 0 else float(yv)
@@ -394,7 +404,7 @@ def plot_series(
                 avg_nbr = (prev_y + next_y) / 2
                 if float(yv) >= avg_nbr:  # local high → label below
                     y_off, va = -(markersize + 10), "top"
-                else:                      # local low  → label above
+                else:  # local low  → label above
                     y_off, va = markersize + 4, "bottom"
                 ax.annotate(
                     f"{yv:{fmt}}",

@@ -6,6 +6,7 @@ Mode B: BASELINE verification.
 """
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -16,6 +17,7 @@ import pytest
 # Shared fixtures — fixed seeds for deterministic output
 # ============================================================================
 
+
 @pytest.fixture(scope="module")
 def garch11_result():
     """Fit GARCH(1,1) with fixed seed. Output MUST NOT change after refactoring."""
@@ -23,8 +25,14 @@ def garch11_result():
     from Ts.TsModels._garch import GARCH
 
     r = simulate_garch(
-        n=300, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-        seed=42, burn=200,
+        n=300,
+        p=1,
+        q=1,
+        omega=0.1,
+        alpha=[0.2],
+        beta=[0.7],
+        seed=42,
+        burn=200,
     )
     model = GARCH(r.data, p=1, q=1)
     return model.fit()
@@ -37,8 +45,13 @@ def arch2_result():
     from Ts.TsModels._garch import GARCH
 
     r = simulate_garch(
-        n=200, p=2, q=0, omega=0.4, alpha=[0.3, 0.2],
-        seed=42, burn=200,
+        n=200,
+        p=2,
+        q=0,
+        omega=0.4,
+        alpha=[0.3, 0.2],
+        seed=42,
+        burn=200,
     )
     model = GARCH(r.data, p=2, q=0)
     return model.fit()
@@ -51,8 +64,13 @@ def igarch11_result():
     from Ts.TsModels._garch import GARCH
 
     r = simulate_igarch(
-        n=300, p=1, q=1, omega=0.05, alpha=[0.3],
-        seed=42, burn=200,
+        n=300,
+        p=1,
+        q=1,
+        omega=0.05,
+        alpha=[0.3],
+        seed=42,
+        burn=200,
     )
     model = GARCH(r.data, p=1, q=1, igarch=True)
     return model.fit()
@@ -63,11 +81,16 @@ def sim_garch_data():
     """Simulated GARCH(1,1) data with fixed seed."""
     from Ts.TsSims._garch import simulate_garch
 
-    r = simulate_garch(
-        n=200, p=1, q=1, omega=0.1, alpha=[0.2], beta=[0.7],
-        seed=42, burn=200,
+    return simulate_garch(
+        n=200,
+        p=1,
+        q=1,
+        omega=0.1,
+        alpha=[0.2],
+        beta=[0.7],
+        seed=42,
+        burn=200,
     )
-    return r
 
 
 @pytest.fixture(scope="module")
@@ -75,17 +98,24 @@ def sim_egarch_data():
     """Simulated EGARCH(1,1,1) data with fixed seed."""
     from Ts.TsSims._garch_ext import simulate_egarch
 
-    r = simulate_egarch(
-        n=200, p=1, q=1, o=1,
-        omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30],
-        seed=42, burn=200,
+    return simulate_egarch(
+        n=200,
+        p=1,
+        q=1,
+        o=1,
+        omega=0.0,
+        alpha=[0.20],
+        gamma=[0.10],
+        beta=[0.30],
+        seed=42,
+        burn=200,
     )
-    return r
 
 
 # ============================================================================
 # GARCH(1,1) baseline
 # ============================================================================
+
 
 class TestGARCH11Baseline:
     """GARCH(1,1) estimation output must remain unchanged."""
@@ -122,7 +152,9 @@ class TestGARCH11Baseline:
         assert "BIC" in text
 
     def test_forecast_returns_arrays(self, garch11_result):
-        pr = garch11_result.predict(start=garch11_result.nobs, end=garch11_result.nobs + 4)
+        pr = garch11_result.predict(
+            start=garch11_result.nobs, end=garch11_result.nobs + 4
+        )
         assert len(pr.mean) == 5
         assert np.all(pr.mean >= 0)
 
@@ -154,6 +186,7 @@ class TestGARCH11Baseline:
 # ARCH(2) baseline
 # ============================================================================
 
+
 class TestARCH2Baseline:
     """ARCH(2) estimation output must remain unchanged."""
 
@@ -183,6 +216,7 @@ class TestARCH2Baseline:
 # IGARCH(1,1) baseline
 # ============================================================================
 
+
 class TestIGARCH11Baseline:
     """IGARCH(1,1) estimation output must remain unchanged."""
 
@@ -194,7 +228,9 @@ class TestIGARCH11Baseline:
         assert "IGARCH(1,1)" in text
 
     def test_forecast_returns_arrays(self, igarch11_result):
-        pr = igarch11_result.predict(start=igarch11_result.nobs, end=igarch11_result.nobs + 4)
+        pr = igarch11_result.predict(
+            start=igarch11_result.nobs, end=igarch11_result.nobs + 4
+        )
         assert len(pr.mean) == 5
 
     def test_exact_omega_value(self, igarch11_result):
@@ -205,6 +241,7 @@ class TestIGARCH11Baseline:
 # ResidualTestResults baseline
 # ============================================================================
 
+
 class TestResidualTestResultsBaseline:
     """ResidualTestResults output must remain unchanged."""
 
@@ -214,6 +251,7 @@ class TestResidualTestResultsBaseline:
 
     def test_returns_correct_type(self, diag_output):
         from Ts.TsModels._base import ResidualTestResults
+
         assert type(diag_output) is ResidualTestResults
 
     def test_has_all_four_tests_via_attribute(self, diag_output):
@@ -224,6 +262,7 @@ class TestResidualTestResultsBaseline:
 
     def test_white_noise_is_ljungbox_result(self, diag_output):
         from Ts.TsTests._base import BaseTestResult
+
         assert isinstance(diag_output.white_noise, BaseTestResult)
         assert diag_output.white_noise.apply_squared is False
 
@@ -250,6 +289,7 @@ class TestResidualTestResultsBaseline:
 # ============================================================================
 # Simulate GARCH baseline
 # ============================================================================
+
 
 class TestSimulateGARCHBaseline:
     """simulate_garch output must remain unchanged."""
@@ -280,6 +320,7 @@ class TestSimulateGARCHBaseline:
 # Simulate EGARCH baseline
 # ============================================================================
 
+
 class TestSimulateEGARCHBaseline:
     """simulate_egarch output must remain unchanged."""
 
@@ -305,33 +346,41 @@ class TestSimulateEGARCHBaseline:
 # Import path baseline
 # ============================================================================
 
+
 class TestImportPaths:
     """Public import paths must continue to work after refactoring."""
 
     def test_import_garch_from_tsmodels(self):
         from Ts.TsModels import GARCH
+
         assert GARCH is not None
 
     def test_import_garch_result_from_tsmodels(self):
         from Ts.TsModels import GARCHResult
+
         assert GARCHResult is not None
 
     def test_import_compare_models_from_tsmodels(self):
         from Ts.TsModels import compare_models
+
         assert compare_models is not None
 
     def test_import_sarima_from_tsmodels(self):
         from Ts.TsModels import SARIMA
+
         assert SARIMA is not None
 
     def test_import_simulate_garch_from_tssims(self):
         from Ts.TsSims import simulate_garch
+
         assert simulate_garch is not None
 
     def test_import_simulate_egarch_from_tssims(self):
         from Ts.TsSims import simulate_egarch
+
         assert simulate_egarch is not None
 
     def test_import_simulate_igarch_from_tssims(self):
         from Ts.TsSims import simulate_igarch
+
         assert simulate_igarch is not None

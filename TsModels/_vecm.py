@@ -10,12 +10,16 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats as scipy_stats
 
+from Ts.TsUtils._validation import (
+    _resolve_missing_rows,
+    validate_alpha as _validate_prediction_alpha,
+)
+
 from Ts.TsModels._base import (
     BaseModel,
     BaseModelResult,
     PredictResult,
     _normalise_model_dates,
-    _resolve_missing_rows,
     _resolve_prediction_window,
 )
 from Ts.TsModels._var import (
@@ -128,7 +132,7 @@ def _compute_equation_stats(resid_i, fitted_i, n_params_i, nobs):
     dict
         Keys: ``"rmse"``, ``"r_squared"``, ``"chi2"``, ``"p_chi2"``.
     """
-    ssr = np.sum(resid_i ** 2)
+    ssr = np.sum(resid_i**2)
     tss = np.sum((fitted_i + resid_i - np.mean(fitted_i + resid_i)) ** 2)
     rmse = float(np.sqrt(ssr / (nobs - n_params_i)))
     r_sq = float(1.0 - ssr / tss) if tss > 1e-15 else 0.0
@@ -310,14 +314,15 @@ class VECMResult(BaseModelResult):
                 se = sm.stderr_alpha[eq_idx, ce_j]
                 row_data.append(_cell(coef, se))
             for det_idx in range(len(det_out_labels)):
-                row_data.append(_cell(det_coef[eq_idx, det_idx], det_se[eq_idx, det_idx]))
+                row_data.append(  # noqa: PERF401 - explicit table block
+                    _cell(det_coef[eq_idx, det_idx], det_se[eq_idx, det_idx])
+                )
             alpha_cells.append(row_data)
 
-        lines.append(
-            "Adjustment coefficients (α) — coef (z-stat), * p < 0.05"
+        lines.append("Adjustment coefficients (α) — coef (z-stat), * p < 0.05")
+        lines += _render_table(
+            "", alpha_label_w, alpha_cols, alpha_row_labels, alpha_cells
         )
-        lines += _render_table("", alpha_label_w, alpha_cols,
-                               alpha_row_labels, alpha_cells)
         lines.append("")
 
         # --- β table ---
@@ -326,8 +331,7 @@ class VECMResult(BaseModelResult):
         beta_label_w = max(max(len(n) for n in names), 6)
 
         all_omitted = [
-            all(abs(self.beta[v, c]) < 1e-15 for c in range(r))
-            for v in range(k)
+            all(abs(self.beta[v, c]) < 1e-15 for c in range(r)) for v in range(k)
         ]
 
         beta_row_labels = []
@@ -345,16 +349,17 @@ class VECMResult(BaseModelResult):
 
         for det_idx, label in enumerate(det_coint_labels):
             beta_row_labels.append(label)
-            beta_cells.append([
-                _cell(det_coef_coint[det_idx, ce_j], det_coint_se[det_idx, ce_j])
-                for ce_j in range(r)
-            ])
+            beta_cells.append(
+                [
+                    _cell(det_coef_coint[det_idx, ce_j], det_coint_se[det_idx, ce_j])
+                    for ce_j in range(r)
+                ]
+            )
 
-        lines.append(
-            "Cointegrating vectors (β) — coef (z-stat), * p < 0.05"
+        lines.append("Cointegrating vectors (β) — coef (z-stat), * p < 0.05")
+        lines += _render_table(
+            "beta", beta_label_w, beta_cols, beta_row_labels, beta_cells
         )
-        lines += _render_table("beta", beta_label_w, beta_cols,
-                               beta_row_labels, beta_cells)
         lines.append("")
 
         return "\n".join(lines)
@@ -420,7 +425,7 @@ class VECMResult(BaseModelResult):
             ci_method="analytic",
         )
 
-    def fevd(self, periods=10, alpha=0.05):
+    def fevd(self, periods=10):
         """Compute forecast error variance decomposition.
 
         Uses the VECM's VAR representation via orthogonalized MA coefficients.
@@ -430,8 +435,6 @@ class VECMResult(BaseModelResult):
         ----------
         periods : int
             Number of periods.
-        alpha : float
-            Significance level (reserved for future CI support).
 
         Returns
         -------
@@ -462,7 +465,7 @@ class VECMResult(BaseModelResult):
             k=k,
             names=list(self._data_names),
             method="point",
-            alpha=alpha,
+            alpha=None,
             n_draws=0,
         )
 
@@ -499,7 +502,7 @@ class VECMResult(BaseModelResult):
             causing = [causing]
 
         causing_idx = []
-        for c in (causing if isinstance(causing, list) else [causing]):
+        for c in causing if isinstance(causing, list) else [causing]:
             if isinstance(c, str):
                 causing_idx.append(self._data_names.index(c))
             else:
@@ -548,9 +551,9 @@ class VECMResult(BaseModelResult):
         # var_rep has shape (p, k, k): [A_1, A_2, ..., A_p]
         companion = np.zeros((k * p, k * p))
         for lag_i in range(p):
-            companion[:k, lag_i * k:(lag_i + 1) * k] = var_rep[lag_i]
+            companion[:k, lag_i * k : (lag_i + 1) * k] = var_rep[lag_i]
         if p > 1:
-            companion[k:, :k * (p - 1)] = np.eye(k * (p - 1))
+            companion[k:, : k * (p - 1)] = np.eye(k * (p - 1))
         evals = np.linalg.eigvals(companion)
         return bool(np.all(np.abs(evals) <= 1.0 + 1e-10))
 
@@ -582,10 +585,8 @@ class VECMResult(BaseModelResult):
                 ytitle="Residual",
                 show_legend=False,
             )
-            plot_acf(self.residuals[:, i], ax=axes[i, 1],
-                     title=f"D_{name} ACF")
-            plot_pacf(self.residuals[:, i], ax=axes[i, 2],
-                      title=f"D_{name} PACF")
+            plot_acf(self.residuals[:, i], ax=axes[i, 1], title=f"D_{name} ACF")
+            plot_pacf(self.residuals[:, i], ax=axes[i, 2], title=f"D_{name} PACF")
 
         if title is None:
             title = f"VECM({self._lags}, r={self.coint_rank}): Diagnostic Plots"
@@ -624,7 +625,7 @@ class VECMResult(BaseModelResult):
             )
         return results
 
-    def predict(self, start=0, end=None, dynamic=False, alpha=0.05):
+    def predict(self, start=0, end=None, alpha=0.05):
         """Return in-sample predictions and forecasts beyond the sample.
 
         Parameters
@@ -633,11 +634,9 @@ class VECMResult(BaseModelResult):
             Start index (0-based).
         end : int, optional
             End index. Default: nobs-1.
-        dynamic : bool
-            Dynamic prediction is not supported for VECM.
         alpha : float
-            Reserved for the unified prediction API; VECM intervals are not
-            currently available.
+            Significance level required by the shared prediction protocol.
+            VECM forecasts do not currently include intervals.
 
         Returns
         -------
@@ -645,14 +644,10 @@ class VECMResult(BaseModelResult):
         """
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
-        if dynamic:
-            raise NotImplementedError(
-                "dynamic prediction is not supported for VECM"
-            )
-
         nobs = self.nobs
         k = self.k
         window = _resolve_prediction_window(nobs, start, end)
+        _validate_prediction_alpha(alpha)
         start, end = window.start, window.end
         fitted = self.fitted_values
         mean = np.full((window.size, k), np.nan)
@@ -667,13 +662,15 @@ class VECMResult(BaseModelResult):
             forecast = np.asarray(
                 self._vecm_result.predict(steps=window.forecast_steps)
             )
-            mean[n_in:] = forecast[window.forecast_skip:]
+            mean[n_in:] = forecast[window.forecast_skip :]
             is_oos[n_in:] = True
         else:
-            mean = fitted[start:end + 1].copy()
+            mean = fitted[start : end + 1].copy()
 
         return PredictResult(
-            mean=mean, lower=lower, upper=upper,
+            mean=mean,
+            lower=lower,
+            upper=upper,
             is_oos=is_oos,
             _full_data=self.data,
             _full_fitted=self.fitted_values,
@@ -693,9 +690,14 @@ class VECMResult(BaseModelResult):
         """
         import matplotlib.pyplot as plt
         from Ts.TsPlots.style import (
-            _ensure_fonts, DEFAULT_PALETTE, style_axes,
-            TITLE_FONTSIZE, AXIS_LABEL_FONTSIZE, TICK_LABELSIZE,
+            _ensure_fonts,
+            DEFAULT_PALETTE,
+            style_axes,
+            TITLE_FONTSIZE,
+            AXIS_LABEL_FONTSIZE,
+            TICK_LABELSIZE,
         )
+
         _ensure_fonts()
 
         # Use companion matrix eigenvalues from VAR representation
@@ -708,14 +710,24 @@ class VECMResult(BaseModelResult):
 
         fig, ax = plt.subplots(figsize=(6, 6))
         theta = np.linspace(0, 2 * np.pi, 400)
-        ax.plot(np.cos(theta), np.sin(theta),
-                color=DEFAULT_PALETTE[1], linewidth=1.0, linestyle="--")
+        ax.plot(
+            np.cos(theta),
+            np.sin(theta),
+            color=DEFAULT_PALETTE[1],
+            linewidth=1.0,
+            linestyle="--",
+        )
         ax.axhline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
         ax.axvline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
         ax.scatter(
-            inv_roots.real, inv_roots.imag,
-            color=DEFAULT_PALETTE[0], marker="o", s=50,
-            edgecolors=DEFAULT_PALETTE[7], linewidth=0.5, zorder=5,
+            inv_roots.real,
+            inv_roots.imag,
+            color=DEFAULT_PALETTE[0],
+            marker="o",
+            s=50,
+            edgecolors=DEFAULT_PALETTE[7],
+            linewidth=0.5,
+            zorder=5,
         )
         ax.set_aspect("equal")
         style_axes(ax)
@@ -811,9 +823,7 @@ class VECM(BaseModel):
 
         y = np.asarray(data, dtype=float)
         if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+            raise ValueError(f"data must be 2-D (nobs, k), got shape {y.shape}")
 
         k = y.shape[1]
         if k < 2:
@@ -831,18 +841,13 @@ class VECM(BaseModel):
             y = y.copy()
 
         if lags < 1:
-            raise ValueError(
-                f"lags must be >= 1, got {lags}"
-            )
+            raise ValueError(f"lags must be >= 1, got {lags}")
         valid_trends = tuple(_TREND_TO_DETERMINISTIC.keys())
         if trend not in valid_trends:
-            raise ValueError(
-                f"trend must be one of {valid_trends}, got {trend!r}"
-            )
+            raise ValueError(f"trend must be one of {valid_trends}, got {trend!r}")
         if coint_rank < 1 or coint_rank >= k:
             raise ValueError(
-                f"coint_rank must be between 1 and {k - 1}, "
-                f"got {coint_rank}"
+                f"coint_rank must be between 1 and {k - 1}, got {coint_rank}"
             )
 
         min_obs = lags + 10
@@ -855,8 +860,7 @@ class VECM(BaseModel):
         if cols is not None:
             if len(cols) != k:
                 raise ValueError(
-                    f"cols length ({len(cols)}) must match "
-                    f"number of variables ({k})"
+                    f"cols length ({len(cols)}) must match number of variables ({k})"
                 )
             data_names = list(cols)
         else:
@@ -902,8 +906,7 @@ class VECM(BaseModel):
         valid_criteria = {"aic", "bic"}
         if criterion not in valid_criteria:
             raise ValueError(
-                f"criterion must be one of {sorted(valid_criteria)}, "
-                f"got {criterion!r}"
+                f"criterion must be one of {sorted(valid_criteria)}, got {criterion!r}"
             )
         if max_lags < 1:
             raise ValueError(f"max_lags must be >= 1, got {max_lags}")
@@ -916,21 +919,13 @@ class VECM(BaseModel):
 
         y = np.asarray(data, dtype=float)
         if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+            raise ValueError(f"data must be 2-D (nobs, k), got shape {y.shape}")
         k = y.shape[1]
         finite_rows = np.all(np.isfinite(y), axis=1)
         dropped_positions = _resolve_missing_rows(finite_rows, missing)
-        if missing == "drop":
-            y = y[finite_rows]
-        else:
-            y = y.copy()
+        y = y[finite_rows] if missing == "drop" else y.copy()
 
-        if cols is not None:
-            names = list(cols)
-        else:
-            names = [f"y{i}" for i in range(k)]
+        names = list(cols) if cols is not None else [f"y{i}" for i in range(k)]
 
         values = {}
         best_lag = 1
@@ -946,9 +941,7 @@ class VECM(BaseModel):
                     raise RuntimeError(f"non-finite {criterion.upper()}: {value}")
             except Exception as error:
                 value = float("inf")
-                failures.append(
-                    f"lag {lag}: {type(error).__name__}: {error}"
-                )
+                failures.append(f"lag {lag}: {type(error).__name__}: {error}")
             values[str(lag)] = value
             if value < best_val:
                 best_val = value
@@ -1069,8 +1062,6 @@ class VECM(BaseModel):
                 params[key] = float(det_coef_coint[det_idx, ce_idx])
                 std_errors[key] = float(det_coint_se[det_idx, ce_idx])
                 p_values[key] = float(det_coint_pv[det_idx, ce_idx])
-
-
 
         result = VECMResult(
             model_type="VECM",

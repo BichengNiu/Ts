@@ -1,6 +1,7 @@
 """Tests for Ts.TsModels._sarima — SARIMA and SARIMAResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -177,7 +178,12 @@ class TestSARIMAResult:
 def arma11_data():
     """Generate ARMA(1,1) data for roots testing."""
     r = simulate_sarima(
-        n=200, order=(1, 0, 1), ar=[0.7], ma=[0.5], seed=42, burn=100,
+        n=200,
+        order=(1, 0, 1),
+        ar=[0.7],
+        ma=[0.5],
+        seed=42,
+        burn=100,
     )
     return r.data
 
@@ -189,18 +195,21 @@ class TestSARIMARoots:
     def fitted_ar1(self, ar1_data):
         """Fit AR(1) model."""
         from Ts.TsModels._sarima import SARIMA
+
         return SARIMA(ar1_data, order=(1, 0, 0)).fit()
 
     @pytest.fixture
     def fitted_ma1(self, ma1_data):
         """Fit MA(1) model."""
         from Ts.TsModels._sarima import SARIMA
+
         return SARIMA(ma1_data, order=(0, 0, 1)).fit()
 
     @pytest.fixture
     def fitted_arma11(self, arma11_data):
         """Fit ARMA(1,1) model."""
         from Ts.TsModels._sarima import SARIMA
+
         return SARIMA(arma11_data, order=(1, 0, 1)).fit()
 
     def test_arroots_property_ar1(self, fitted_ar1):
@@ -262,12 +271,8 @@ class TestSARIMARoots:
         assert not result.invertibility_enforced
         assert "Stationarity Enforced  : No" in text
         assert "Invertibility Enforced : No" in text
-        assert result.is_stationary == bool(
-            np.all(np.abs(result.arroots) > 1.0)
-        )
-        assert result.is_invertible == bool(
-            np.all(np.abs(result.maroots) > 1.0)
-        )
+        assert result.is_stationary == bool(np.all(np.abs(result.arroots) > 1.0))
+        assert result.is_invertible == bool(np.all(np.abs(result.maroots) > 1.0))
 
     def test_plot_roots_returns_fig_ax(self, fitted_arma11):
         """plot_roots() returns (fig, ax) for ARMA(1,1).
@@ -378,13 +383,9 @@ class TestSARIMASparseLags:
 
     def test_sparse_ar_long_run_equilibrium(self, sparse_ar_result):
         expected = sparse_ar_result.params["intercept"] / (
-            1.0
-            - sparse_ar_result.params["ar.L1"]
-            - sparse_ar_result.params["ar.L3"]
+            1.0 - sparse_ar_result.params["ar.L1"] - sparse_ar_result.params["ar.L3"]
         )
-        assert sparse_ar_result.long_run_equilibrium() == pytest.approx(
-            expected
-        )
+        assert sparse_ar_result.long_run_equilibrium() == pytest.approx(expected)
 
     def test_sparse_lags_are_sorted_and_immutable(self, ar1_data):
         from Ts.TsModels._sarima import SARIMA
@@ -424,6 +425,7 @@ class TestSARIMAPredict:
     def result(self, ar1_data):
         """Fit AR(1) and return SARIMAResult for prediction tests."""
         from Ts.TsModels._sarima import SARIMA
+
         model = SARIMA(ar1_data, order=(1, 0, 0))
         return model.fit()
 
@@ -532,4 +534,3 @@ class TestSARIMAPredict:
 
         covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.long_run_equilibrium [function]
         """
-        pass

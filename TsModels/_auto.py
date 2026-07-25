@@ -21,13 +21,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from Ts.TsUtils._validation import _resolve_missing_rows
+
 from Ts.TsModels._base import (
     _GARCH_M_FORMS,
     _VOL_TYPES,
     BaseModel,
     BaseModelResult,
     _normalise_model_dates,
-    _resolve_missing_rows,
 )
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
@@ -62,6 +63,7 @@ def _get_criterion_value(result: BaseModelResult, criterion: str) -> float:
 
     if criterion == "hqic":
         import math
+
         return -2.0 * llf + 2.0 * k * math.log(max(1.0001, math.log(n)))
 
     if criterion == "aicc":
@@ -69,8 +71,7 @@ def _get_criterion_value(result: BaseModelResult, criterion: str) -> float:
         return float(result.aic) + correction
 
     raise ValueError(
-        f"Unknown criterion: {criterion!r}. "
-        f"Supported: {sorted(_SUPPORTED_CRITERIA)}"
+        f"Unknown criterion: {criterion!r}. Supported: {sorted(_SUPPORTED_CRITERIA)}"
     )
 
 
@@ -187,8 +188,7 @@ class AutoModelResult(BaseModelResult):
             n_attempted=n_attempted,
             best_seasonal_order=best_seasonal_order,
             candidate_seasonal_orders=(
-                [] if candidate_seasonal_orders is None
-                else candidate_seasonal_orders
+                [] if candidate_seasonal_orders is None else candidate_seasonal_orders
             ),
             search_messages=[] if search_messages is None else search_messages,
         )
@@ -236,9 +236,7 @@ class AutoModelResult(BaseModelResult):
             pv = self.p_values.get(name)
             se_str = f"{se:.4f}" if se is not None else "N/A"
             pv_str = f"{pv:.4f}" if pv is not None else "N/A"
-            base_lines.append(
-                f"  {name:<20s} {val:>10.4f}  ({se_str})  p={pv_str}"
-            )
+            base_lines.append(f"  {name:<20s} {val:>10.4f}  ({se_str})  p={pv_str}")
 
         return "\n".join(lines + base_lines)
 
@@ -308,8 +306,7 @@ class _BaseAutoModel(BaseModel):
             )
         if method not in _SUPPORTED_METHODS:
             raise ValueError(
-                f"method must be one of {sorted(_SUPPORTED_METHODS)}, "
-                f"got {method!r}"
+                f"method must be one of {sorted(_SUPPORTED_METHODS)}, got {method!r}"
             )
         return y
 
@@ -337,7 +334,7 @@ class _BaseAutoModel(BaseModel):
 
         best_result = None
         best_order = None
-        best_value = float('inf')
+        best_value = float("inf")
         candidate_results = []
         candidate_orders = []
 
@@ -352,9 +349,7 @@ class _BaseAutoModel(BaseModel):
                     result = model.fit()
                     value = _get_criterion_value(result, criterion)
                 except Exception as error:
-                    search_messages.append(
-                        f"{order}: {type(error).__name__}: {error}"
-                    )
+                    search_messages.append(f"{order}: {type(error).__name__}: {error}")
                     continue
             search_messages.extend(
                 f"{order}: {warning.category.__name__}: {warning.message}"
@@ -466,18 +461,12 @@ class AutoSARIMA(_BaseAutoModel):
     def _validate_range(rng, name):
         """Validate and convert a (min, max) range tuple."""
         if not isinstance(rng, (tuple, list)) or len(rng) != 2:
-            raise ValueError(
-                f"{name} must be a (min, max) tuple, got {rng}"
-            )
+            raise ValueError(f"{name} must be a (min, max) tuple, got {rng}")
         lo, hi = int(rng[0]), int(rng[1])
         if lo < 0 or hi < 0:
-            raise ValueError(
-                f"{name} range values must be >= 0, got ({lo}, {hi})"
-            )
+            raise ValueError(f"{name} range values must be >= 0, got ({lo}, {hi})")
         if lo > hi:
-            raise ValueError(
-                f"{name}: min ({lo}) must be <= max ({hi})"
-            )
+            raise ValueError(f"{name}: min ({lo}) must be <= max ({hi})")
         return (lo, hi)
 
     def fit(self):
@@ -527,8 +516,14 @@ class AutoSARIMA(_BaseAutoModel):
                 dates=self.dates,
             )
 
-        best_result, best_order_pair, candidate_results, candidate_orders, n_attempted, search_messages = \
-            self._run_grid_search(self.data, orders, build_model, self.criterion)
+        (
+            best_result,
+            best_order_pair,
+            candidate_results,
+            candidate_orders,
+            n_attempted,
+            search_messages,
+        ) = self._run_grid_search(self.data, orders, build_model, self.criterion)
 
         criterion_values = [
             _get_criterion_value(r, self.criterion) for r in candidate_results
@@ -616,21 +611,19 @@ class AutoGARCH(_BaseAutoModel):
         zero-based rows in :attr:`dropped_positions`. Default ``"raise"``.
     """
 
-    _evaluation_target_name = 'absolute_demeaned_return_proxy'
-    _backcast_target_name = 'conditional_volatility'
+    _evaluation_target_name = "absolute_demeaned_return_proxy"
+    _backcast_target_name = "conditional_volatility"
 
     def _evaluation_actual(self, observed, train_data):
-        '''Use absolute returns centred on the active training-window mean.'''
-        return np.abs(
-            np.asarray(observed, dtype=float) - np.mean(train_data)
-        )
+        """Use absolute returns centred on the active training-window mean."""
+        return np.abs(np.asarray(observed, dtype=float) - np.mean(train_data))
 
     def _validate_evaluation(self, context):
-        '''Reject evaluation that lacks required future exogenous values.'''
+        """Reject evaluation that lacks required future exogenous values."""
         if self.exog is not None:
             raise NotImplementedError(
-                f'AutoGARCH {context} with exog requires explicit future '
-                'or pre-sample exogenous values'
+                f"AutoGARCH {context} with exog requires explicit future "
+                "or pre-sample exogenous values"
             )
 
     def __init__(
@@ -686,9 +679,7 @@ class AutoGARCH(_BaseAutoModel):
 
         # --- GARCH-specific validation ---
         if vol not in _VOL_TYPES:
-            raise ValueError(
-                f"vol must be one of {sorted(_VOL_TYPES)}, got {vol!r}"
-            )
+            raise ValueError(f"vol must be one of {sorted(_VOL_TYPES)}, got {vol!r}")
         if garch_m and garch_m_form not in _GARCH_M_FORMS:
             raise ValueError(
                 f"garch_m_form must be one of {sorted(_GARCH_M_FORMS)}, "
@@ -700,9 +691,7 @@ class AutoGARCH(_BaseAutoModel):
                 "Use vol='GARCH' for IGARCH estimation."
             )
         if igarch and garch_m:
-            raise ValueError(
-                "IGARCH is not supported for GARCH-M (garch_m=True)."
-            )
+            raise ValueError("IGARCH is not supported for GARCH-M (garch_m=True).")
         if garch_m and vol == "EGARCH":
             raise ValueError(
                 "GARCH-M is not supported for EGARCH models. "
@@ -725,18 +714,12 @@ class AutoGARCH(_BaseAutoModel):
     def _validate_range(rng, name, min_val=0):
         """Validate and convert a (min, max) range tuple."""
         if not isinstance(rng, (tuple, list)) or len(rng) != 2:
-            raise ValueError(
-                f"{name} must be a (min, max) tuple, got {rng}"
-            )
+            raise ValueError(f"{name} must be a (min, max) tuple, got {rng}")
         lo, hi = int(rng[0]), int(rng[1])
         if lo < min_val:
-            raise ValueError(
-                f"{name} min must be >= {min_val}, got {lo}"
-            )
+            raise ValueError(f"{name} min must be >= {min_val}, got {lo}")
         if lo > hi:
-            raise ValueError(
-                f"{name}: min ({lo}) must be <= max ({hi})"
-            )
+            raise ValueError(f"{name}: min ({lo}) must be <= max ({hi})")
         return (lo, hi)
 
     def fit(self):
@@ -778,8 +761,14 @@ class AutoGARCH(_BaseAutoModel):
                 compare_lags=False,
             )
 
-        best_result, best_order, candidate_results, candidate_orders, n_attempted, search_messages = \
-            self._run_grid_search(self.data, orders, build_model, self.criterion)
+        (
+            best_result,
+            best_order,
+            candidate_results,
+            candidate_orders,
+            n_attempted,
+            search_messages,
+        ) = self._run_grid_search(self.data, orders, build_model, self.criterion)
 
         criterion_values = [
             _get_criterion_value(r, self.criterion) for r in candidate_results

@@ -86,6 +86,7 @@ def _ensure_fonts():
         SELECTED_CHINESE_FONT = apply_fonts(LATIN_FONT, CHINESE_FONT_CANDIDATES)
         _fonts_initialized = True
 
+
 # --- Palette and cycles ----------------------------------------------------
 # Colorblind-friendly palette (Okabe-Ito inspired)
 DEFAULT_PALETTE = [
@@ -101,14 +102,14 @@ DEFAULT_PALETTE = [
 
 # Distinct line styles so series remain distinguishable in grayscale / B&W print
 DEFAULT_LINESTYLES = [
-    "-",                       # solid
-    "--",                      # dashed
-    "-.",                      # dash-dot
-    ":",                       # dotted
-    (0, (3, 1, 1, 1)),         # dash-dot-dot
-    (0, (5, 1)),               # long dash
-    (0, (1, 1)),               # dense dots
-    (0, (3, 1, 1, 1, 1, 1)),   # dash-dot-dot-dot
+    "-",  # solid
+    "--",  # dashed
+    "-.",  # dash-dot
+    ":",  # dotted
+    (0, (3, 1, 1, 1)),  # dash-dot-dot
+    (0, (5, 1)),  # long dash
+    (0, (1, 1)),  # dense dots
+    (0, (3, 1, 1, 1, 1, 1)),  # dash-dot-dot-dot
 ]
 
 # Distinct marker shapes to reinforce B&W distinction
@@ -122,6 +123,37 @@ TICK_LABELSIZE = 14
 LEGEND_FONTSIZE = 14
 NOTE_FONTSIZE = 9
 # (removed UNIT_FONTSIZE and UNIT_COLOR — unused)
+
+
+def _resolve_colors(colors, series_count):
+    """Return one color per series or reject an ambiguous override."""
+    if colors is None:
+        return None
+    if isinstance(colors, str):
+        raise TypeError("colors must be a sequence of color strings, not a string")
+    resolved = list(colors)
+    if len(resolved) != series_count:
+        raise ValueError(
+            f"colors has {len(resolved)} entries but there are {series_count} series"
+        )
+    return resolved
+
+
+def _validate_positive_step(name, value, *, integer=False):
+    """Validate an optional positive tick step."""
+    if value is None:
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be a positive number")
+    if integer and not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be a positive integer")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(f"{name} must be a positive number") from error
+    if not np.isfinite(numeric) or numeric <= 0:
+        raise ValueError(f"{name} must be positive")
+    return int(value) if integer else numeric
 
 
 def style_axes(ax, *, grid=False, tick_labelsize=TICK_LABELSIZE):
@@ -162,7 +194,8 @@ def draw_shade(ax, shade, color, alpha):
     regions = [shade] if isinstance(shade, tuple) else list(shade)
     for xmin, xmax in regions:
         ax.axvspan(
-            xmin, xmax,
+            xmin,
+            xmax,
             color=color,
             alpha=alpha,
             linewidth=0,
@@ -379,17 +412,37 @@ class _FigureContext:
             self.ax = ax
             self.fig = ax.figure
 
-    def finalize(self, *, title=None, xtitle=None, ytitle=None,
-                 title_position="top", title_loc="center", title_pad=12,
-                 note=None, grid=False,
-                 show_legend=True, legend_labels=None, legend_loc="best",
-                 legend_bbox=None, labels=None, unit=None, x_unit=None, y_unit=None):
+    def finalize(
+        self,
+        *,
+        title=None,
+        xtitle=None,
+        ytitle=None,
+        title_position="top",
+        title_loc="center",
+        title_pad=12,
+        note=None,
+        grid=False,
+        show_legend=True,
+        legend_labels=None,
+        legend_loc="best",
+        legend_bbox=None,
+        labels=None,
+        unit=None,
+        x_unit=None,
+        y_unit=None,
+    ):
         """Apply common post-plot styling."""
         _ensure_fonts()
 
         if title and title_position == "top":
-            self.ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold",
-                             loc=title_loc, pad=title_pad)
+            self.ax.set_title(
+                title,
+                fontsize=TITLE_FONTSIZE,
+                fontweight="bold",
+                loc=title_loc,
+                pad=title_pad,
+            )
 
         if xtitle:
             self.ax.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)
@@ -399,18 +452,20 @@ class _FigureContext:
         style_axes(self.ax, grid=grid, tick_labelsize=TICK_LABELSIZE)
 
         if show_legend and labels:
-            draw_legend(self.ax,
-                       show_legend=show_legend,
-                       legend_labels=legend_labels,
-                       legend_loc=legend_loc,
-                       legend_bbox=legend_bbox)
+            draw_legend(
+                self.ax,
+                show_legend=show_legend,
+                legend_labels=legend_labels,
+                legend_loc=legend_loc,
+                legend_bbox=legend_bbox,
+            )
 
         if unit is not None:
-            draw_unit_label(self.ax, unit, axis='y')
+            draw_unit_label(self.ax, unit, axis="y")
         if x_unit is not None:
-            draw_unit_label(self.ax, x_unit, axis='x')
+            draw_unit_label(self.ax, x_unit, axis="x")
         if y_unit is not None:
-            draw_unit_label(self.ax, y_unit, axis='y')
+            draw_unit_label(self.ax, y_unit, axis="y")
 
         self.fig.tight_layout(pad=1.5)
 
