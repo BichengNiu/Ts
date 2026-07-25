@@ -1,5 +1,6 @@
 """Behavior tests for shared TsTests results, parsing, and plotting."""
 
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import matplotlib
@@ -19,6 +20,13 @@ from Ts.TsTests._unitroot_plot import (
 from Ts.TsTests._utils import _parse_input
 
 
+@dataclass
+class _CriticalValueResult(BaseTestResult):
+    """Test-only result that declares the optional critical-value contract."""
+
+    critical_values: dict[str, float] = field(default_factory=dict)
+
+
 class _LazyTest(BaseTest):
     def fit(self):
         self.result_ = BaseTestResult(
@@ -35,13 +43,13 @@ def test_base_test_result_formats_both_result_styles():
     text = result._format_conclusion("Example", "No effect")
     assert "P-value:        0.200000" in text
 
-    critical_result = BaseTestResult(
+    critical_result = _CriticalValueResult(
         statistic=-4.2,
         pvalue=None,
         lags=2,
         nobs=18,
+        critical_values={"5%": -3.5, "1%": -4.1},
     )
-    critical_result.critical_values = {"5%": -3.5, "1%": -4.1}
     text = critical_result._format_conclusion("Break test", "Unit root")
     assert "Critical Values:" in text
     assert "1%: -4.1000" in text

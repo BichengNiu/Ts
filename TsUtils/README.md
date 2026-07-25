@@ -120,6 +120,39 @@ result = interpolate_missing(data, edge="nearest")
 插值是确定性预处理，不提供插补不确定性。长缺口、结构突变或需要推断标准误的场景，
 应使用状态空间模型、多重插补或其他与数据生成过程匹配的方法。
 
+## 时间序列统计摘要
+
+`TimeSeriesSummary` 使用 pandas 的描述统计，并调用 `TsPlots` 已有的
+`plot_acf`、`plot_pacf` 生成水平值和一阶差分的诊断图：
+
+```python
+from Ts.TsUtils import TimeSeriesSummary
+
+analysis = TimeSeriesSummary(series, nlags=20)
+print(analysis.summary())
+
+figure = analysis.figure_
+axes = analysis.axes_
+```
+
+单列 `DataFrame` 会自动选择唯一一列。多列 `DataFrame` 必须指定指标名称：
+
+```python
+analysis = TimeSeriesSummary(dataframe, variable="GDP", nlags=20)
+print(analysis.summary())
+```
+
+统计摘要和诊断图仅使用 `variable` 指定的列。指标不存在或列名不唯一时会明确报错。
+
+摘要包括样本量、有效观测数、频率、起止索引、统计五数、均值、标准差，
+以及缺失值数量、比例和全部缺失时间戳。没有时间索引的数组改为报告缺失位置。
+
+存在缺失值时，`summary()` 仍返回完整统计摘要，但不会擅自删除或插补数据；
+四个相关图面板会说明 ACF/PACF 未计算。需要绘图时，应先显式调用
+`interpolate_missing()` 或采用其他符合数据生成过程的缺失值处理方法。
+
+`summary(plot=False)` 只生成文本。`plot()` 可显式生成或重新生成诊断图。
+
 ## 运行测试
 
 从 `Ts` 的父目录运行：

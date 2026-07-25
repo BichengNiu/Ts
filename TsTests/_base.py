@@ -71,9 +71,10 @@ class BaseTestResult:
             lines.append(f"  P-value:        {self.pvalue:.6f}")
         else:
             lines.append(f"  Test Statistic: {self.statistic:.6f}")
-            if hasattr(self, "critical_values") and self.critical_values:
+            critical_values = getattr(self, "critical_values", None)
+            if critical_values:
                 lines.append("  Critical Values:")
-                for k, v in sorted(self.critical_values.items()):
+                for k, v in sorted(critical_values.items()):
                     lines.append(f"    {k}: {v:.4f}")
         lines.append(f"  Lags:           {self.lags}")
         lines.append(f"  H0: {h0_desc}")

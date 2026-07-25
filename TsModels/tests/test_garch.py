@@ -115,8 +115,9 @@ class TestGARCH:
 
     def test_arch_class_removed(self):
         """ARCH class no longer exists in _garch module."""
-        with pytest.raises(ImportError):
-            from Ts.TsModels._garch import ARCH  # noqa: F401
+        from Ts.TsModels import _garch
+
+        assert not hasattr(_garch, "ARCH")
 
     def test_invalid_p_raises(self, arch_data):
         """p < 1 raises ValueError."""

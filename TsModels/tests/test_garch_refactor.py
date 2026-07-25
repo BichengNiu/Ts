@@ -295,7 +295,7 @@ class TestSimulateGARCHBaseline:
     """simulate_garch output must remain unchanged."""
 
     def test_model_type(self, sim_garch_data):
-        assert sim_garch_data._detect_model_type() == "GARCH"
+        assert sim_garch_data.model_type == "GARCH"
 
     def test_data_length(self, sim_garch_data):
         assert len(sim_garch_data.data) == 200
@@ -325,7 +325,7 @@ class TestSimulateEGARCHBaseline:
     """simulate_egarch output must remain unchanged."""
 
     def test_model_type(self, sim_egarch_data):
-        assert sim_egarch_data._detect_model_type() == "EGARCH"
+        assert sim_egarch_data.model_type == "EGARCH"
 
     def test_data_length(self, sim_egarch_data):
         assert len(sim_egarch_data.data) == 200

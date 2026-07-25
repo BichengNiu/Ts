@@ -183,10 +183,11 @@ def test_oos_rejects_missing_date_bound():
 
 def test_oos_has_no_split_compatibility_path():
     """The removed split API fails instead of entering a compatibility path."""
+    from inspect import signature
+
     model = _MeanModel(np.arange(15.0))
 
-    with pytest.raises(TypeError, match="split"):
-        model.oos(split=10)
+    assert "split" not in signature(model.oos).parameters
 
 
 def test_public_backtest_uses_each_origin_without_future_leakage():

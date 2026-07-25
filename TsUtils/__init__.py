@@ -6,10 +6,12 @@ for modelling without estimating predictive models.
 
 from ._interpolation import InterpolationResult, interpolate_missing
 from ._stl import STL, STLResult
+from ._summary import TimeSeriesSummary
 
 __all__ = [
     "STL",
     "InterpolationResult",
     "STLResult",
+    "TimeSeriesSummary",
     "interpolate_missing",
 ]

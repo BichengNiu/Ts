@@ -1,4 +1,3 @@
-# ruff: noqa: I001, N999
 """Ts — Time Series Econometrics Toolkit.
 
 This package consolidates six sub-packages under a unified namespace.
@@ -29,7 +28,13 @@ from .TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 # ---------------------------------------------------------------------------
 # TsUtils — preprocessing
 # ---------------------------------------------------------------------------
-from .TsUtils import InterpolationResult, STL, STLResult, interpolate_missing
+from .TsUtils import (
+    InterpolationResult,
+    STL,
+    STLResult,
+    TimeSeriesSummary,
+    interpolate_missing,
+)
 
 # ---------------------------------------------------------------------------
 # TsSims — simulation
@@ -120,6 +125,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     # TsUtils
     "STL",
     "STLResult",
+    "TimeSeriesSummary",
     "interpolate_missing",
     "InterpolationResult",
     # TsSims — base

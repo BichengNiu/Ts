@@ -144,7 +144,7 @@ def _run_garch_simulation(
     *,
     init_sigma2_fn=None,
     max_lag=None,
-    model_type="",
+    model_type,
     extra_params=None,
     garch_m_kappa=None,
     garch_m_form=None,
