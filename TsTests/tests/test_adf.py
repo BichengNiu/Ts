@@ -1,6 +1,7 @@
 """Tests for Ts.TsTests._adf — ADFTest and ADFTestResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -57,6 +58,7 @@ class TestADFTestResult:
             critical_values={"1%": -3.50, "5%": -2.90, "10%": -2.58},
         )
         import matplotlib.pyplot as plt
+
         fig, ax = result.plot_test()
         assert isinstance(fig, plt.Figure)
         assert isinstance(ax, plt.Axes)

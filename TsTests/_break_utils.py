@@ -15,10 +15,13 @@ import statsmodels.api as sm
 # Break dummy construction
 # ---------------------------------------------------------------------------
 
+
 def _make_break_dummies(
     T: int,
     break_idx: int,
     model: str,
+    *,
+    include_pulse: bool = False,
 ) -> dict[str, np.ndarray]:
     """Create dummy variables for a structural break at *break_idx*.
 
@@ -32,6 +35,9 @@ def _make_break_dummies(
         ``break_idx + 1``).
     model : str
         ``"intercept"`` (intercept break), ``"slope"`` (trend break), or ``"both"``.
+    include_pulse : bool
+        Include the one-period ``DP`` dummy for Perron's known-break
+        regressions. Zivot-Andrews regressions do not include this dummy.
 
     Returns
     -------
@@ -40,18 +46,23 @@ def _make_break_dummies(
         (pulse dummy), ``"DT"`` (slope shift).
     """
     t = np.arange(T)
-    DL = (t > break_idx).astype(float)          # level shift
-    DP = (t == break_idx + 1).astype(float)     # pulse (one-period)
-    DT = np.zeros(T)                            # slope shift
-    if model in ("slope", "both"):
-        DT = np.maximum(t - break_idx, 0).astype(float)
+    dummies: dict[str, np.ndarray] = {}
 
-    return {"DL": DL, "DP": DP, "DT": DT}
+    if model in ("intercept", "both"):
+        dummies["DL"] = (t > break_idx).astype(float)
+        if include_pulse:
+            dummies["DP"] = (t == break_idx + 1).astype(float)
+
+    if model in ("slope", "both"):
+        dummies["DT"] = np.maximum(t - break_idx, 0).astype(float)
+
+    return dummies
 
 
 # ---------------------------------------------------------------------------
 # Lag selection
 # ---------------------------------------------------------------------------
+
 
 def _select_lags_by_tstat(
     y: np.ndarray,
@@ -97,14 +108,15 @@ def _select_lags_by_tstat(
         regs = [y_lag1[k:]]  # start from k because we need k initial diffs
         regs.append(np.ones(T - 1 - k))  # constant
         # Add break dummies (trimmed to match t=2..T, then trimmed by k)
-        for name in ["DL", "DP", "DT"]:
-            if name in break_dummies:
-                regs.append(break_dummies[name][1:][k:])
+        regs.extend(
+            break_dummies[name][1:][k:]
+            for name in ("DL", "DP", "DT")
+            if name in break_dummies
+        )
         # Add lagged differences
-        for j in range(1, k + 1):
-            regs.append(dy[k - j: T - 1 - j])  # dy_{t-j}
+        regs.extend(dy[k - j : T - 1 - j] for j in range(1, k + 1))
         # Add time trend using actual time_index
-        regs.append(trend[k + 1:])
+        regs.append(trend[k + 1 :])
 
         X = np.column_stack(regs)
         y_dep = dy[k:]  # Δy_t, trimmed
@@ -114,7 +126,7 @@ def _select_lags_by_tstat(
 
         try:
             res = sm.OLS(y_dep, X).fit()
-        except Exception:
+        except (ValueError, np.linalg.LinAlgError, FloatingPointError):
             continue
 
         if k == 0:
@@ -181,12 +193,12 @@ def _select_lags_by_ic(
 
         try:
             res = sm.OLS(y_dep, X).fit()
-        except Exception:
+        except (ValueError, np.linalg.LinAlgError, FloatingPointError):
             continue
 
         T_eff = len(y_dep)
         n_params = X.shape[1]
-        ssr = np.sum(res.resid ** 2)
+        ssr = np.sum(res.resid**2)
         log_sigma2 = np.log(ssr / T_eff)
 
         if ic_type == "aic":
@@ -206,6 +218,7 @@ def _select_lags_by_ic(
 # ---------------------------------------------------------------------------
 # Regression data builder
 # ---------------------------------------------------------------------------
+
 
 def _build_regression_data(
     y: np.ndarray,
@@ -258,17 +271,17 @@ def _build_regression_data(
 
     # Lagged differences
     for j in range(1, lags + 1):
-        data[f"dy_lag{j}"] = np.concatenate([np.zeros(j), dy[:T - 1 - j]])
+        data[f"dy_lag{j}"] = np.concatenate([np.zeros(j), dy[: T - 1 - j]])
 
     df = pd.DataFrame(data)
     # Drop rows with NaN (from lag construction)
-    df = df.iloc[lags:].copy()
-    return df
+    return df.iloc[lags:].copy()
 
 
 # ---------------------------------------------------------------------------
 # DRY helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_regression_columns(
     break_dummies: dict[str, np.ndarray],
@@ -289,12 +302,9 @@ def _get_regression_columns(
         Column names in regression order.
     """
     cols = ["const", "trend"]
-    for name in ["DL", "DP", "DT"]:
-        if name in break_dummies:
-            cols.append(name)
+    cols.extend(name for name in ("DL", "DP", "DT") if name in break_dummies)
     cols.append("y_lag1")
-    for j in range(1, lags + 1):
-        cols.append(f"dy_lag{j}")
+    cols.extend(f"dy_lag{j}" for j in range(1, lags + 1))
     return cols
 
 

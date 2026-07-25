@@ -19,25 +19,25 @@ from ._utils import _validate_model
 
 # Model A (intercept break)
 _PERRON_MODEL_INTERCEPT_CRIT = {
-    50:   {0.01: -4.32, 0.025: -4.02, 0.05: -3.76, 0.10: -3.46},
-    100:  {0.01: -4.14, 0.025: -3.87, 0.05: -3.65, 0.10: -3.38},
-    200:  {0.01: -4.07, 0.025: -3.82, 0.05: -3.60, 0.10: -3.34},
+    50: {0.01: -4.32, 0.025: -4.02, 0.05: -3.76, 0.10: -3.46},
+    100: {0.01: -4.14, 0.025: -3.87, 0.05: -3.65, 0.10: -3.38},
+    200: {0.01: -4.07, 0.025: -3.82, 0.05: -3.60, 0.10: -3.34},
     np.inf: {0.01: -4.00, 0.025: -3.77, 0.05: -3.56, 0.10: -3.31},
 }
 
 # Model B (slope/trend break)
 _PERRON_MODEL_SLOPE_CRIT = {
-    50:   {0.01: -4.08, 0.025: -3.79, 0.05: -3.55, 0.10: -3.27},
-    100:  {0.01: -3.93, 0.025: -3.68, 0.05: -3.47, 0.10: -3.20},
-    200:  {0.01: -3.88, 0.025: -3.62, 0.05: -3.41, 0.10: -3.16},
+    50: {0.01: -4.08, 0.025: -3.79, 0.05: -3.55, 0.10: -3.27},
+    100: {0.01: -3.93, 0.025: -3.68, 0.05: -3.47, 0.10: -3.20},
+    200: {0.01: -3.88, 0.025: -3.62, 0.05: -3.41, 0.10: -3.16},
     np.inf: {0.01: -3.81, 0.025: -3.56, 0.05: -3.36, 0.10: -3.12},
 }
 
 # Model C (both intercept and slope break)
 _PERRON_MODEL_BOTH_CRIT = {
-    50:   {0.01: -4.90, 0.025: -4.58, 0.05: -4.33, 0.10: -4.00},
-    100:  {0.01: -4.68, 0.025: -4.40, 0.05: -4.17, 0.10: -3.87},
-    200:  {0.01: -4.59, 0.025: -4.32, 0.05: -4.10, 0.10: -3.81},
+    50: {0.01: -4.90, 0.025: -4.58, 0.05: -4.33, 0.10: -4.00},
+    100: {0.01: -4.68, 0.025: -4.40, 0.05: -4.17, 0.10: -3.87},
+    200: {0.01: -4.59, 0.025: -4.32, 0.05: -4.10, 0.10: -3.81},
     np.inf: {0.01: -4.51, 0.025: -4.25, 0.05: -4.04, 0.10: -3.76},
 }
 
@@ -86,6 +86,7 @@ _ZA_CRIT_MAP = {
 # Interpolation helpers
 # ---------------------------------------------------------------------------
 
+
 def _interpolate_crit(crit_dict: dict, T: int) -> dict[float, float]:
     """Linearly interpolate critical values for sample size *T*.
 
@@ -103,9 +104,9 @@ def _interpolate_crit(crit_dict: dict, T: int) -> dict[float, float]:
         Interpolated critical values for each significance level.
     """
     sizes = sorted(k for k in crit_dict if k != np.inf)
-    if T <= sizes[0]:
+    if sizes[0] >= T:
         return crit_dict[sizes[0]]
-    if T > sizes[-1]:
+    if sizes[-1] < T:
         # Use asymptotic (inf) values if available, otherwise largest table entry
         if np.inf in crit_dict:
             return crit_dict[np.inf]

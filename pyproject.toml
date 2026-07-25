@@ -37,3 +37,17 @@ testpaths = [
     "TsTests/tests",
     "TsUtils/tests",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["TsSims", "TsTests"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

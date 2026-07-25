@@ -22,7 +22,13 @@ TsSims/
 ## 快速开始
 
 ```python
-from Ts.TsSims import simulate_sarima, simulate_garch, simulate_gjr_garch, simulate_egarch, simulate_garch_m
+from Ts.TsSims import (
+    simulate_sarima,
+    simulate_garch,
+    simulate_gjr_garch,
+    simulate_egarch,
+    simulate_garch_m,
+)
 from Ts.TsSims import simulate_cointegrated
 
 # AR(1) 过程
@@ -40,16 +46,19 @@ r = simulate_garch(n=200, p=1, q=1, omega=0.2, alpha=[0.3], beta=[0.5], seed=42)
 df = r.to_dataframe()
 
 # GJR-GARCH(1,1,1) — 杠杆效应
-r = simulate_gjr_garch(n=300, p=1, q=1, o=1, omega=0.05,
-                        alpha=[0.10], gamma=[0.15], beta=[0.70], seed=42)
+r = simulate_gjr_garch(
+    n=300, p=1, q=1, o=1, omega=0.05, alpha=[0.10], gamma=[0.15], beta=[0.70], seed=42
+)
 
 # EGARCH(1,1,1) — 对数方差建模
-r = simulate_egarch(n=300, p=1, q=1, o=1, omega=0.0,
-                     alpha=[0.20], gamma=[0.10], beta=[0.30], seed=42)
+r = simulate_egarch(
+    n=300, p=1, q=1, o=1, omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30], seed=42
+)
 
 # GARCH-M(1,1) — 波动率进入均值
-r = simulate_garch_m(n=300, p=1, q=1, omega=0.10,
-                      alpha=[0.20], beta=[0.60], garch_m_kappa=0.20, seed=42)
+r = simulate_garch_m(
+    n=300, p=1, q=1, omega=0.10, alpha=[0.20], beta=[0.60], garch_m_kappa=0.20, seed=42
+)
 ```
 
 ## 结果对象
@@ -323,9 +332,8 @@ import numpy as np
 
 # k=2, r=1: 两个变量，一个协整关系（spread 平稳）
 alpha = np.array([[-0.3], [0.0]])
-beta  = np.array([[1.0], [-1.0]])
-r = simulate_cointegrated(n=500, k=2, coint_rank=1,
-                           alpha=alpha, beta=beta, seed=42)
+beta = np.array([[1.0], [-1.0]])
+r = simulate_cointegrated(n=500, k=2, coint_rank=1, alpha=alpha, beta=beta, seed=42)
 df = r.get_data()
 r.plot()
 ```
@@ -344,14 +352,20 @@ r.plot()
 ```python
 import numpy as np
 from Ts.TsSims import (
-    simulate_sarima, simulate_garch,
-    simulate_gjr_garch, simulate_egarch, simulate_garch_m,
+    simulate_sarima,
+    simulate_garch,
+    simulate_gjr_garch,
+    simulate_egarch,
+    simulate_garch_m,
 )
 
 # SARIMA(1,1,1) — 带漂移的差分ARMA
 r = simulate_sarima(
-    n=200, order=(1, 1, 1),
-    ar=[0.3], ma=[0.5], const=0.1,
+    n=200,
+    order=(1, 1, 1),
+    ar=[0.3],
+    ma=[0.5],
+    const=0.1,
     seed=123,
 )
 print(r.summary())
@@ -359,42 +373,67 @@ r.plot()
 
 # ARCH(2) — GARCH with q=0
 r = simulate_garch(
-    n=500, p=2, q=0,
-    omega=0.2, alpha=[0.3, 0.2],
+    n=500,
+    p=2,
+    q=0,
+    omega=0.2,
+    alpha=[0.3, 0.2],
     seed=42,
 )
 r.plot()
 
 # GARCH(1,1) — 厚尾 Student's t 新息
 r = simulate_garch(
-    n=300, p=1, q=1,
-    omega=0.1, alpha=[0.2], beta=[0.7],
-    dist="t", dist_params={"df": 5},
+    n=300,
+    p=1,
+    q=1,
+    omega=0.1,
+    alpha=[0.2],
+    beta=[0.7],
+    dist="t",
+    dist_params={"df": 5},
     seed=99,
 )
 r.plot()
 
 # GJR-GARCH(1,1,1) — 杠杆效应
 r = simulate_gjr_garch(
-    n=300, p=1, q=1, o=1,
-    omega=0.05, alpha=[0.10], gamma=[0.15], beta=[0.70],
+    n=300,
+    p=1,
+    q=1,
+    o=1,
+    omega=0.05,
+    alpha=[0.10],
+    gamma=[0.15],
+    beta=[0.70],
     seed=42,
 )
 r.plot()
 
 # EGARCH(1,1,1) — 对数方差
 r = simulate_egarch(
-    n=300, p=1, q=1, o=1,
-    omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30],
+    n=300,
+    p=1,
+    q=1,
+    o=1,
+    omega=0.0,
+    alpha=[0.20],
+    gamma=[0.10],
+    beta=[0.30],
     seed=42,
 )
 r.plot()
 
 # GARCH-M(1,1) — ARCH-in-Mean
 r = simulate_garch_m(
-    n=300, p=1, q=1,
-    omega=0.10, alpha=[0.20], beta=[0.60],
-    garch_m_kappa=0.20, seed=42,
+    n=300,
+    p=1,
+    q=1,
+    omega=0.10,
+    alpha=[0.20],
+    beta=[0.60],
+    garch_m_kappa=0.20,
+    seed=42,
 )
 r.plot()
 ```

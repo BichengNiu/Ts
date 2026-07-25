@@ -12,6 +12,7 @@ Toda, H. Y., & Yamamoto, T. (1995).  Statistical inference in vector
 autoregressions with possibly integrated processes.  *Journal of
 Econometrics*, 66(1-2), 225-250.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,10 +20,11 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import stats as scipy_stats
 
-from Ts.TsTests._base import BaseTest, BaseTestResult
+from Ts.TsTests._base import BaseMultiTestResult, BaseTest
+from Ts.TsTests._utils import _clean_2d
 
-# Maximum order of integration supported.
-_MAX_DMAX = 2
+# Significance used by automatic integration-order detection.
+_AUTO_DMAX_ALPHA = 0.10
 
 # Valid trend specifications for the VAR in levels.
 _VALID_TRENDS = frozenset({"c", "ct", "n"})
@@ -40,7 +42,6 @@ def _sig_star(p_value):
     if p_value < 0.10:
         return "."
     return " "
-
 
 
 @dataclass
@@ -69,7 +70,7 @@ class _TYEntry:
 
 
 @dataclass
-class TodaYamamotoTestResult(BaseTestResult):
+class TodaYamamotoTestResult(BaseMultiTestResult):
     """Result container for the Toda-Yamamoto Granger causality test.
 
     Parameters
@@ -136,10 +137,7 @@ class TodaYamamotoTestResult(BaseTestResult):
             )
 
         lines.append(top_rule)
-        lines.append(
-            "Significance codes:  "
-            "** p<0.01  * p<0.05  . p<0.10"
-        )
+        lines.append("Significance codes:  ** p<0.01  * p<0.05  . p<0.10")
         return "\n".join(lines)
 
     def __str__(self) -> str:
@@ -183,36 +181,26 @@ class TodaYamamotoTest(BaseTest):
     """
 
     def __init__(self, data, p, d_max=None, trend="c", cols=None):
-        y = np.asarray(data, dtype=float)
-        if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+        y = _clean_2d(data)
         k = y.shape[1]
         if k < 2:
             raise ValueError(
                 f"data must have at least 2 variables (k >= 2), got k = {k}"
             )
 
-        y = y[~np.any(np.isnan(y), axis=1)]
-
         if p < 1:
             raise ValueError(f"p must be >= 1, got {p}")
         if d_max is not None and d_max not in (0, 1, 2):
-            raise ValueError(
-                f"d_max must be 0, 1, or 2, got {d_max}"
-            )
+            raise ValueError(f"d_max must be 0, 1, or 2, got {d_max}")
         if trend not in _VALID_TRENDS:
             raise ValueError(
-                f"trend must be one of {sorted(_VALID_TRENDS)}, "
-                f"got {trend!r}"
+                f"trend must be one of {sorted(_VALID_TRENDS)}, got {trend!r}"
             )
 
         if cols is not None:
             if len(cols) != k:
                 raise ValueError(
-                    f"cols length ({len(cols)}) must match "
-                    f"number of variables ({k})"
+                    f"cols length ({len(cols)}) must match number of variables ({k})"
                 )
             self.cols = list(cols)
         else:
@@ -224,17 +212,14 @@ class TodaYamamotoTest(BaseTest):
         self.trend = trend
         self.result_: TodaYamamotoTestResult | None = None
 
-    def _detect_dmax(self, significance=0.10):
+    def _detect_dmax(self):
         """Determine the maximum order of integration via ADF tests.
 
         Tests each variable in levels; if unit root is not rejected,
         tests first differences.  Continues up to *d_max* = 2.
 
-        Parameters
-        ----------
-        significance : float
-            Significance level for the ADF test (default 0.10 —
-            generous to err on the side of over-specifying d_max).
+        The internal 10% threshold intentionally errs on the side of
+        over-specifying the augmentation order.
 
         Returns
         -------
@@ -250,16 +235,16 @@ class TodaYamamotoTest(BaseTest):
             d_i = 0
             # Test levels
             adf_pv = adfuller(series, autolag="AIC")[1]
-            if adf_pv > significance:
+            if adf_pv > _AUTO_DMAX_ALPHA:
                 d_i = 1
                 # Test first differences
                 diff1 = np.diff(series)
                 if len(diff1) >= 10:
                     adf_pv_d1 = adfuller(diff1, autolag="AIC")[1]
-                    if adf_pv_d1 > significance:
+                    if adf_pv_d1 > _AUTO_DMAX_ALPHA:
                         d_i = 2
             max_d = max(max_d, d_i)
-        return min(max_d, _MAX_DMAX)
+        return max_d
 
     def fit(self):
         """Execute the Toda-Yamamoto Granger causality test.
@@ -287,18 +272,19 @@ class TodaYamamotoTest(BaseTest):
 
         # 2. Extract coefficient vector and covariance matrix
         all_params = np.asarray(fitted.params)  # shape (n_regressors, k)
-        cov_full = np.asarray(fitted.cov_params())  # (n_regressors * k,) x (n_regressors * k,)
+        cov_full = np.asarray(
+            fitted.cov_params()
+        )  # (n_regressors * k,) x (n_regressors * k,)
         resid = np.asarray(fitted.resid)
         nobs = int(fitted.nobs)
 
         # Parameter layout (n_regressors rows, k cols):
-        # [const (if trend), trend (if ct/ctt), trend2 (if ctt),
+        # [const (if trend), trend (if ct),
         #  L1.y0, L1.y1, ..., L1.y_{k-1}, L2.y0, ...]
 
         has_const = self.trend != "n"
-        has_trend = self.trend in ("ct", "ctt")
-        has_trend2 = self.trend == "ctt"
-        n_det = int(has_const) + int(has_trend) + int(has_trend2)
+        has_trend = self.trend == "ct"
+        n_det = int(has_const) + int(has_trend)
 
         # 3. Build test entries
         entries = []
@@ -311,39 +297,48 @@ class TodaYamamotoTest(BaseTest):
 
                 causing_name = [self.cols[causing_idx]]
                 wald, p_val = _wald_test_single(
-                    all_params, cov_full, k, total_lags,
-                    eq_idx, causing_idx, n_det, self.p,
+                    all_params,
+                    cov_full,
+                    k,
+                    eq_idx,
+                    causing_idx,
+                    n_det,
+                    self.p,
                 )
 
-                entries.append(_TYEntry(
-                    test_statistic=float(wald),
-                    p_value=float(p_val),
-                    df=self.p,
-                    caused=caused_name,
-                    causing=causing_name,
-                ))
+                entries.append(
+                    _TYEntry(
+                        test_statistic=float(wald),
+                        p_value=float(p_val),
+                        df=self.p,
+                        caused=caused_name,
+                        causing=causing_name,
+                    )
+                )
 
             # Joint ALL test
             other_idx = [j for j in range(k) if j != eq_idx]
             if len(other_idx) > 1:
                 wald, p_val = _wald_test_multi(
-                    all_params, cov_full, k, total_lags,
-                    eq_idx, other_idx, n_det, self.p,
+                    all_params,
+                    cov_full,
+                    k,
+                    eq_idx,
+                    other_idx,
+                    n_det,
+                    self.p,
                 )
-                entries.append(_TYEntry(
-                    test_statistic=float(wald),
-                    p_value=float(p_val),
-                    df=self.p * len(other_idx),
-                    caused=caused_name,
-                    causing=["ALL"],
-                ))
-
-        # Use the first pair test statistic/pvalue as the primary
-        primary = entries[0] if entries else None
+                entries.append(
+                    _TYEntry(
+                        test_statistic=float(wald),
+                        p_value=float(p_val),
+                        df=self.p * len(other_idx),
+                        caused=caused_name,
+                        causing=["ALL"],
+                    )
+                )
 
         result = TodaYamamotoTestResult(
-            statistic=primary.test_statistic if primary else 0.0,
-            pvalue=primary.p_value if primary else None,
             lags=total_lags,
             nobs=nobs,
             residuals=resid,
@@ -382,14 +377,15 @@ def _compute_wald(R, param_vec, cov_full, df):
     R_cov_Rt = R @ cov_full @ R.T
     try:
         wald = float(R_beta.T @ np.linalg.solve(R_cov_Rt, R_beta))
-    except np.linalg.LinAlgError:
-        wald = np.nan
+    except np.linalg.LinAlgError as exc:
+        raise RuntimeError(
+            "Wald test covariance is singular; causality statistic is undefined"
+        ) from exc
     p_value = float(1.0 - scipy_stats.chi2.cdf(wald, df))
     return wald, p_value
 
 
-def _build_restriction_matrix(n_regressors, k, eq_idx, causing_indices,
-                              n_det, p_lags):
+def _build_restriction_matrix(n_regressors, k, eq_idx, causing_indices, n_det, p_lags):
     """Build the restriction matrix R for Wald testing.
 
     R selects the coefficients of the first *p_lags* lags of
@@ -427,8 +423,7 @@ def _build_restriction_matrix(n_regressors, k, eq_idx, causing_indices,
     return R
 
 
-def _wald_test_single(all_params, cov_full, k, total_lags,
-                      eq_idx, causing_idx, n_det, p_lags):
+def _wald_test_single(all_params, cov_full, k, eq_idx, causing_idx, n_det, p_lags):
     """Wald test: a single causing variable does not Granger-cause caused.
 
     H0: The first *p_lags* lags of *causing_idx* are zero in the
@@ -437,13 +432,17 @@ def _wald_test_single(all_params, cov_full, k, total_lags,
     n_regressors = all_params.shape[0]
     param_vec = all_params.ravel()
     R = _build_restriction_matrix(
-        n_regressors, k, eq_idx, [causing_idx], n_det, p_lags,
+        n_regressors,
+        k,
+        eq_idx,
+        [causing_idx],
+        n_det,
+        p_lags,
     )
     return _compute_wald(R, param_vec, cov_full, p_lags)
 
 
-def _wald_test_multi(all_params, cov_full, k, total_lags,
-                     eq_idx, causing_idx_list, n_det, p_lags):
+def _wald_test_multi(all_params, cov_full, k, eq_idx, causing_idx_list, n_det, p_lags):
     """Wald test: multiple causing variables jointly do not Granger-cause.
 
     H0: The first *p_lags* lags of all variables in *causing_idx_list*
@@ -453,6 +452,11 @@ def _wald_test_multi(all_params, cov_full, k, total_lags,
     param_vec = all_params.ravel()
     n_restrictions = p_lags * len(causing_idx_list)
     R = _build_restriction_matrix(
-        n_regressors, k, eq_idx, causing_idx_list, n_det, p_lags,
+        n_regressors,
+        k,
+        eq_idx,
+        causing_idx_list,
+        n_det,
+        p_lags,
     )
     return _compute_wald(R, param_vec, cov_full, n_restrictions)

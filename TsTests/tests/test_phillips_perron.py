@@ -1,6 +1,7 @@
 """Tests for Ts.TsTests._phillips_perron — PhillipsPerronTest and result."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -56,6 +57,7 @@ class TestPhillipsPerronTestResult:
             critical_values={"1%": -3.50, "5%": -2.90, "10%": -2.58},
         )
         import matplotlib.pyplot as plt
+
         fig, ax = result.plot_test()
         assert isinstance(fig, plt.Figure)
         assert isinstance(ax, plt.Axes)

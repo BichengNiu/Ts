@@ -82,17 +82,36 @@ class TestZivotResultBaseline:
         assert "lags" in s.lower() or "Number of lags" in s
 
     def test_three_models_work(self):
-        """All three models (intercept, slope, both) must work."""
+        """All three models use their intended, distinct break regressors."""
+        from Ts.TsTests._break_utils import _make_break_dummies
+
+        expected_columns = {
+            "intercept": {"DL"},
+            "slope": {"DT"},
+            "both": {"DL", "DT"},
+        }
         np.random.seed(42)
         n = 150
         t = np.arange(n)
         y = np.cumsum(np.random.randn(n)) + 0.05 * t
 
+        statistics = {}
         for model in ["intercept", "slope", "both"]:
-            test = ZivotAndrewsTest(y, time_index=t, model=model, trim=0.15)
+            assert set(_make_break_dummies(n, 50, model)) == expected_columns[model]
+
+            test = ZivotAndrewsTest(
+                y,
+                time_index=t,
+                model=model,
+                lags=1,
+                trim=0.15,
+            )
             result = test.fit()
             assert result.model == model
             assert isinstance(result.statistic, float)
+            statistics[model] = result.statistic
+
+        assert statistics["slope"] != statistics["both"]
 
 
 class TestZivotAndrewsTestBaseline:
@@ -147,8 +166,9 @@ class TestZivotAndrewsTestBaseline:
         n = 150
         t = np.arange(n)
         y = np.cumsum(np.random.randn(n)) + 0.05 * t
-        test = ZivotAndrewsTest(y, time_index=t, model="intercept",
-                                lag_method="aic", max_lags=4, trim=0.15)
+        test = ZivotAndrewsTest(
+            y, time_index=t, model="intercept", lag_method="aic", max_lags=4, trim=0.15
+        )
         result = test.fit()
         assert isinstance(result.lags, int)
         assert 0 <= result.lags <= 4
@@ -159,8 +179,9 @@ class TestZivotAndrewsTestBaseline:
         n = 150
         t = np.arange(n)
         y = np.cumsum(np.random.randn(n)) + 0.05 * t
-        test = ZivotAndrewsTest(y, time_index=t, model="intercept",
-                                lag_method="bic", max_lags=4, trim=0.15)
+        test = ZivotAndrewsTest(
+            y, time_index=t, model="intercept", lag_method="bic", max_lags=4, trim=0.15
+        )
         result = test.fit()
         assert isinstance(result.lags, int)
         assert 0 <= result.lags <= 4
@@ -189,3 +210,15 @@ class TestZivotAndrewsTestBaseline:
         # Should return a matplotlib figure and axes
         assert fig is not None
         assert ax is not None
+
+    def test_does_not_swallow_unexpected_ols_errors(self, monkeypatch):
+        """Programming errors from candidate regressions escape immediately."""
+
+        def raise_unexpected(*args, **kwargs):
+            raise RuntimeError("unexpected implementation error")
+
+        monkeypatch.setattr("Ts.TsTests._zivot.sm.OLS", raise_unexpected)
+        data = np.arange(60, dtype=float) + np.sin(np.arange(60))
+        test = ZivotAndrewsTest(data, lags=1)
+        with pytest.raises(RuntimeError, match="unexpected implementation error"):
+            test.fit()

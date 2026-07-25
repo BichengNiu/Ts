@@ -80,6 +80,15 @@ class BaseTestResult:
         return "\n".join(lines)
 
 
+@dataclass
+class BaseMultiTestResult:
+    """Common metadata for tests that return multiple directional results."""
+
+    lags: int
+    nobs: int
+    residuals: np.ndarray | None = None
+
+
 class BaseTest(ABC):
     """Abstract base class for all statistical tests in TsTests.
 
@@ -88,10 +97,10 @@ class BaseTest(ABC):
     representation (no side effects — does not print).
     """
 
-    result_: BaseTestResult | None = None
+    result_: BaseTestResult | BaseMultiTestResult | None = None
 
     @abstractmethod
-    def fit(self) -> BaseTestResult:
+    def fit(self) -> BaseTestResult | BaseMultiTestResult:
         """Execute the test and return a result object.
 
         The result is also stored in :attr:`result_`.

@@ -40,7 +40,7 @@ Quick start
 >>> kpss.result_.plot_test()
 """
 
-from ._base import BaseTest, BaseTestResult
+from ._base import BaseMultiTestResult, BaseTest, BaseTestResult
 from ._perron import PerronTest, PerronTestResult
 from ._zivot import ZivotAndrewsTest, ZivotAndrewsTestResult
 from ._ljungbox import LjungBoxTest, LjungBoxTestResult
@@ -53,32 +53,33 @@ from ._johansen import JohansenTest, JohansenTestResult
 from ._toda_yamamoto import TodaYamamotoTest, TodaYamamotoTestResult
 
 __all__ = [
+    # Unit root tests
+    "ADFTest",
+    "ADFTestResult",
+    "BaseMultiTestResult",
     # Base classes
     "BaseTest",
     "BaseTestResult",
-    # Structural break tests
-    "PerronTest",
-    "ZivotAndrewsTest",
-    # ARCH-effect tests
-    "LjungBoxTest",
     "EngleLMTest",
-    # Normality test
-    "NormalityTest",
-    # Unit root tests
-    "ADFTest",
-    "PhillipsPerronTest",
-    "KPSSTest",
-    # Result containers
-    "PerronTestResult",
-    "ZivotAndrewsTestResult",
-    "LjungBoxTestResult",
     "EngleLMTestResult",
-    "NormalityTestResult",
-    "ADFTestResult",
-    "PhillipsPerronTestResult",
-    "KPSSTestResult",
     "JohansenTest",
     "JohansenTestResult",
+    "KPSSTest",
+    "KPSSTestResult",
+    # ARCH-effect tests
+    "LjungBoxTest",
+    "LjungBoxTestResult",
+    # Normality test
+    "NormalityTest",
+    "NormalityTestResult",
+    # Structural break tests
+    "PerronTest",
+    # Result containers
+    "PerronTestResult",
+    "PhillipsPerronTest",
+    "PhillipsPerronTestResult",
     "TodaYamamotoTest",
     "TodaYamamotoTestResult",
+    "ZivotAndrewsTest",
+    "ZivotAndrewsTestResult",
 ]

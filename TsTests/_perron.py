@@ -31,14 +31,15 @@ from ._break_utils import (
 @dataclass
 class PerronTestResult(BaseTestResult):
     """Container for Perron (1989) test results."""
-    rho_hat: float = 0.0                      # estimated ρ
-    rho_se: float = 0.0                       # std. error of ρ̂
-    break_year: float = 0.0                   # break point (in original units)
-    break_index: int = 0                      # 0-based index of break
-    model: str = ""                           # "intercept", "slope", or "both"
-    cv_01: float = 0.0                        # critical value at 1%
-    cv_05: float = 0.0                        # critical value at 5%
-    cv_10: float = 0.0                        # critical value at 10%
+
+    rho_hat: float = 0.0  # estimated ρ
+    rho_se: float = 0.0  # std. error of ρ̂
+    break_year: float = 0.0  # break point (in original units)
+    break_index: int = 0  # 0-based index of break
+    model: str = ""  # "intercept", "slope", or "both"
+    cv_01: float = 0.0  # critical value at 1%
+    cv_05: float = 0.0  # critical value at 5%
+    cv_10: float = 0.0  # critical value at 10%
     coefficients: dict[str, float] = field(default_factory=dict)
     pvalues: dict[str, float] = field(default_factory=dict)
     fitted: np.ndarray | None = None
@@ -89,6 +90,7 @@ class PerronTestResult(BaseTestResult):
         ax : matplotlib.axes.Axes
         """
         from ._unitroot_plot import _render_critical_value_plot
+
         return _render_critical_value_plot(self, "Perron (1989)", ax)
 
 
@@ -128,7 +130,9 @@ class PerronTest(BaseTest):
         Full test results after calling :meth:`fit`.
     """
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         break_year: float,
         time_index=None,
         model: str = "intercept",
@@ -147,7 +151,9 @@ class PerronTest(BaseTest):
         self.max_lags = max_lags
         self.lag_crit = lag_crit
         if lag_method not in ("tstat", "aic", "bic"):
-            raise ValueError(f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}")
+            raise ValueError(
+                f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
+            )
         self.lag_method = lag_method
         self.result_: PerronTestResult | None = None
 
@@ -173,18 +179,28 @@ class PerronTest(BaseTest):
         if break_idx < 2 or break_idx > T - 3:
             warnings.warn(
                 f"Break index {break_idx} is near the boundary (T={T}). "
-                "Results may be unreliable."
+                "Results may be unreliable.",
+                stacklevel=2,
             )
 
         # Create break dummies
-        dummies = _make_break_dummies(T, break_idx, self.model)
+        dummies = _make_break_dummies(
+            T,
+            break_idx,
+            self.model,
+            include_pulse=True,
+        )
 
         # Lag selection
         if self.lags is None:
             if self.lag_method == "tstat":
-                k = _select_lags_by_tstat(y, dummies, self.max_lags, time_idx, self.lag_crit)
+                k = _select_lags_by_tstat(
+                    y, dummies, self.max_lags, time_idx, self.lag_crit
+                )
             else:
-                k, _ = _select_lags_by_ic(y, dummies, self.max_lags, time_idx, self.lag_method)
+                k, _ = _select_lags_by_ic(
+                    y, dummies, self.max_lags, time_idx, self.lag_method
+                )
         else:
             k = self.lags
 
@@ -200,7 +216,7 @@ class PerronTest(BaseTest):
         # OLS estimation
         try:
             res = sm.OLS(y_dep, X).fit()
-        except Exception as e:
+        except (ValueError, np.linalg.LinAlgError, FloatingPointError) as e:
             raise RuntimeError(
                 f"Perron test OLS estimation failed. "
                 f"This may be caused by singular design matrix "
@@ -240,4 +256,3 @@ class PerronTest(BaseTest):
             rmse=np.sqrt(res.mse_resid),
         )
         return self.result_
-

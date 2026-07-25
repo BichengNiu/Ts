@@ -14,6 +14,7 @@ import numpy as np
 
 from Ts.TsPlots import plot_series
 from ._base import BaseSimResult
+from ._validation import validate_real, validate_sample
 
 
 @dataclass
@@ -105,6 +106,7 @@ class SimTSDSResult(BaseSimResult):
 # Public simulation functions
 # ---------------------------------------------------------------------------
 
+
 def simulate_trend_stationary(
     n: int = 100,
     intercept: float = 0.0,
@@ -142,6 +144,11 @@ def simulate_trend_stationary(
         Container with ``.data``, ``.residuals``, ``.params`` and methods
         ``.get_data()``, ``.get_params()``, ``.summary()``, ``.plot()``.
     """
+    n, _ = validate_sample(n)
+    intercept = validate_real("intercept", intercept)
+    slope = validate_real("slope", slope)
+    sigma = validate_real("sigma", sigma, positive=True)
+
     rng = np.random.default_rng(seed)
     errors = rng.normal(0.0, sigma, size=n)
     t = np.arange(n, dtype=float)
@@ -197,6 +204,10 @@ def simulate_difference_stationary(
         Container with ``.data``, ``.residuals``, ``.params`` and methods
         ``.get_data()``, ``.get_params()``, ``.summary()``, ``.plot()``.
     """
+    n, burn = validate_sample(n, burn)
+    drift = validate_real("drift", drift)
+    sigma = validate_real("sigma", sigma, positive=True)
+
     total_n = n + burn
     rng = np.random.default_rng(seed)
     errors = rng.normal(0.0, sigma, size=total_n)

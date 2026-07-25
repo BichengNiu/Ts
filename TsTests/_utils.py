@@ -42,6 +42,33 @@ def _validate_model(model: str) -> None:
 # Input parsing
 # ---------------------------------------------------------------------------
 
+
+def _as_1d_float(data: Any, *, name: str = "data") -> np.ndarray:
+    """Convert input to a 1-D float array without silently flattening it."""
+    values = np.asarray(data, dtype=float)
+    if values.ndim != 1:
+        raise ValueError(f"{name} must be 1-D, got shape {values.shape}")
+    return values
+
+
+def _clean_1d(data: Any, *, name: str = "data") -> np.ndarray:
+    """Drop NaN observations from 1-D input and reject infinities."""
+    values = _as_1d_float(data, name=name)
+    if np.any(np.isinf(values)):
+        raise ValueError(f"{name} must not contain infinite values")
+    return values[~np.isnan(values)]
+
+
+def _clean_2d(data: Any, *, name: str = "data") -> np.ndarray:
+    """Drop rows containing NaN from 2-D input and reject infinities."""
+    values = np.asarray(data, dtype=float)
+    if values.ndim != 2:
+        raise ValueError(f"{name} must be 2-D, got shape {values.shape}")
+    if np.any(np.isinf(values)):
+        raise ValueError(f"{name} must not contain infinite values")
+    return values[~np.any(np.isnan(values), axis=1)]
+
+
 def _parse_input(
     data: Any,
     time_index: Any = None,
@@ -77,6 +104,7 @@ def _parse_input(
     ValueError
         If *data* is a multi-column DataFrame and *y_col* is not specified.
     """
+
     def _get_col(_df: pd.DataFrame, _col: str | int) -> np.ndarray:
         if isinstance(_col, int):
             return _df.iloc[:, _col].values.astype(float).ravel()
@@ -96,17 +124,32 @@ def _parse_input(
     elif isinstance(data, pd.Series):
         y = data.values.astype(float).ravel()
     else:
-        y = np.asarray(data, dtype=float).ravel()
+        y = _as_1d_float(data)
 
     # --- Parse time_index ---
     if time_index is not None:
-        if isinstance(time_index, (pd.DataFrame, pd.Series)):
-            t = time_index.values.astype(float).ravel()
+        if isinstance(time_index, pd.DataFrame):
+            if time_index.shape[1] != 1:
+                raise ValueError("time_index DataFrame must contain exactly one column")
+            t = time_index.iloc[:, 0].to_numpy(dtype=float)
+        elif isinstance(time_index, pd.Series):
+            t = time_index.to_numpy(dtype=float)
         else:
-            t = np.asarray(time_index, dtype=float).ravel()
+            t = _as_1d_float(time_index, name="time_index")
     elif time_col is not None and isinstance(data, pd.DataFrame):
         t = _get_col(data, time_col)
     else:
         t = np.arange(len(y), dtype=float)
+
+    if len(y) != len(t):
+        raise ValueError(
+            f"time_index length ({len(t)}) must match data length ({len(y)})"
+        )
+    if len(y) == 0:
+        raise ValueError("data must contain at least one observation")
+    if not np.all(np.isfinite(y)):
+        raise ValueError("data must contain only finite values")
+    if not np.all(np.isfinite(t)):
+        raise ValueError("time_index must contain only finite values")
 
     return y, t

@@ -1,6 +1,7 @@
 """Tests for Ts.TsTests._kpss — KPSSTest and KPSSTestResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -71,6 +72,7 @@ class TestKPSSTestResult:
             critical_values={"10%": 0.347, "5%": 0.463, "1%": 0.739},
         )
         import matplotlib.pyplot as plt
+
         fig, ax = result.plot_test()
         assert isinstance(fig, plt.Figure)
         assert isinstance(ax, plt.Axes)

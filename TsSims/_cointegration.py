@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ._base import BaseSimResult
+from ._validation import validate_int, validate_real, validate_sample
 
 
 @dataclass
@@ -30,10 +31,10 @@ class SimCointegratedResult(BaseSimResult):
     params : dict
         All parameters used for simulation.
     """
+
     # get_data() is inherited from BaseSimResult — handles 2D data correctly.
 
     def summary(self) -> str:
-
         """Return a formatted parameter summary string.
 
         Returns
@@ -115,6 +116,7 @@ class SimCointegratedResult(BaseSimResult):
 # Helper functions
 # ---------------------------------------------------------------------------
 
+
 def _make_default_beta(k: int, r: int) -> np.ndarray:
     """Build default cointegrating vectors: [I_r; 0_{(k-r) x r}]."""
     beta = np.zeros((k, r))
@@ -155,22 +157,19 @@ def _validate_params(
     if coint_rank >= k:
         raise ValueError(f"coint_rank ({coint_rank}) must be < k ({k})")
 
-    if alpha is not None:
-        if alpha.ndim != 2 or alpha.shape[0] != k or alpha.shape[1] != coint_rank:
-            raise ValueError(
-                f"alpha must have shape ({k}, {coint_rank}), got {alpha.shape}"
-            )
+    if alpha is not None and (alpha.ndim != 2 or alpha.shape != (k, coint_rank)):
+        raise ValueError(
+            f"alpha must have shape ({k}, {coint_rank}), got {alpha.shape}"
+        )
 
-    if beta is not None:
-        if beta.ndim != 2 or beta.shape[0] != k or beta.shape[1] != coint_rank:
-            raise ValueError(
-                f"beta must have shape ({k}, {coint_rank}), got {beta.shape}"
-            )
+    if beta is not None and (beta.ndim != 2 or beta.shape != (k, coint_rank)):
+        raise ValueError(f"beta must have shape ({k}, {coint_rank}), got {beta.shape}")
 
 
 # ---------------------------------------------------------------------------
 # Public simulation function
 # ---------------------------------------------------------------------------
+
 
 def simulate_cointegrated(
     n: int = 200,
@@ -237,14 +236,27 @@ def simulate_cointegrated(
     ...                           alpha=alpha, beta=beta, seed=42)
     """
     # --- validate -----------------------------------------------------------
-    _validate_params(k, coint_rank, alpha, beta)
+    n, burn = validate_sample(n, burn)
+    k = validate_int("k", k, minimum=2)
+    coint_rank = validate_int("coint_rank", coint_rank, minimum=1)
+    sigma = validate_real("sigma", sigma, positive=True)
+    if coint_rank >= k:
+        raise ValueError(f"coint_rank ({coint_rank}) must be < k ({k})")
 
     if alpha is None:
         alpha = _make_default_alpha(k, coint_rank)
+    else:
+        alpha = np.asarray(alpha, dtype=float)
     if beta is None:
         beta = _make_default_beta(k, coint_rank)
+    else:
+        beta = np.asarray(beta, dtype=float)
 
     _validate_params(k, coint_rank, alpha, beta)
+    if not np.all(np.isfinite(alpha)):
+        raise ValueError("alpha must contain only finite values")
+    if not np.all(np.isfinite(beta)):
+        raise ValueError("beta must contain only finite values")
     _check_stability(alpha, beta)
 
     # --- generate -----------------------------------------------------------
@@ -255,10 +267,10 @@ def simulate_cointegrated(
     Y = np.zeros((total_n, k))
     for t in range(1, total_n):
         y_prev = Y[t - 1]
-        ect = beta.T @ y_prev          # (r,) — cointegration errors
+        ect = beta.T @ y_prev  # (r,) — cointegration errors
         Y[t] = y_prev + alpha @ ect + innovations[t]
 
-    data = Y[burn:]        # (n, k)
+    data = Y[burn:]  # (n, k)
     errors = innovations[burn:]  # (n, k)
 
     return SimCointegratedResult(

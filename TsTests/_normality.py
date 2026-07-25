@@ -14,6 +14,7 @@ import numpy as np
 from scipy import stats as scipy_stats
 
 from ._base import BaseTest, BaseTestResult
+from ._utils import _clean_1d
 
 
 @dataclass
@@ -38,7 +39,9 @@ class NormalityTestResult(BaseTestResult):
         )
 
         lines = [
-            self._format_conclusion("Jarque-Bera Normality Test", "Normal distribution"),
+            self._format_conclusion(
+                "Jarque-Bera Normality Test", "Normal distribution"
+            ),
             f"  Skewness            : {self.skewness:.4f}",
             f"  Kurtosis            : {self.kurtosis:.4f}",
             f"  Effective obs.      : {self.nobs}",
@@ -59,13 +62,24 @@ class NormalityTestResult(BaseTestResult):
 
         fig, ax = plt.subplots(figsize=FIGSIZE)
         if self.residuals is not None and len(self.residuals) > 0:
-            ax.hist(self.residuals, bins="auto", density=True, alpha=0.7,
-                    color=DEFAULT_PALETTE[0])
+            ax.hist(
+                self.residuals,
+                bins="auto",
+                density=True,
+                alpha=0.7,
+                color=DEFAULT_PALETTE[0],
+            )
             from scipy import stats as scipy_stats
+
             x = np.linspace(self.residuals.min(), self.residuals.max(), 100)
-            ax.plot(x, scipy_stats.norm.pdf(x, np.mean(self.residuals),
-                                            np.std(self.residuals)),
-                    color=DEFAULT_PALETTE[3], linewidth=2)
+            ax.plot(
+                x,
+                scipy_stats.norm.pdf(
+                    x, np.mean(self.residuals), np.std(self.residuals)
+                ),
+                color=DEFAULT_PALETTE[3],
+                linewidth=2,
+            )
         ax.set_title(
             f"Jarque-Bera Test: statistic={self.statistic:.3f}, "
             f"p-value={self.pvalue:.4f}"
@@ -93,13 +107,10 @@ class NormalityTest(BaseTest):
     """
 
     def __init__(self, data):
-        y_arr = np.asarray(data, dtype=float).ravel()
-        y_arr = y_arr[~np.isnan(y_arr)]
+        y_arr = _clean_1d(data)
 
         if len(y_arr) < 8:
-            raise ValueError(
-                f"Need at least 8 observations, got {len(y_arr)}"
-            )
+            raise ValueError(f"Need at least 8 observations, got {len(y_arr)}")
 
         self.data = y_arr
         self.result_: NormalityTestResult | None = None
@@ -115,7 +126,7 @@ class NormalityTest(BaseTest):
         kurt = float(scipy_stats.kurtosis(self.data))  # excess kurtosis
         n = len(self.data)
 
-        jb_stat = n / 6.0 * (skew ** 2 + kurt ** 2 / 4.0)
+        jb_stat = n / 6.0 * (skew**2 + kurt**2 / 4.0)
         jb_pval = float(scipy_stats.chi2.sf(jb_stat, 2))
 
         self.result_ = NormalityTestResult(

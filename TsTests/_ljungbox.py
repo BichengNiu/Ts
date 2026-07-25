@@ -14,6 +14,7 @@ import numpy as np
 from statsmodels.stats.diagnostic import acorr_ljungbox
 
 from ._base import BaseTest, BaseTestResult
+from ._utils import _clean_1d
 
 
 @dataclass
@@ -80,12 +81,13 @@ class LjungBoxTest(BaseTest):
         Full test results after calling :meth:`fit`.
     """
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         lags: int = 10,
         apply_squared: bool = True,
     ):
-        y_arr = np.asarray(data, dtype=float).ravel()
-        y_arr = y_arr[~np.isnan(y_arr)]
+        y_arr = _clean_1d(data)
 
         if lags < 1:
             raise ValueError(f"lags must be >= 1, got {lags}")
@@ -109,10 +111,7 @@ class LjungBoxTest(BaseTest):
         LjungBoxTestResult
         """
         y = self.data
-        if self.apply_squared:
-            data = y ** 2
-        else:
-            data = y
+        data = y**2 if self.apply_squared else y
 
         # acorr_ljungbox with a single lag value, return_df=False
         lb_result = acorr_ljungbox(data, lags=self.lags, return_df=True)

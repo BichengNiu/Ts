@@ -1,6 +1,7 @@
 """Tests for Ts.TsSims._garch — GARCH simulation and SimGARCHResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -21,6 +22,7 @@ class TestSimGARCHResult:
             residuals=np.array([0.5, -0.3, 0.8, -0.2, 0.1]),
             conditional_volatility=np.array([0.63, 0.71, 0.83, 0.68, 0.65]),
             params={
+                "model_type": "ARCH",
                 "p": 1,
                 "q": 0,
                 "omega": 0.4,
@@ -64,10 +66,23 @@ class TestSimGARCHResult:
         assert "ARCH" in text
         assert "0.5" in text
 
+    def test_model_type_comes_from_params(self, simple_result):
+        """The parameter mapping is the sole model-type source."""
+        assert simple_result.model_type == "ARCH"
+        simple_result.params["model_type"] = "CUSTOM"
+        assert simple_result.model_type == "CUSTOM"
+
+    def test_missing_model_type_is_explicitly_invalid(self, simple_result):
+        """Results without the canonical model type fail clearly."""
+        simple_result.params.pop("model_type")
+        with pytest.raises(ValueError, match="model_type"):
+            simple_result.summary()
+
     def test_plot_returns_fig_ax(self, simple_result):
         """plot() returns (fig, ax) with two-panel axes."""
         fig, ax = simple_result.plot()
         import matplotlib.pyplot as plt
+
         assert isinstance(fig, plt.Figure)
         assert len(ax) == 2
         assert isinstance(ax[0], plt.Axes)
@@ -89,7 +104,9 @@ class TestSimulateGARCH:
         """simulate_garch with q=0 (pure ARCH) returns correct-shaped result."""
         from Ts.TsSims._garch import simulate_garch
 
-        result = simulate_garch(n=100, p=1, q=0, omega=0.4, alpha=[0.5], seed=42, burn=50)
+        result = simulate_garch(
+            n=100, p=1, q=0, omega=0.4, alpha=[0.5], seed=42, burn=50
+        )
 
         assert result.get_data().shape[0] == 100
         assert result.conditional_volatility.shape[0] == 100
@@ -108,7 +125,13 @@ class TestSimulateGARCH:
         from Ts.TsSims._garch import simulate_garch
 
         result = simulate_garch(
-            n=2000, p=1, q=0, omega=0.4, alpha=[0.5], seed=42, burn=500,
+            n=2000,
+            p=1,
+            q=0,
+            omega=0.4,
+            alpha=[0.5],
+            seed=42,
+            burn=500,
         )
 
         kurt = pd.Series(result.data).kurtosis()
@@ -119,8 +142,12 @@ class TestSimulateGARCH:
         from Ts.TsSims._garch import simulate_garch
 
         result = simulate_garch(
-            n=100, p=1, q=1,
-            omega=0.2, alpha=[0.3], beta=[0.5],
+            n=100,
+            p=1,
+            q=1,
+            omega=0.2,
+            alpha=[0.3],
+            beta=[0.5],
             seed=42,
         )
 
@@ -150,13 +177,26 @@ class TestSimulateGARCH:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = simulate_garch(
-                n=100, p=1, q=1,
-                omega=0.2, alpha=[0.6], beta=[0.5],
+                n=100,
+                p=1,
+                q=1,
+                omega=0.2,
+                alpha=[0.6],
+                beta=[0.5],
                 seed=42,
             )
         assert len(w) == 1
         assert "non-stationary" in str(w[0].message)
         assert result.get_data().shape[0] == 100
+
+    def test_result_records_model_type_in_params(self):
+        """Standard GARCH stores the canonical model type in params."""
+        from Ts.TsSims._garch import simulate_garch
+
+        arch = simulate_garch(n=20, q=0, seed=42)
+        garch = simulate_garch(n=20, q=1, seed=42)
+        assert arch.params["model_type"] == arch.model_type == "ARCH"
+        assert garch.params["model_type"] == garch.model_type == "GARCH"
 
     def test_student_t_df_too_low_raises(self):
         """Student's t with df <= 2 raises ValueError."""
@@ -164,8 +204,11 @@ class TestSimulateGARCH:
 
         with pytest.raises(ValueError, match="df > 2"):
             simulate_garch(
-                n=100, p=1, q=0,
-                dist="t", dist_params={"df": 1.5},
+                n=100,
+                p=1,
+                q=0,
+                dist="t",
+                dist_params={"df": 1.5},
                 seed=42,
             )
 
@@ -178,9 +221,16 @@ class TestSimulateGJRGARCH:
         from Ts.TsSims._garch_ext import simulate_gjr_garch
 
         result = simulate_gjr_garch(
-            n=200, p=1, q=1, o=1,
-            omega=0.05, alpha=[0.10], gamma=[0.15], beta=[0.70],
-            seed=42, burn=100,
+            n=200,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.05,
+            alpha=[0.10],
+            gamma=[0.15],
+            beta=[0.70],
+            seed=42,
+            burn=100,
         )
 
         assert result.get_data().shape[0] == 200
@@ -192,13 +242,25 @@ class TestSimulateGJRGARCH:
         from Ts.TsSims._garch_ext import simulate_gjr_garch
 
         r1 = simulate_gjr_garch(
-            n=100, p=1, q=1, o=1,
-            omega=0.05, alpha=[0.10], gamma=[0.15], beta=[0.70],
+            n=100,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.05,
+            alpha=[0.10],
+            gamma=[0.15],
+            beta=[0.70],
             seed=42,
         )
         r2 = simulate_gjr_garch(
-            n=100, p=1, q=1, o=1,
-            omega=0.05, alpha=[0.10], gamma=[0.15], beta=[0.70],
+            n=100,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.05,
+            alpha=[0.10],
+            gamma=[0.15],
+            beta=[0.70],
             seed=42,
         )
 
@@ -209,9 +271,16 @@ class TestSimulateGJRGARCH:
         from Ts.TsSims._garch_ext import simulate_gjr_garch
 
         result = simulate_gjr_garch(
-            n=200, p=1, q=1, o=1,
-            omega=0.05, alpha=[0.10], gamma=[0.15], beta=[0.70],
-            seed=42, burn=100,
+            n=200,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.05,
+            alpha=[0.10],
+            gamma=[0.15],
+            beta=[0.70],
+            seed=42,
+            burn=100,
         )
 
         assert np.all(result.conditional_volatility > 0)
@@ -224,8 +293,14 @@ class TestSimulateGJRGARCH:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = simulate_gjr_garch(
-                n=100, p=1, q=1, o=1,
-                omega=0.05, alpha=[0.40], gamma=[0.30], beta=[0.60],
+                n=100,
+                p=1,
+                q=1,
+                o=1,
+                omega=0.05,
+                alpha=[0.40],
+                gamma=[0.30],
+                beta=[0.60],
                 seed=42,
             )
         assert len(w) == 1
@@ -247,8 +322,13 @@ class TestSimulateGJRGARCH:
         from Ts.TsSims._garch_ext import simulate_gjr_garch
 
         result = simulate_gjr_garch(
-            n=100, p=1, q=1, o=0,
-            omega=0.1, alpha=[0.3], beta=[0.5],
+            n=100,
+            p=1,
+            q=1,
+            o=0,
+            omega=0.1,
+            alpha=[0.3],
+            beta=[0.5],
             seed=42,
         )
 
@@ -272,9 +352,16 @@ class TestSimulateEGARCH:
         from Ts.TsSims._garch_ext import simulate_egarch
 
         result = simulate_egarch(
-            n=200, p=1, q=1, o=1,
-            omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30],
-            seed=42, burn=100,
+            n=200,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.0,
+            alpha=[0.20],
+            gamma=[0.10],
+            beta=[0.30],
+            seed=42,
+            burn=100,
         )
 
         assert result.get_data().shape[0] == 200
@@ -285,13 +372,25 @@ class TestSimulateEGARCH:
         from Ts.TsSims._garch_ext import simulate_egarch
 
         r1 = simulate_egarch(
-            n=100, p=1, q=1, o=1,
-            omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30],
+            n=100,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.0,
+            alpha=[0.20],
+            gamma=[0.10],
+            beta=[0.30],
             seed=42,
         )
         r2 = simulate_egarch(
-            n=100, p=1, q=1, o=1,
-            omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30],
+            n=100,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.0,
+            alpha=[0.20],
+            gamma=[0.10],
+            beta=[0.30],
             seed=42,
         )
 
@@ -302,9 +401,16 @@ class TestSimulateEGARCH:
         from Ts.TsSims._garch_ext import simulate_egarch
 
         result = simulate_egarch(
-            n=200, p=1, q=1, o=1,
-            omega=0.0, alpha=[0.20], gamma=[0.10], beta=[0.30],
-            seed=42, burn=100,
+            n=200,
+            p=1,
+            q=1,
+            o=1,
+            omega=0.0,
+            alpha=[0.20],
+            gamma=[0.10],
+            beta=[0.30],
+            seed=42,
+            burn=100,
         )
 
         assert np.all(result.conditional_volatility > 0)
@@ -322,8 +428,13 @@ class TestSimulateEGARCH:
         from Ts.TsSims._garch_ext import simulate_egarch
 
         result = simulate_egarch(
-            n=100, p=1, q=1, o=0,
-            omega=0.0, alpha=[0.20], beta=[0.30],
+            n=100,
+            p=1,
+            q=1,
+            o=0,
+            omega=0.0,
+            alpha=[0.20],
+            beta=[0.30],
             seed=42,
         )
 
@@ -347,10 +458,16 @@ class TestSimulateGARCHM:
         from Ts.TsSims._garch_ext import simulate_garch_m
 
         result = simulate_garch_m(
-            n=200, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.2, garch_m_form="vol",
-            seed=42, burn=100,
+            n=200,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.2,
+            garch_m_form="vol",
+            seed=42,
+            burn=100,
         )
 
         assert result.get_data().shape[0] == 200
@@ -361,15 +478,25 @@ class TestSimulateGARCHM:
         from Ts.TsSims._garch_ext import simulate_garch_m
 
         r1 = simulate_garch_m(
-            n=100, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.2, garch_m_form="vol",
+            n=100,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.2,
+            garch_m_form="vol",
             seed=42,
         )
         r2 = simulate_garch_m(
-            n=100, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.2, garch_m_form="vol",
+            n=100,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.2,
+            garch_m_form="vol",
             seed=42,
         )
 
@@ -380,9 +507,15 @@ class TestSimulateGARCHM:
         from Ts.TsSims._garch_ext import simulate_garch_m
 
         result = simulate_garch_m(
-            n=200, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.2, seed=42, burn=100,
+            n=200,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.2,
+            seed=42,
+            burn=100,
         )
 
         assert np.all(result.conditional_volatility > 0)
@@ -392,9 +525,14 @@ class TestSimulateGARCHM:
         from Ts.TsSims._garch_ext import simulate_garch_m
 
         result = simulate_garch_m(
-            n=100, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.2, garch_m_form="var",
+            n=100,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.2,
+            garch_m_form="var",
             seed=42,
         )
 
@@ -405,9 +543,14 @@ class TestSimulateGARCHM:
         from Ts.TsSims._garch_ext import simulate_garch_m
 
         result = simulate_garch_m(
-            n=100, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.2, garch_m_form="log",
+            n=100,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.2,
+            garch_m_form="log",
             seed=42,
         )
 
@@ -427,14 +570,25 @@ class TestSimulateGARCHM:
         from Ts.TsSims._garch import simulate_garch
 
         r_m = simulate_garch_m(
-            n=150, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            garch_m_kappa=0.0, seed=42, burn=100,
+            n=150,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            garch_m_kappa=0.0,
+            seed=42,
+            burn=100,
         )
         r_g = simulate_garch(
-            n=150, p=1, q=1,
-            omega=0.1, alpha=[0.2], beta=[0.6],
-            seed=42, burn=100,
+            n=150,
+            p=1,
+            q=1,
+            omega=0.1,
+            alpha=[0.2],
+            beta=[0.6],
+            seed=42,
+            burn=100,
         )
 
         np.testing.assert_array_equal(r_m.data, r_g.data)
@@ -454,6 +608,7 @@ class TestIGARCH:
     def test_igarch_does_not_mutate_caller_beta(self):
         """simulate_igarch must not modify the caller's beta list."""
         from Ts.TsSims import simulate_igarch
+
         beta_original = [0.5]
         beta_input = [0.5]
         simulate_igarch(n=100, p=1, q=1, alpha=[0.2], beta=beta_input, seed=42)
@@ -464,14 +619,16 @@ class TestIGARCH:
     def test_igarch_satisfies_unit_sum(self):
         """IGARCH must enforce sum(alpha) + sum(beta) == 1."""
         from Ts.TsSims import simulate_igarch
+
         r = simulate_igarch(n=100, p=1, q=1, alpha=[0.3], beta=[0.5], seed=42)
         params = r.get_params()
-        total = sum(params['alpha']) + sum(params['beta'])
+        total = sum(params["alpha"]) + sum(params["beta"])
         assert abs(total - 1.0) < 1e-10, f"Sum should be 1.0, got {total}"
 
     def test_igarch_basic_simulation(self):
         """IGARCH simulation should produce valid data."""
         from Ts.TsSims import simulate_igarch
+
         r = simulate_igarch(n=200, p=1, q=1, seed=42)
         data = r.get_data()
         assert len(data) == 200

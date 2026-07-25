@@ -14,6 +14,12 @@ from statsmodels.tsa.arima_process import ArmaProcess
 
 from Ts.TsPlots import plot_series
 from ._base import BaseSimResult
+from ._validation import (
+    normalize_coefficients,
+    validate_order,
+    validate_real,
+    validate_sample,
+)
 
 
 @dataclass
@@ -99,6 +105,7 @@ class SimSARIMAResult(BaseSimResult):
 # Polynomial helpers
 # ---------------------------------------------------------------------------
 
+
 def _expand_seasonal_poly(coeffs, period):
     """Expand a seasonal polynomial into a high-order standard polynomial.
 
@@ -148,8 +155,8 @@ def _build_ar_ma_polynomials(order, seasonal_order, ar, ma, seasonal_ar, seasona
     s : int
         Seasonal period.
     """
-    p, d, q = order
-    P, D, Q, s = seasonal_order
+    _p, _d, _q = order
+    _P, _D, _Q, s = seasonal_order
 
     # Non-seasonal AR polynomial: 1 - phi_1 B - phi_2 B^2 - ...
     ar_poly = np.array([1.0])
@@ -165,7 +172,7 @@ def _build_ar_ma_polynomials(order, seasonal_order, ar, ma, seasonal_ar, seasona
     # Non-seasonal MA polynomial: 1 + theta_1 B + theta_2 B^2 + ...
     ma_poly = np.array([1.0])
     if ma:
-        ma_vec = np.array([1.0] + [c for c in ma])
+        ma_vec = np.array([1.0, *list(ma)])
         ma_poly = ma_vec
 
     # Seasonal MA polynomial
@@ -212,6 +219,7 @@ def _apply_inverse_differencing(data, d, D, s):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def simulate_sarima(
     n: int = 200,
     order: tuple[int, int, int] = (1, 0, 0),
@@ -224,7 +232,7 @@ def simulate_sarima(
     sigma2: float = 1.0,
     seed: int | None = None,
     burn: int = 100,
-):
+) -> SimSARIMAResult:
     """Simulate a SARIMA(p,d,q)(P,D,Q,s) time series.
 
     Parameters
@@ -264,30 +272,35 @@ def simulate_sarima(
         Container with ``.data``, ``.residuals``, ``.params``, and methods
         ``.get_data()``, ``.get_params()``, ``.summary()``, ``.plot()``.
     """
+    n, burn = validate_sample(n, burn)
+    order = validate_order("order", order, length=3)
+    seasonal_order = validate_order("seasonal_order", seasonal_order, length=4)
     p, d, q = order
     P, D, Q, s = seasonal_order
+    if (P > 0 or D > 0 or Q > 0) and s < 2:
+        raise ValueError(
+            "seasonal_order period s must be >= 2 when seasonal terms are used"
+        )
+    const = validate_real("const", const)
+    sigma2 = validate_real("sigma2", sigma2, positive=True)
 
-    # Normalise coefficient inputs (float -> list) and fill defaults
-    if ar is None and p > 0:
-        ar = [0.5] * p
-    elif isinstance(ar, (int, float)):
-        ar = [float(ar)]
-    if ma is None and q > 0:
-        ma = [0.3] * q
-    elif isinstance(ma, (int, float)):
-        ma = [float(ma)]
-    if seasonal_ar is None and P > 0:
-        seasonal_ar = [0.3] * P
-    elif isinstance(seasonal_ar, (int, float)):
-        seasonal_ar = [float(seasonal_ar)]
-    if seasonal_ma is None and Q > 0:
-        seasonal_ma = [0.2] * Q
-    elif isinstance(seasonal_ma, (int, float)):
-        seasonal_ma = [float(seasonal_ma)]
+    ar = normalize_coefficients("ar", ar, length=p, default=0.5)
+    ma = normalize_coefficients("ma", ma, length=q, default=0.3)
+    seasonal_ar = normalize_coefficients(
+        "seasonal_ar", seasonal_ar, length=P, default=0.3
+    )
+    seasonal_ma = normalize_coefficients(
+        "seasonal_ma", seasonal_ma, length=Q, default=0.2
+    )
 
     # Build full AR / MA polynomials
     ar_poly, ma_poly = _build_ar_ma_polynomials(
-        order, seasonal_order, ar, ma, seasonal_ar, seasonal_ma,
+        order,
+        seasonal_order,
+        ar,
+        ma,
+        seasonal_ar,
+        seasonal_ma,
     )
 
     rng = np.random.default_rng(seed)

@@ -20,9 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
-
 from ._base import BaseTest, BaseTestResult
+from ._utils import _clean_1d
 from ._unitroot_plot import _render_critical_value_plot
 
 
@@ -123,22 +122,20 @@ class KPSSTest(BaseTest):
 
     _VALID_TRENDS = ("c", "ct")
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         trend: str = "c",
         lags: int | None = None,
         nlags: str = "legacy",
     ):
-        self.data = np.asarray(data, dtype=float).ravel()
+        self.data = _clean_1d(data)
         if trend not in self._VALID_TRENDS:
-            raise ValueError(
-                f"trend must be {self._VALID_TRENDS}, got {trend!r}"
-            )
+            raise ValueError(f"trend must be {self._VALID_TRENDS}, got {trend!r}")
         self.trend = trend
         self.lags = lags
         if nlags not in ("legacy", "auto"):
-            raise ValueError(
-                f"nlags must be 'legacy' or 'auto', got {nlags!r}"
-            )
+            raise ValueError(f"nlags must be 'legacy' or 'auto', got {nlags!r}")
         self.nlags = nlags
         self.result_: KPSSTestResult | None = None
 

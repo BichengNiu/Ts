@@ -8,8 +8,14 @@ For GJR-GARCH, EGARCH, and GARCH-M, see :mod:`._garch_ext`.
 
 from __future__ import annotations
 
-from ._garch_core import _to_list, _normalize_coef, _make_standard_variance_fn, _run_garch_simulation
+from ._garch_core import (
+    _to_list,
+    _normalize_coef,
+    _make_standard_variance_fn,
+    _run_garch_simulation,
+)
 from ._garch_result import SimGARCHResult
+from ._validation import validate_choice, validate_int, validate_real, validate_sample
 
 
 def simulate_garch(
@@ -76,19 +82,33 @@ def simulate_garch(
         ``.params`` and methods ``.get_data()``, ``.get_params()``,
         ``.summary()``, ``.plot()``, ``.to_dataframe()``.
     """
-    alpha = _normalize_coef(alpha, 0.2, p)
-    beta = _normalize_coef(beta, 0.5, q)
+    n, burn = validate_sample(n, burn)
+    p = validate_int("p", p, minimum=1)
+    q = validate_int("q", q, minimum=0)
+    omega = validate_real("omega", omega, positive=True)
+    validate_choice("mean_model", mean_model, ("constant", "zero", "ar"))
+    validate_choice("dist", dist, ("normal", "t"))
+    alpha = _normalize_coef(alpha, 0.2, p, name="alpha", nonnegative=True)
+    beta = _normalize_coef(beta, 0.5, q, name="beta", nonnegative=True)
     mean_ar = _to_list(mean_ar)
 
     model_type = "ARCH" if q == 0 else "GARCH"
 
     return _run_garch_simulation(
-        n=n, p=p, q=q, omega=omega, alpha=alpha, beta=beta,
+        n=n,
+        p=p,
+        q=q,
+        omega=omega,
+        alpha=alpha,
+        beta=beta,
         variance_fn=_make_standard_variance_fn(omega, alpha, beta, p, q),
-        mean_model=mean_model, mean_const=mean_const,
+        mean_model=mean_model,
+        mean_const=mean_const,
         mean_ar=mean_ar,
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
         model_type=model_type,
     )
 
@@ -144,11 +164,15 @@ def simulate_igarch(
     -------
     SimGARCHResult
     """
-    if q < 1:
-        raise ValueError(f"IGARCH requires q >= 1 (GARCH component), got q={q}")
+    n, burn = validate_sample(n, burn)
+    p = validate_int("p", p, minimum=1)
+    q = validate_int("q", q, minimum=1)
+    omega = validate_real("omega", omega, positive=True)
+    validate_choice("mean_model", mean_model, ("constant", "zero"))
+    validate_choice("dist", dist, ("normal", "t"))
 
-    alpha = _normalize_coef(alpha, 0.2, p)
-    beta = _normalize_coef(beta, 0.5, q)
+    alpha = _normalize_coef(alpha, 0.2, p, name="alpha", nonnegative=True)
+    beta = _normalize_coef(beta, 0.5, q, name="beta", nonnegative=True)
 
     alpha_sum = sum(alpha)
     beta_free_sum = sum(beta[:-1]) if q > 1 else 0.0
@@ -162,14 +186,21 @@ def simulate_igarch(
             f"derived beta[{q}]={beta[-1]:.4f} <= 0"
         )
 
-    result = _run_garch_simulation(
-        n=n, p=p, q=q, omega=omega, alpha=alpha, beta=beta,
+    return _run_garch_simulation(
+        n=n,
+        p=p,
+        q=q,
+        omega=omega,
+        alpha=alpha,
+        beta=beta,
         variance_fn=_make_standard_variance_fn(omega, alpha, beta, p, q),
-        mean_model=mean_model, mean_const=mean_const,
+        mean_model=mean_model,
+        mean_const=mean_const,
         mean_ar=[],
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
         model_type="IGARCH",
         extra_params={"igarch": True},
     )
-    return result

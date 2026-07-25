@@ -13,9 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
-
 from ._base import BaseTest, BaseTestResult
+from ._utils import _clean_1d
 from ._unitroot_plot import _render_critical_value_plot
 
 
@@ -118,16 +117,16 @@ class PhillipsPerronTest(BaseTest):
     _VALID_TRENDS = ("c", "ct")
     _VALID_TEST_TYPES = ("tau", "rho")
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         trend: str = "c",
         lags: int | None = None,
         test_type: str = "tau",
     ):
-        self.data = np.asarray(data, dtype=float).ravel()
+        self.data = _clean_1d(data)
         if trend not in self._VALID_TRENDS:
-            raise ValueError(
-                f"trend must be {self._VALID_TRENDS}, got {trend!r}"
-            )
+            raise ValueError(f"trend must be {self._VALID_TRENDS}, got {trend!r}")
         self.trend = trend
         self.lags = lags
         if test_type not in self._VALID_TEST_TYPES:

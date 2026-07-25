@@ -42,8 +42,14 @@ TsTests/
 
 ```python
 from Ts.TsTests import (
-    ADFTest, PhillipsPerronTest, KPSSTest,
-    PerronTest, ZivotAndrewsTest, LjungBoxTest, EngleLMTest, NormalityTest,
+    ADFTest,
+    PhillipsPerronTest,
+    KPSSTest,
+    PerronTest,
+    ZivotAndrewsTest,
+    LjungBoxTest,
+    EngleLMTest,
+    NormalityTest,
 )
 
 # ADF 检验
@@ -223,11 +229,11 @@ print(ty.summary())
 
 ```python
 # 所有单位根检验 Result 均支持 plot_test()
-adf.result_.plot_test()   # ADF
-pp.result_.plot_test()    # Phillips-Perron
+adf.result_.plot_test()  # ADF
+pp.result_.plot_test()  # Phillips-Perron
 kpss.result_.plot_test()  # KPSS
-pt.result_.plot_test()    # Perron
-za.result_.plot_test()    # Zivot-Andrews（含 t 统计量和 IC 曲线）
+pt.result_.plot_test()  # Perron
+za.result_.plot_test()  # Zivot-Andrews（含 t 统计量和 IC 曲线）
 ```
 
 ## 协整检验参数
@@ -242,18 +248,19 @@ JohansenTest(data, lags=2, trend="constant", cols=None)
 |------|------|--------|------|
 | `data` | array-like (nobs, k) | — | 多变量时间序列，k >= 2 |
 | `lags` | int | `2` | VAR 水平滞后阶数 |
-| `trend` | str | `"constant"` | 确定性趋势: `"none"`, `"rconstant"`, `"constant"`, `"rtrend"`, `"trend"` |
+| `trend` | str | `"constant"` | 确定项规格：`"none"`, `"constant"`, `"trend"` |
 | `cols` | list of str | `None` | 变量列名（None 自动生成 `"y0"`, `"y1"`, ...） |
 
-趋势设定与 Johansen 五情形对应：
+`trend` 与底层 `statsmodels.coint_johansen` 支持的确定项规格一致：
 
-| trend | Johansen 情形 | 说明 |
+| trend | `det_order` | 说明 |
 |-------|-------------|------|
-| `"none"` | Case 1 | 无常数项 |
-| `"rconstant"` | Case 2 | 约束常数（协整空间有常数） |
-| `"constant"` | Case 3 | 无约束常数（默认） |
-| `"rtrend"` | Case 4 | 约束趋势 |
-| `"trend"` | Case 5 | 无约束趋势 |
+| `"none"` | `-1` | 无确定项 |
+| `"constant"` | `0` | 常数项（默认） |
+| `"trend"` | `1` | 线性趋势 |
+
+受约束常数和受约束趋势不能由 `coint_johansen` 的 `det_order`
+准确表达，因此不作为本接口的可选值。
 
 `summary(alpha_idx=1)` 控制输出临界值的显著性水平：
 `0` = 90%, `1` = 95%, `2` = 99%。

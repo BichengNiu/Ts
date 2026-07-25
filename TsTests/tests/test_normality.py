@@ -17,7 +17,10 @@ class TestNormalityTestResult:
     def test_result_stores_common_fields(self):
         """NormalityTestResult must have: statistic, pvalue, lags, nobs."""
         result = NormalityTestResult(
-            statistic=2.5, pvalue=0.29, lags=0, nobs=200,
+            statistic=2.5,
+            pvalue=0.29,
+            lags=0,
+            nobs=200,
         )
         assert result.statistic == 2.5
         assert result.pvalue == 0.29
@@ -105,12 +108,14 @@ class TestNormalityTest:
     def test_normality_plot_test(self):
         """NormalityTestResult.plot_test() should exist and return fig, ax."""
         import matplotlib
-        matplotlib.use('Agg')
+
+        matplotlib.use("Agg")
         np.random.seed(42)
         data = np.random.randn(100)
         nt = NormalityTest(data)
         nt.fit()
         import matplotlib.pyplot as plt
-        fig, ax = nt.result_.plot_test()
+
+        fig, _ax = nt.result_.plot_test()
         assert isinstance(fig, plt.Figure)
         plt.close(fig)

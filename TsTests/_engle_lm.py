@@ -15,6 +15,7 @@ import numpy as np
 from scipy import stats as scipy_stats
 
 from ._base import BaseTest, BaseTestResult
+from ._utils import _as_1d_float
 
 
 def _run_aux_regression(y, X):
@@ -83,15 +84,15 @@ class EngleLMTestResult(BaseTestResult):
             lines.append("")
             lines.append("Per-Lag Breakdown")
             lines.append("-" * 50)
-            lines.append(f"{'Lag':<6} {'LM (n.R-squared)':<18} {'df':<6} {'p-value':<10}")
+            lines.append(
+                f"{'Lag':<6} {'LM (n.R-squared)':<18} {'df':<6} {'p-value':<10}"
+            )
             lines.append("-" * 50)
             for i in range(len(self.individual_lags)):
                 lag = self.individual_lags[i]
                 lm = self.individual_stats[i]
                 pv = self.individual_pvalues[i]
-                lines.append(
-                    f"{lag:<6} {lm:<18.3f} {lag:<6} {pv:<10.4f}"
-                )
+                lines.append(f"{lag:<6} {lm:<18.3f} {lag:<6} {pv:<10.4f}")
 
         return "\n".join(lines)
 
@@ -120,11 +121,15 @@ class EngleLMTest(BaseTest):
         Full test results after calling :meth:`fit`.
     """
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         lags: int = 10,
         residuals=None,
     ):
-        raw_data = np.asarray(data, dtype=float).ravel()
+        raw_data = _as_1d_float(data)
+        if np.any(np.isinf(raw_data)):
+            raise ValueError("data must not contain infinite values")
         valid_rows = ~np.isnan(raw_data)
         y_arr = raw_data[valid_rows]
 
@@ -141,15 +146,14 @@ class EngleLMTest(BaseTest):
         self.lags = lags
 
         if residuals is not None:
-            residuals_arr = np.asarray(residuals, dtype=float).ravel()
+            residuals_arr = _as_1d_float(residuals, name="residuals")
             if residuals_arr.shape != raw_data.shape:
                 raise ValueError(
-                    f"residuals has {len(residuals_arr)} obs but y has "
-                    f"{len(raw_data)}"
+                    f"residuals has {len(residuals_arr)} obs but y has {len(raw_data)}"
                 )
             residuals_arr = residuals_arr[valid_rows]
-            if np.any(np.isnan(residuals_arr)):
-                raise ValueError("residuals must not contain NaN values")
+            if not np.all(np.isfinite(residuals_arr)):
+                raise ValueError("residuals must contain only finite values")
             self.residuals = residuals_arr
         else:
             self.residuals = y_arr - np.mean(y_arr)
@@ -164,7 +168,7 @@ class EngleLMTest(BaseTest):
         EngleLMTestResult
         """
         e = self.residuals
-        e2 = e ** 2
+        e2 = e**2
         T = len(e2)
         p = self.lags
 
@@ -174,10 +178,10 @@ class EngleLMTest(BaseTest):
 
         X = np.ones((n_eff, p + 1))
         for j in range(1, p + 1):
-            X[:, j] = e2[p - j: T - j]
+            X[:, j] = e2[p - j : T - j]
 
         # OLS auxiliary regression
-        _, resid_aux, ssr = _run_aux_regression(y_dep, X)
+        _, _resid_aux, ssr = _run_aux_regression(y_dep, X)
         sst = np.sum((y_dep - np.mean(y_dep)) ** 2)
         r_squared = 1.0 - ssr / sst if sst > 0 else 0.0
 

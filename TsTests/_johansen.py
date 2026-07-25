@@ -3,6 +3,7 @@
 Provides :class:`JohansenTest` and :class:`JohansenTestResult` for
 determining the cointegration rank of a multivariate time series.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,14 +12,13 @@ import warnings
 import numpy as np
 
 from Ts.TsTests._base import BaseTest, BaseTestResult
+from Ts.TsTests._utils import _clean_2d
 
 # Map user-facing trend names to statsmodels det_order.
 _TREND_TO_DET_ORDER = {
-    "none": -2,
-    "rconstant": -1,
+    "none": -1,
     "constant": 0,
-    "rtrend": 1,
-    "trend": 2,
+    "trend": 1,
 }
 
 _CRIT_LABELS = {0: "10%", 1: "5%", 2: "1%"}
@@ -58,8 +58,9 @@ def _stat_fmt(val, row_idx, rejected_ranks):
     return s
 
 
-def _build_table(rank_label, eigenvalues, statistics, crit_vals,
-                 rejected_ranks, alpha_idx=1):
+def _build_table(
+    rank_label, eigenvalues, statistics, crit_vals, rejected_ranks, alpha_idx=1
+):
     """Build a single cointegration test table.
 
     Parameters
@@ -89,18 +90,14 @@ def _build_table(rank_label, eigenvalues, statistics, crit_vals,
     ]
     cv_label = f"{_CRIT_LABELS[alpha_idx]} critical value"
     lines.append(
-        f"{'rank':>5s}  {'eigenvalue':>11s}  "
-        f"{'statistic':>11s}  {cv_label:>18s}"
+        f"{'rank':>5s}  {'eigenvalue':>11s}  {'statistic':>11s}  {cv_label:>18s}"
     )
 
     for r in range(k):
         eig_s = _eig_fmt(eigenvalues[r], r)
         stat_s = _stat_fmt(statistics[r], r, rejected_ranks)
         cv_s = f"{crit_vals[r, alpha_idx]:.4f}"
-        lines.append(
-            f"{r:>5d}  {eig_s:>11s}  "
-            f"{stat_s:>11s}  {cv_s:>18s}"
-        )
+        lines.append(f"{r:>5d}  {eig_s:>11s}  {stat_s:>11s}  {cv_s:>18s}")
     lines.append("-" * 79)
     return "\n".join(lines)
 
@@ -250,33 +247,26 @@ class JohansenTest(BaseTest):
         Number of lags in the VAR in levels (>= 2 for k_ar_diff >= 1).
     trend : str
         Deterministic trend specification:
-        ``"none"`` (no constant), ``"rconstant"`` (restricted constant),
-        ``"constant"`` (unrestricted constant, default),
-        ``"rtrend"`` (restricted trend), ``"trend"`` (unrestricted trend).
+        ``"none"`` (no deterministic terms), ``"constant"`` (constant,
+        default), or ``"trend"`` (linear trend).
     cols : list of str, optional
         Variable names for display. Auto-generated if None.
     """
 
-    _VALID_TRENDS = frozenset({"none", "rconstant", "constant", "rtrend", "trend"})
+    _VALID_TRENDS = frozenset(_TREND_TO_DET_ORDER)
 
     def __init__(self, data, lags=2, trend="constant", cols=None):
-        y = np.asarray(data, dtype=float)
-        if y.ndim != 2:
-            raise ValueError(
-                f"data must be 2-D (nobs, k), got shape {y.shape}"
-            )
+        y = _clean_2d(data)
         if y.shape[1] < 2:
             raise ValueError(
-                f"data must have at least 2 variables (k >= 2), "
-                f"got k = {y.shape[1]}"
+                f"data must have at least 2 variables (k >= 2), got k = {y.shape[1]}"
             )
         if trend not in self._VALID_TRENDS:
             raise ValueError(
-                f"trend must be one of {sorted(self._VALID_TRENDS)}, "
-                f"got {trend!r}"
+                f"trend must be one of {sorted(self._VALID_TRENDS)}, got {trend!r}"
             )
-
-        y = y[~np.any(np.isnan(y), axis=1)]
+        if lags < 1:
+            raise ValueError(f"lags must be >= 1, got {lags}")
 
         if cols is not None:
             if len(cols) != y.shape[1]:

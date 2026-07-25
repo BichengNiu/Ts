@@ -1,14 +1,12 @@
 """Tests for Ts.TsTests._toda_yamamoto -- Toda-Yamamoto Granger causality test."""
+
 import numpy as np
 import pytest
 
 
 @pytest.fixture
 def bivariate_independent():
-    """Two independent random walks -- no Granger causality.
-
-    covers: code/python/Ts/TsTests/tests/test_toda_yamamoto.py::bivariate_independent [fixture]
-    """
+    """Two independent random walks -- no Granger causality."""
     rng = np.random.default_rng(42)
     n = 200
     return rng.standard_normal((n, 2)).cumsum(axis=0)
@@ -20,8 +18,6 @@ def bivariate_causal():
 
     y0_t = 0.5 * y0_{t-1} + e0_t
     y1_t = 0.7 * y1_{t-1} + 0.4 * y0_{t-1} + e1_t
-
-    covers: code/python/Ts/TsTests/tests/test_toda_yamamoto.py::bivariate_causal [fixture]
     """
     rng = np.random.default_rng(123)
     n = 300
@@ -37,10 +33,7 @@ class TestTodaYamamotoInit:
     """Test TodaYamamotoTest constructor validation."""
 
     def test_valid_construction(self, bivariate_independent):
-        """Valid data and parameters produce a TodaYamamotoTest instance.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.__init__ [function]
-        """
+        """Valid data and parameters produce a TodaYamamotoTest instance."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1, trend="c")
@@ -50,55 +43,38 @@ class TestTodaYamamotoInit:
         assert test.trend == "c"
 
     def test_rejects_1d_data(self, bivariate_independent):
-        """1-D data raises ValueError.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.__init__ [function]
-        """
+        """1-D data raises ValueError."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         with pytest.raises(ValueError):
             TodaYamamotoTest(bivariate_independent[:, 0], p=2, d_max=1)
 
     def test_rejects_single_variable(self, bivariate_independent):
-        """k < 2 raises ValueError.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.__init__ [function]
-        """
+        """k < 2 raises ValueError."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         with pytest.raises(ValueError):
             TodaYamamotoTest(bivariate_independent[:, :1], p=2, d_max=1)
 
     def test_rejects_invalid_trend(self, bivariate_independent):
-        """Invalid trend raises ValueError.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.__init__ [function]
-        """
+        """Invalid trend raises ValueError."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         with pytest.raises(ValueError):
             TodaYamamotoTest(bivariate_independent, p=2, d_max=1, trend="xxx")
 
     def test_rejects_invalid_d_max(self, bivariate_independent):
-        """d_max > 2 raises ValueError.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.__init__ [function]
-        """
+        """d_max > 2 raises ValueError."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         with pytest.raises(ValueError):
             TodaYamamotoTest(bivariate_independent, p=2, d_max=3)
 
     def test_accepts_cols(self, bivariate_independent):
-        """cols parameter sets display names.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.__init__ [function]
-        """
+        """cols parameter sets display names."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
-        test = TodaYamamotoTest(
-            bivariate_independent, p=2, d_max=1, cols=["x", "y"]
-        )
+        test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1, cols=["x", "y"])
         assert test.cols == ["x", "y"]
 
 
@@ -106,11 +82,7 @@ class TestTodaYamamotoFit:
     """Test TodaYamamotoTest.fit() execution and result structure."""
 
     def test_fit_returns_result(self, bivariate_independent):
-        """fit() returns TodaYamamotoTestResult and stores in result_.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.fit [function]
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult [class]
-        """
+        """fit() returns TodaYamamotoTestResult and stores in result_."""
         from Ts.TsTests._toda_yamamoto import (
             TodaYamamotoTest,
             TodaYamamotoTestResult,
@@ -118,14 +90,16 @@ class TestTodaYamamotoFit:
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
         result = test.fit()
+        from Ts.TsTests._base import BaseMultiTestResult
+
         assert isinstance(result, TodaYamamotoTestResult)
+        assert isinstance(result, BaseMultiTestResult)
+        assert not hasattr(result, "statistic")
+        assert not hasattr(result, "pvalue")
         assert test.result_ is result
 
     def test_result_has_tests(self, bivariate_independent):
-        """Result contains test entries for all variable pairs.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult [class]
-        """
+        """Result contains test entries for all variable pairs."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -133,10 +107,7 @@ class TestTodaYamamotoFit:
         assert len(result.tests) > 0
 
     def test_result_has_metadata(self, bivariate_independent):
-        """Result stores p, d_max, k, cols metadata.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult [class]
-        """
+        """Result stores p, d_max, k, cols metadata."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -147,10 +118,7 @@ class TestTodaYamamotoFit:
         assert len(result.cols) == 2
 
     def test_each_test_has_statistic_and_pvalue(self, bivariate_independent):
-        """Each test entry has chi2 statistic, pvalue, df, caused, causing.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult [class]
-        """
+        """Each test entry has chi2 statistic, pvalue, df, caused, causing."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -172,8 +140,6 @@ class TestTodaYamamotoKnownCausality:
         """Toda-Yamamoto test rejects H0 for y0 -> y1 at 5% level.
 
         y0 Granger-causes y1, so H0 (no causality) should be rejected.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.fit [function]
         """
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
@@ -189,8 +155,6 @@ class TestTodaYamamotoKnownCausality:
         """Toda-Yamamoto test fails to reject H0 for y1 -> y0 at 5% level.
 
         y1 does NOT Granger-cause y0, so H0 should not be rejected.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.fit [function]
         """
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
@@ -206,10 +170,7 @@ class TestTodaYamamotoDmaxAuto:
     """Test automatic d_max detection."""
 
     def test_dmax_auto_returns_nonnegative(self, bivariate_independent):
-        """Auto-detected d_max is 0, 1, or 2.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest._detect_dmax [function]
-        """
+        """Auto-detected d_max is 0, 1, or 2."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=None)
@@ -217,10 +178,7 @@ class TestTodaYamamotoDmaxAuto:
         assert result.d_max in (0, 1, 2)
 
     def test_dmax_auto_with_i1_data(self, bivariate_independent):
-        """Random walk (I(1)) data should yield d_max >= 1.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest._detect_dmax [function]
-        """
+        """Random walk (I(1)) data should yield d_max >= 1."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=None)
@@ -233,10 +191,7 @@ class TestTodaYamamotoSummary:
     """Test summary() formatting."""
 
     def test_summary_returns_string(self, bivariate_independent):
-        """summary() returns a non-empty string.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.summary [function]
-        """
+        """summary() returns a non-empty string."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -246,10 +201,7 @@ class TestTodaYamamotoSummary:
         assert len(s) > 0
 
     def test_summary_contains_toda_yamamoto(self, bivariate_independent):
-        """summary() mentions 'Toda-Yamamoto' in output.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.summary [function]
-        """
+        """summary() mentions 'Toda-Yamamoto' in output."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -257,10 +209,7 @@ class TestTodaYamamotoSummary:
         assert "Toda-Yamamoto" in result.summary()
 
     def test_summary_contains_chi2(self, bivariate_independent):
-        """summary() includes chi2 label since TY uses chi-squared.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.summary [function]
-        """
+        """summary() includes chi2 label since TY uses chi-squared."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -284,10 +233,7 @@ class TestTodaYamamotoEdgeCases:
         assert result.nobs == min_n - 2
 
     def test_dmax_zero_ok(self, bivariate_independent):
-        """d_max=0 (I(0) data) should work.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest.fit [function]
-        """
+        """d_max=0 (I(0) data) should work."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         # Use stationary data: AR(1) with |phi| < 1
@@ -323,10 +269,7 @@ class TestTodaYamamotoInternals:
     """Test internal helper functions and dunder methods."""
 
     def test__sig_star_levels(self, bivariate_independent):
-        """_sig_star returns correct significance codes.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::_sig_star [function]
-        """
+        """_sig_star returns correct significance codes."""
         from Ts.TsTests._toda_yamamoto import _sig_star
 
         assert _sig_star(0.005) == "**"
@@ -335,10 +278,7 @@ class TestTodaYamamotoInternals:
         assert _sig_star(0.50) == " "
 
     def test__TYEntry_fields(self, bivariate_independent):
-        """_TYEntry dataclass stores test fields.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::_TYEntry [class]
-        """
+        """_TYEntry dataclass stores test fields."""
         from Ts.TsTests._toda_yamamoto import _TYEntry
 
         e = _TYEntry(3.5, 0.04, 2, "y0", ["y1"])
@@ -349,10 +289,7 @@ class TestTodaYamamotoInternals:
         assert e.causing == ["y1"]
 
     def test_result_str_equals_summary(self, bivariate_independent):
-        """TodaYamamotoTestResult.__str__ returns same as summary().
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.__str__ [function]
-        """
+        """TodaYamamotoTestResult.__str__ returns same as summary()."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -360,12 +297,7 @@ class TestTodaYamamotoInternals:
         assert str(result) == result.summary()
 
     def test_result_len_and_iter(self, bivariate_independent):
-        """Result supports len(), iter(), and indexing.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.__len__ [function]
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.__iter__ [function]
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTestResult.__getitem__ [function]
-        """
+        """Result supports len(), iter(), and indexing."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
 
         test = TodaYamamotoTest(bivariate_independent, p=2, d_max=1)
@@ -376,10 +308,7 @@ class TestTodaYamamotoInternals:
         assert count == len(result.tests)
 
     def test__compute_wald(self, bivariate_independent):
-        """_compute_wald returns chi2 test result.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::_compute_wald [function]
-        """
+        """_compute_wald returns chi2 test result."""
         import numpy as np
         from Ts.TsTests._toda_yamamoto import _compute_wald
 
@@ -391,25 +320,30 @@ class TestTodaYamamotoInternals:
         assert wald == 0.0
         assert abs(pv - 1.0) < 1e-6
 
-    def test__build_restriction_matrix_shape(self, bivariate_independent):
-        """_build_restriction_matrix produces correct shape.
+    def test__compute_wald_rejects_singular_covariance(self):
+        """A singular restricted covariance is an explicit invalid result."""
+        from Ts.TsTests._toda_yamamoto import _compute_wald
 
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::_build_restriction_matrix [function]
-        """
+        restriction = np.eye(2)
+        with pytest.raises(RuntimeError, match="singular"):
+            _compute_wald(restriction, np.ones(2), np.zeros((2, 2)), 2)
+
+    def test__build_restriction_matrix_shape(self, bivariate_independent):
+        """_build_restriction_matrix produces correct shape."""
         from Ts.TsTests._toda_yamamoto import _build_restriction_matrix
 
         R = _build_restriction_matrix(
-            n_regressors=5, k=2, eq_idx=0,
-            causing_indices=[1], n_det=1, p_lags=2,
+            n_regressors=5,
+            k=2,
+            eq_idx=0,
+            causing_indices=[1],
+            n_det=1,
+            p_lags=2,
         )
         assert R.shape == (2, 10)  # p_lags=2, n_regressors*k=5*2=10
 
     def test__wald_test_single_and_multi(self, bivariate_independent):
-        """_wald_test_single and _wald_test_multi return (float, float).
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::_wald_test_single [function]
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::_wald_test_multi [function]
-        """
+        """_wald_test_single and _wald_test_multi return (float, float)."""
         import numpy as np
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
         from Ts.TsTests._toda_yamamoto import _wald_test_single, _wald_test_multi
@@ -418,33 +352,28 @@ class TestTodaYamamotoInternals:
         all_params = np.asarray(fitted.params)
         cov_full = np.asarray(fitted.cov_params())
 
-        w1, p1 = _wald_test_single(all_params, cov_full, 2, 2, 0, 1, 1, 1)
+        w1, p1 = _wald_test_single(all_params, cov_full, 2, 0, 1, 1, 1)
         assert isinstance(w1, float)
         assert 0 <= p1 <= 1
 
-        w2, p2 = _wald_test_multi(all_params, cov_full, 2, 2, 0, [1], 1, 1)
+        w2, p2 = _wald_test_multi(all_params, cov_full, 2, 0, [1], 1, 1)
         assert isinstance(w2, float)
         assert 0 <= p2 <= 1
         # Single and multi with same single causing index should match
         assert abs(w1 - w2) < 1e-10
 
     def test_module_import(self, bivariate_independent):
-        """Module can be imported from Ts.TsTests.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py [module]
-        """
+        """Module can be imported from Ts.TsTests."""
         from Ts.TsTests._toda_yamamoto import (
             TodaYamamotoTest,
             TodaYamamotoTestResult,
         )
+
         assert TodaYamamotoTest is not None
         assert TodaYamamotoTestResult is not None
 
     def test__toda_yamamoto_class_level(self, bivariate_independent):
-        """TodaYamamotoTest class follows BaseTest contract.
-
-        covers: code/python/Ts/TsTests/_toda_yamamoto.py::TodaYamamotoTest [class]
-        """
+        """TodaYamamotoTest class follows BaseTest contract."""
         from Ts.TsTests._toda_yamamoto import TodaYamamotoTest
         from Ts.TsTests._base import BaseTest
 

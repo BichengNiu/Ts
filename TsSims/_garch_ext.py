@@ -14,15 +14,29 @@ from ._garch_core import (
     _run_garch_simulation,
 )
 from ._garch_result import SimGARCHResult
+from ._validation import validate_choice, validate_int, validate_real, validate_sample
 
 
 # ---------------------------------------------------------------------------
 # GJR-GARCH engine
 # ---------------------------------------------------------------------------
 
+
 def _simulate_gjr_garch(
-    n, p, q, o, omega, alpha, gamma, beta,
-    mean_model, mean_const, dist, dist_params, seed, burn,
+    n,
+    p,
+    q,
+    o,
+    omega,
+    alpha,
+    gamma,
+    beta,
+    mean_model,
+    mean_const,
+    dist,
+    dist_params,
+    seed,
+    burn,
 ):
     """Core simulation for GJR-GARCH(p,o,q) processes.
 
@@ -38,6 +52,7 @@ def _simulate_gjr_garch(
     -------
     SimGARCHResult
     """
+
     def _init_sigma2_fn():
         alpha_sum = sum(alpha)
         gamma_half_sum = 0.5 * sum(gamma)
@@ -45,6 +60,7 @@ def _simulate_gjr_garch(
         denom = 1.0 - alpha_sum - gamma_half_sum - beta_sum
         if denom <= 0:
             import warnings
+
             warnings.warn(
                 f"GJR-GARCH process is non-stationary: "
                 f"sum(alpha) + 0.5*sum(gamma) + sum(beta) = "
@@ -52,6 +68,7 @@ def _simulate_gjr_garch(
                 f"{alpha_sum + gamma_half_sum + beta_sum} >= 1. "
                 f"Using omega = {omega} as initial variance.",
                 RuntimeWarning,
+                stacklevel=2,
             )
             return omega
         return omega / denom
@@ -68,13 +85,22 @@ def _simulate_gjr_garch(
         return var_t
 
     return _run_garch_simulation(
-        n=n, p=p, q=q, omega=omega, alpha=alpha, beta=beta,
+        n=n,
+        p=p,
+        q=q,
+        omega=omega,
+        alpha=alpha,
+        beta=beta,
         variance_fn=_variance_fn,
         init_sigma2_fn=_init_sigma2_fn,
         max_lag=max(p, q, o),
-        mean_model=mean_model, mean_const=mean_const, mean_ar=[],
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        mean_model=mean_model,
+        mean_const=mean_const,
+        mean_ar=[],
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
         model_type="GJR-GARCH",
         extra_params={"o": o, "gamma": list(gamma)},
     )
@@ -84,9 +110,22 @@ def _simulate_gjr_garch(
 # EGARCH engine
 # ---------------------------------------------------------------------------
 
+
 def _simulate_egarch(
-    n, p, q, o, omega, alpha, gamma, beta,
-    mean_model, mean_const, dist, dist_params, seed, burn,
+    n,
+    p,
+    q,
+    o,
+    omega,
+    alpha,
+    gamma,
+    beta,
+    mean_model,
+    mean_const,
+    dist,
+    dist_params,
+    seed,
+    burn,
 ):
     """Core simulation for EGARCH(p,o,q) processes.
 
@@ -109,7 +148,8 @@ def _simulate_egarch(
         if dist_params is not None and "df" in dist_params:
             df = float(dist_params["df"])
         exp_abs_z = (
-            2.0 * np.sqrt(df - 2.0)
+            2.0
+            * np.sqrt(df - 2.0)
             * gamma_func((df + 1.0) / 2.0)
             / ((df - 1.0) * gamma_func(df / 2.0) * np.sqrt(np.pi))
         )
@@ -137,15 +177,24 @@ def _simulate_egarch(
         return sigma2_t
 
     return _run_garch_simulation(
-        n=n, p=p, q=q, omega=omega, alpha=alpha, beta=beta,
+        n=n,
+        p=p,
+        q=q,
+        omega=omega,
+        alpha=alpha,
+        beta=beta,
         variance_fn=_variance_fn,
         init_sigma2_fn=lambda: np.exp(omega),
         max_lag=max(p, q, o),
-        mean_model=mean_model, mean_const=mean_const, mean_ar=[],
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        mean_model=mean_model,
+        mean_const=mean_const,
+        mean_ar=[],
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
         model_type="EGARCH",
-        extra_params={"o": o, "gamma": list(gamma), "model_type": "EGARCH"},
+        extra_params={"o": o, "gamma": list(gamma)},
         state_array=ln_sigma2,
     )
 
@@ -153,6 +202,7 @@ def _simulate_egarch(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def simulate_gjr_garch(
     n: int = 200,
@@ -220,23 +270,34 @@ def simulate_gjr_garch(
     -------
     SimGARCHResult
     """
-    if p < 1:
-        raise ValueError(f"p must be >= 1, got {p}")
-    if q < 0:
-        raise ValueError(f"q must be >= 0, got {q}")
-    if o < 0:
-        raise ValueError(f"o must be >= 0, got {o}")
+    n, burn = validate_sample(n, burn)
+    p = validate_int("p", p, minimum=1)
+    q = validate_int("q", q, minimum=0)
+    o = validate_int("o", o, minimum=0)
+    omega = validate_real("omega", omega, positive=True)
+    validate_real("mean_const", mean_const)
+    validate_choice("mean_model", mean_model, ("constant", "zero"))
+    validate_choice("dist", dist, ("normal", "t"))
 
-    alpha = _normalize_coef(alpha, 0.10, p)
-    gamma = _normalize_coef(gamma, 0.10, o)
-    beta = _normalize_coef(beta, 0.70, q)
+    alpha = _normalize_coef(alpha, 0.10, p, name="alpha", nonnegative=True)
+    gamma = _normalize_coef(gamma, 0.10, o, name="gamma")
+    beta = _normalize_coef(beta, 0.70, q, name="beta", nonnegative=True)
 
     return _simulate_gjr_garch(
-        n=n, p=p, q=q, o=o,
-        omega=omega, alpha=alpha, gamma=gamma, beta=beta,
-        mean_model=mean_model, mean_const=mean_const,
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        n=n,
+        p=p,
+        q=q,
+        o=o,
+        omega=omega,
+        alpha=alpha,
+        gamma=gamma,
+        beta=beta,
+        mean_model=mean_model,
+        mean_const=mean_const,
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
     )
 
 
@@ -307,23 +368,34 @@ def simulate_egarch(
     -------
     SimGARCHResult
     """
-    if p < 1:
-        raise ValueError(f"p must be >= 1, got {p}")
-    if q < 0:
-        raise ValueError(f"q must be >= 0, got {q}")
-    if o < 0:
-        raise ValueError(f"o must be >= 0, got {o}")
+    n, burn = validate_sample(n, burn)
+    p = validate_int("p", p, minimum=1)
+    q = validate_int("q", q, minimum=0)
+    o = validate_int("o", o, minimum=0)
+    omega = validate_real("omega", omega)
+    validate_real("mean_const", mean_const)
+    validate_choice("mean_model", mean_model, ("constant", "zero"))
+    validate_choice("dist", dist, ("normal", "t"))
 
-    alpha = _normalize_coef(alpha, 0.15, p)
-    gamma = _normalize_coef(gamma, 0.05, o)
-    beta = _normalize_coef(beta, 0.30, q)
+    alpha = _normalize_coef(alpha, 0.15, p, name="alpha")
+    gamma = _normalize_coef(gamma, 0.05, o, name="gamma")
+    beta = _normalize_coef(beta, 0.30, q, name="beta")
 
     return _simulate_egarch(
-        n=n, p=p, q=q, o=o,
-        omega=omega, alpha=alpha, gamma=gamma, beta=beta,
-        mean_model=mean_model, mean_const=mean_const,
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        n=n,
+        p=p,
+        q=q,
+        o=o,
+        omega=omega,
+        alpha=alpha,
+        gamma=gamma,
+        beta=beta,
+        mean_model=mean_model,
+        mean_const=mean_const,
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
     )
 
 
@@ -392,28 +464,36 @@ def simulate_garch_m(
     -------
     SimGARCHResult
     """
-    if p < 1:
-        raise ValueError(f"p must be >= 1, got {p}")
-    if q < 0:
-        raise ValueError(f"q must be >= 0, got {q}")
-    if garch_m_form not in ("vol", "var", "log"):
-        raise ValueError(
-            f"garch_m_form must be 'vol', 'var', or 'log', got {garch_m_form!r}"
-        )
+    n, burn = validate_sample(n, burn)
+    p = validate_int("p", p, minimum=1)
+    q = validate_int("q", q, minimum=0)
+    omega = validate_real("omega", omega, positive=True)
+    garch_m_kappa = validate_real("garch_m_kappa", garch_m_kappa)
+    validate_real("mean_const", mean_const)
+    validate_choice("garch_m_form", garch_m_form, ("vol", "var", "log"))
+    validate_choice("mean_model", mean_model, ("constant", "zero"))
+    validate_choice("dist", dist, ("normal", "t"))
 
-    alpha = _normalize_coef(alpha, 0.20, p)
-    beta = _normalize_coef(beta, 0.60, q)
+    alpha = _normalize_coef(alpha, 0.20, p, name="alpha", nonnegative=True)
+    beta = _normalize_coef(beta, 0.60, q, name="beta", nonnegative=True)
 
     model_type = "ARCH-M" if q == 0 else "GARCH-M"
 
     return _run_garch_simulation(
-        n=n, p=p, q=q,
-        omega=omega, alpha=alpha, beta=beta,
+        n=n,
+        p=p,
+        q=q,
+        omega=omega,
+        alpha=alpha,
+        beta=beta,
         variance_fn=_make_standard_variance_fn(omega, alpha, beta, p, q),
-        mean_model=mean_model, mean_const=mean_const,
+        mean_model=mean_model,
+        mean_const=mean_const,
         mean_ar=[],
-        dist=dist, dist_params=dist_params,
-        seed=seed, burn=burn,
+        dist=dist,
+        dist_params=dist_params,
+        seed=seed,
+        burn=burn,
         model_type=model_type,
         garch_m_kappa=garch_m_kappa,
         garch_m_form=garch_m_form,

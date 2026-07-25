@@ -1,6 +1,7 @@
 """Convenience tests for TsTests — edge cases and cross-cutting concerns."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import numpy as np
@@ -14,5 +15,5 @@ def test_pp_critical_values_keys_have_percent():
     pp = PhillipsPerronTest(data)
     pp.fit()
     crit = pp.result_.critical_values
-    for k in crit.keys():
-        assert '%' in k, f"Critical value key '{k}' missing '%' suffix"
+    for k in crit:
+        assert "%" in k, f"Critical value key '{k}' missing '%' suffix"

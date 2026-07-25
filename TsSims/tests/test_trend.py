@@ -1,6 +1,7 @@
 """Tests for Ts.TsSims._ts_ds — TS/DS simulation and SimTSDSResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -101,7 +102,9 @@ class TestSimulateTrendStationary:
         """simulate_trend_stationary returns correct-shaped result."""
         from Ts.TsSims._ts_ds import simulate_trend_stationary
 
-        r = simulate_trend_stationary(n=100, intercept=2.0, slope=0.5, sigma=1.0, seed=42)
+        r = simulate_trend_stationary(
+            n=100, intercept=2.0, slope=0.5, sigma=1.0, seed=42
+        )
 
         assert r.get_data().shape[0] == 100
         assert r.params["intercept"] == 2.0
@@ -129,7 +132,9 @@ class TestSimulateTrendStationary:
         """With large slope and small sigma, the trend should dominate noise."""
         from Ts.TsSims._ts_ds import simulate_trend_stationary
 
-        r = simulate_trend_stationary(n=500, intercept=0.0, slope=2.0, sigma=0.1, seed=42)
+        r = simulate_trend_stationary(
+            n=500, intercept=0.0, slope=2.0, sigma=0.1, seed=42
+        )
 
         # The series should be strongly increasing
         first_half_mean = r.data[:250].mean()
@@ -173,7 +178,9 @@ class TestSimulateDifferenceStationary:
         """First difference of a DS process should be (approximately) stationary."""
         from Ts.TsSims._ts_ds import simulate_difference_stationary
 
-        r = simulate_difference_stationary(n=500, drift=0.5, sigma=1.0, seed=42, burn=100)
+        r = simulate_difference_stationary(
+            n=500, drift=0.5, sigma=1.0, seed=42, burn=100
+        )
 
         diff = np.diff(r.data)
         # The differenced series should have mean ~ drift
@@ -185,7 +192,9 @@ class TestSimulateDifferenceStationary:
         """A random walk without drift should still wander."""
         from Ts.TsSims._ts_ds import simulate_difference_stationary
 
-        r = simulate_difference_stationary(n=500, drift=0.0, sigma=1.0, seed=42, burn=100)
+        r = simulate_difference_stationary(
+            n=500, drift=0.0, sigma=1.0, seed=42, burn=100
+        )
 
         # The variance at the end should be larger than at the start
         early_std = r.data[:50].std()

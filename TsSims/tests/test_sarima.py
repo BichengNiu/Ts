@@ -1,6 +1,7 @@
 """Tests for Ts.TsSims._sarima — SARIMA simulation and SimSARIMAResult."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -121,8 +122,10 @@ class TestSimulateSARIMA:
 
         result = simulate_sarima(
             n=200,
-            order=(1, 0, 0), ar=[0.5],
-            seasonal_order=(1, 0, 0, 4), seasonal_ar=[0.3],
+            order=(1, 0, 0),
+            ar=[0.5],
+            seasonal_order=(1, 0, 0, 4),
+            seasonal_ar=[0.3],
             seed=42,
         )
 

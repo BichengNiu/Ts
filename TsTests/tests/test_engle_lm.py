@@ -18,7 +18,11 @@ class TestEngleLMTestResult:
         """EngleLMTestResult must have: statistic, pvalue, lags, nobs, residuals."""
         resid = np.random.randn(100)
         result = EngleLMTestResult(
-            statistic=22.5, pvalue=0.013, lags=5, nobs=95, residuals=resid,
+            statistic=22.5,
+            pvalue=0.013,
+            lags=5,
+            nobs=95,
+            residuals=resid,
         )
         assert result.statistic == 22.5
         assert result.pvalue == 0.013
@@ -30,8 +34,14 @@ class TestEngleLMTestResult:
         """EngleLMTestResult must store F statistic and R-squared via base fields."""
         resid = np.random.randn(100)
         result = EngleLMTestResult(
-            statistic=22.5, pvalue=0.013, lags=5, nobs=95, residuals=resid,
-            f_statistic=4.89, f_pvalue=0.0004, rsquared=0.215,
+            statistic=22.5,
+            pvalue=0.013,
+            lags=5,
+            nobs=95,
+            residuals=resid,
+            f_statistic=4.89,
+            f_pvalue=0.0004,
+            rsquared=0.215,
         )
         assert result.statistic == 22.5
         assert result.pvalue == 0.013
@@ -80,7 +90,7 @@ class TestEngleLMTest:
         y = np.zeros(n)
         sigma2 = np.ones(n)
         for t in range(1, n):
-            sigma2[t] = 1.0 + 0.5 * y[t-1]**2
+            sigma2[t] = 1.0 + 0.5 * y[t - 1] ** 2
             y[t] = np.sqrt(sigma2[t]) * eps[t]
         test = EngleLMTest(y, lags=10)
         result = test.fit()

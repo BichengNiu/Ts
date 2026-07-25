@@ -85,17 +85,42 @@ class TestPerronResultBaseline:
         assert "rho" in s.lower() or "ρ" in s
 
     def test_three_models_work(self):
-        """All three models (intercept, slope, both) must work."""
+        """All three models use their intended, distinct break regressors."""
+        from Ts.TsTests._break_utils import _make_break_dummies
+
+        expected_columns = {
+            "intercept": {"DL", "DP"},
+            "slope": {"DT"},
+            "both": {"DL", "DP", "DT"},
+        }
         np.random.seed(42)
         n = 100
         t = np.arange(n)
         y = np.cumsum(np.random.randn(n)) + 0.1 * t
 
+        statistics = {}
         for model in ["intercept", "slope", "both"]:
-            test = PerronTest(y, break_year=50, time_index=t, model=model)
+            dummies = _make_break_dummies(
+                n,
+                50,
+                model,
+                include_pulse=True,
+            )
+            assert set(dummies) == expected_columns[model]
+
+            test = PerronTest(
+                y,
+                break_year=50,
+                time_index=t,
+                model=model,
+                lags=1,
+            )
             result = test.fit()
             assert result.model == model
             assert isinstance(result.statistic, float)
+            statistics[model] = result.statistic
+
+        assert statistics["slope"] != statistics["both"]
 
 
 class TestPerronTestBaseline:
@@ -150,8 +175,14 @@ class TestPerronTestBaseline:
         n = 100
         t = np.arange(n)
         y = np.cumsum(np.random.randn(n)) + 0.1 * t
-        test = PerronTest(y, break_year=50, time_index=t, model="intercept",
-                          lag_method="aic", max_lags=4)
+        test = PerronTest(
+            y,
+            break_year=50,
+            time_index=t,
+            model="intercept",
+            lag_method="aic",
+            max_lags=4,
+        )
         result = test.fit()
         assert isinstance(result.lags, int)
         assert 0 <= result.lags <= 4
@@ -162,8 +193,14 @@ class TestPerronTestBaseline:
         n = 100
         t = np.arange(n)
         y = np.cumsum(np.random.randn(n)) + 0.1 * t
-        test = PerronTest(y, break_year=50, time_index=t, model="intercept",
-                          lag_method="bic", max_lags=4)
+        test = PerronTest(
+            y,
+            break_year=50,
+            time_index=t,
+            model="intercept",
+            lag_method="bic",
+            max_lags=4,
+        )
         result = test.fit()
         assert isinstance(result.lags, int)
         assert 0 <= result.lags <= 4
@@ -184,6 +221,7 @@ class TestPerronTestBaseline:
         """PerronTest with constant data should raise a meaningful error, not crash."""
         import numpy as np
         from Ts.TsTests import PerronTest
+
         data = np.ones(100)  # constant - singular design matrix
         pt = PerronTest(data, break_year=50, model="intercept")
         with pytest.raises(ValueError, match="requires non-constant data"):
@@ -193,6 +231,29 @@ class TestPerronTestBaseline:
         """PerronTest rejects non-finite observations explicitly."""
         data = np.arange(100, dtype=float)
         data[25] = np.nan
-        test = PerronTest(data, break_year=50, model="intercept")
         with pytest.raises(ValueError, match="only finite values"):
+            PerronTest(data, break_year=50, model="intercept")
+
+    def test_perron_does_not_swallow_unexpected_ols_errors(self, monkeypatch):
+        """Programming errors from OLS escape instead of being reclassified."""
+
+        def raise_unexpected(*args, **kwargs):
+            raise RuntimeError("unexpected implementation error")
+
+        monkeypatch.setattr("Ts.TsTests._perron.sm.OLS", raise_unexpected)
+        data = np.arange(100, dtype=float) + np.sin(np.arange(100))
+        test = PerronTest(data, break_year=50, lags=1)
+        with pytest.raises(RuntimeError, match="unexpected implementation error"):
             test.fit()
+
+    def test_lag_selection_does_not_swallow_unexpected_errors(self, monkeypatch):
+        """Lag selection suppresses only expected numerical fit failures."""
+        from Ts.TsTests._break_utils import _select_lags_by_tstat
+
+        def raise_unexpected(*args, **kwargs):
+            raise RuntimeError("unexpected selection error")
+
+        monkeypatch.setattr("Ts.TsTests._break_utils.sm.OLS", raise_unexpected)
+        data = np.arange(30, dtype=float) + np.sin(np.arange(30))
+        with pytest.raises(RuntimeError, match="unexpected selection error"):
+            _select_lags_by_tstat(data, {}, 1, np.arange(30), 1.6)

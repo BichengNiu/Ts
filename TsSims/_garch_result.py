@@ -39,10 +39,7 @@ class SimGARCHResult(BaseSimResult):
         All parameters used for simulation.
     """
 
-    conditional_volatility: np.ndarray = field(
-        default_factory=lambda: np.array([])
-    )
-    model_type: str = field(default="")
+    conditional_volatility: np.ndarray = field(default_factory=lambda: np.array([]))
 
     @property
     def conditional_variance(self) -> np.ndarray:
@@ -53,31 +50,15 @@ class SimGARCHResult(BaseSimResult):
         np.ndarray
             Squared conditional volatility, length *n*.
         """
-        return self.conditional_volatility ** 2
+        return self.conditional_volatility**2
 
-    def _detect_model_type(self) -> str:
-        """Detect model type from explicit field or stored params.
-
-        Uses the explicit ``model_type`` field first (set by the simulation
-        function).  Falls back to param-based inference for backward
-        compatibility with code that constructs ``SimGARCHResult`` directly
-        without setting ``model_type``.
-        """
-        if self.model_type:
-            return self.model_type
-        # Fallback param-based detection (identical to original logic)
-        p = self.params
-        if p.get("igarch"):
-            return "IGARCH"
-        if p.get("model_type") == "EGARCH":
-            return "EGARCH"
-        if p.get("garch_m_kappa") is not None:
-            return "GARCH-M"
-        if p.get("o", 0) > 0:
-            return "GJR-GARCH"
-        if p.get("q", 0) > 0:
-            return "GARCH"
-        return "ARCH"
+    @property
+    def model_type(self) -> str:
+        """Model type stored in the canonical parameter mapping."""
+        value = self.params.get("model_type")
+        if not isinstance(value, str) or not value:
+            raise ValueError("params must contain a non-empty 'model_type'")
+        return value
 
     def summary(self) -> str:
         """Return a formatted parameter summary string.
@@ -87,7 +68,7 @@ class SimGARCHResult(BaseSimResult):
         str
         """
         p = self.params
-        model_type = self._detect_model_type()
+        model_type = self.model_type
 
         lines = [
             f"{model_type} Simulation Result",
@@ -99,9 +80,7 @@ class SimGARCHResult(BaseSimResult):
                 f"Order             : p={p.get('p', 0)}, o={o_val}, q={p.get('q', 0)}"
             )
         else:
-            lines.append(
-                f"Order             : p={p.get('p', 0)}, q={p.get('q', 0)}"
-            )
+            lines.append(f"Order             : p={p.get('p', 0)}, q={p.get('q', 0)}")
         lines.append(f"omega             : {p.get('omega', 0.0):.4f}")
         lines.append(f"alpha             : {p.get('alpha', [])}")
 
@@ -147,16 +126,14 @@ class SimGARCHResult(BaseSimResult):
         """
         import matplotlib.pyplot as plt
 
-        model_type = self._detect_model_type()
+        model_type = self.model_type
         if title is None:
             title = (
                 f"{model_type}({self.params.get('p', 0)},"
                 f"{self.params.get('q', 0)}) Simulation"
             )
 
-        fig, (ax1, ax2) = plt.subplots(
-            2, 1, figsize=(FIGSIZE[0], FIGSIZE[1] * 1.6)
-        )
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(FIGSIZE[0], FIGSIZE[1] * 1.6))
 
         # Panel 1: Data
         plot_series(
@@ -193,8 +170,10 @@ class SimGARCHResult(BaseSimResult):
         pd.DataFrame
             Columns: ``data``, ``residuals``, ``volatility``.
         """
-        return pd.DataFrame({
-            "data": self.data,
-            "residuals": self.residuals,
-            "volatility": self.conditional_volatility,
-        })
+        return pd.DataFrame(
+            {
+                "data": self.data,
+                "residuals": self.residuals,
+                "volatility": self.conditional_volatility,
+            }
+        )

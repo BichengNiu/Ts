@@ -32,18 +32,19 @@ from ._unitroot_plot import _render_tstat_plot, _render_ic_plot
 @dataclass
 class ZivotAndrewsTestResult(BaseTestResult):
     """Container for Zivot-Andrews (1992) test results."""
-    rho_hat: float = 0.0                       # estimated ρ at optimal break
-    rho_se: float = 0.0                        # std. error of ρ̂
-    break_year: float = 0.0                    # optimal break point (original units)
-    break_index: int = 0                       # 0-based index of optimal break
-    model: str = ""                            # "intercept", "slope", or "both"
-    cv_01: float = 0.0                         # critical value at 1%
-    cv_05: float = 0.0                         # critical value at 5%
-    cv_10: float = 0.0                         # critical value at 10%
-    all_t_stats: np.ndarray | None = None      # t-statistics for all break points
+
+    rho_hat: float = 0.0  # estimated ρ at optimal break
+    rho_se: float = 0.0  # std. error of ρ̂
+    break_year: float = 0.0  # optimal break point (original units)
+    break_index: int = 0  # 0-based index of optimal break
+    model: str = ""  # "intercept", "slope", or "both"
+    cv_01: float = 0.0  # critical value at 1%
+    cv_05: float = 0.0  # critical value at 5%
+    cv_10: float = 0.0  # critical value at 10%
+    all_t_stats: np.ndarray | None = None  # t-statistics for all break points
     all_break_years: np.ndarray | None = None  # corresponding break years
-    lag_method: str = "tstat"                  # lag selection method used
-    ic_by_lag: np.ndarray | None = None        # IC values for k = 0..max_lags
+    lag_method: str = "tstat"  # lag selection method used
+    ic_by_lag: np.ndarray | None = None  # IC values for k = 0..max_lags
     coefficients: dict[str, float] = field(default_factory=dict)
     pvalues: dict[str, float] = field(default_factory=dict)
     fitted: np.ndarray | None = None
@@ -136,7 +137,9 @@ class ZivotAndrewsTest(BaseTest):
         Full test results after calling :meth:`fit`.
     """
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         time_index=None,
         model: str = "intercept",
         lags: int | None = None,
@@ -154,7 +157,9 @@ class ZivotAndrewsTest(BaseTest):
         self.max_lags = max_lags
         self.lag_crit = lag_crit
         if lag_method not in ("tstat", "aic", "bic"):
-            raise ValueError(f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}")
+            raise ValueError(
+                f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
+            )
         self.lag_method = lag_method
         self.trim = trim
         self.result_: ZivotAndrewsTestResult | None = None
@@ -168,6 +173,8 @@ class ZivotAndrewsTest(BaseTest):
         """
         y = self.data
         T = len(y)
+        if np.ptp(y) == 0.0:
+            raise ValueError("Zivot-Andrews test requires non-constant data.")
         time_idx = self.time_index
 
         # Determine search range (exclude trimming region)
@@ -175,7 +182,7 @@ class ZivotAndrewsTest(BaseTest):
         end_idx = int(np.ceil((1.0 - self.trim) * T)) - 1
         if end_idx <= start_idx:
             raise ValueError(
-                f"Trimming {self.trim*100:.0f}% leaves no candidate break "
+                f"Trimming {self.trim * 100:.0f}% leaves no candidate break "
                 f"points (T={T}). Reduce trim."
             )
 
@@ -197,9 +204,13 @@ class ZivotAndrewsTest(BaseTest):
             # Lag selection for this break point
             if self.lags is None:
                 if self.lag_method == "tstat":
-                    k = _select_lags_by_tstat(y, dummies, self.max_lags, time_idx, self.lag_crit)
+                    k = _select_lags_by_tstat(
+                        y, dummies, self.max_lags, time_idx, self.lag_crit
+                    )
                 else:
-                    k, ic_values = _select_lags_by_ic(y, dummies, self.max_lags, time_idx, self.lag_method)
+                    k, ic_values = _select_lags_by_ic(
+                        y, dummies, self.max_lags, time_idx, self.lag_method
+                    )
             else:
                 k = self.lags
 
@@ -213,7 +224,7 @@ class ZivotAndrewsTest(BaseTest):
 
             try:
                 res = sm.OLS(y_dep, X).fit()
-            except Exception:
+            except (ValueError, np.linalg.LinAlgError, FloatingPointError):
                 continue
 
             rho_hat, rho_se, t_stat = _extract_rho_stats(res, reg_cols)
@@ -230,7 +241,9 @@ class ZivotAndrewsTest(BaseTest):
                     best_ic_values = ic_values
 
         if best_res is None:
-            raise RuntimeError("No valid regression could be estimated for any break point.")
+            raise RuntimeError(
+                "No valid regression could be estimated for any break point."
+            )
 
         # Extract results at optimal break
         rho_hat, rho_se, _ = _extract_rho_stats(best_res, best_reg_cols)
@@ -268,4 +281,3 @@ class ZivotAndrewsTest(BaseTest):
             rmse=np.sqrt(best_res.mse_resid),
         )
         return self.result_
-

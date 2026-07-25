@@ -18,7 +18,10 @@ class TestLjungBoxTestResult:
     def test_result_stores_common_fields(self):
         """LjungBoxTestResult must have: statistic, pvalue, lags, nobs, residuals."""
         result = LjungBoxTestResult(
-            statistic=15.3, pvalue=0.12, lags=10, nobs=100,
+            statistic=15.3,
+            pvalue=0.12,
+            lags=10,
+            nobs=100,
         )
         assert result.statistic == 15.3
         assert result.pvalue == 0.12
@@ -83,7 +86,7 @@ class TestLjungBoxTest:
         y = np.zeros(n)
         sigma2 = np.ones(n)
         for t in range(1, n):
-            sigma2[t] = 1.0 + 0.5 * y[t-1]**2
+            sigma2[t] = 1.0 + 0.5 * y[t - 1] ** 2
             y[t] = np.sqrt(sigma2[t]) * eps[t]
         test = LjungBoxTest(y, lags=10)
         result = test.fit()

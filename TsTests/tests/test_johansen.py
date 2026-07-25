@@ -1,6 +1,9 @@
 """Tests for Ts.TsTests._johansen — Johansen cointegration test."""
+
 import numpy as np
 import pytest
+
+from Ts.TsTests._johansen import JohansenTest
 
 
 @pytest.fixture
@@ -18,11 +21,7 @@ class TestJohansenFit:
     """Test JohansenTest.fit() execution and result structure."""
 
     def test_fit_returns_result(self, bivariate_data):
-        """fit() returns a JohansenTestResult and stores it in result_.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest.fit [function]
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """fit() returns a JohansenTestResult and stores it in result_."""
         from Ts.TsTests._johansen import JohansenTest, JohansenTestResult
 
         test = JohansenTest(bivariate_data, lags=2, trend="constant")
@@ -31,10 +30,7 @@ class TestJohansenFit:
         assert test.result_ is result
 
     def test_result_has_eigenvalues(self, bivariate_data):
-        """Result contains eigenvalues sorted descending.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """Result contains eigenvalues sorted descending."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -46,10 +42,7 @@ class TestJohansenFit:
             assert result.eigenvalues[i] >= result.eigenvalues[i + 1]
 
     def test_result_has_trace_statistics(self, bivariate_data):
-        """Result contains trace statistics for each rank.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """Result contains trace statistics for each rank."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -62,10 +55,7 @@ class TestJohansenFit:
             assert result.trace_statistics[i] >= 0
 
     def test_result_has_maxeig_statistics(self, bivariate_data):
-        """Result contains max-eigenvalue statistics for each rank.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """Result contains max-eigenvalue statistics for each rank."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -77,10 +67,7 @@ class TestJohansenFit:
             assert result.maxeig_statistics[i] >= 0
 
     def test_result_has_critical_values(self, bivariate_data):
-        """Result contains critical values for both trace and max-eig tests.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """Result contains critical values for both trace and max-eig tests."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -93,10 +80,7 @@ class TestJohansenFit:
         assert result.maxeig_critical_values.shape == (k, 3)
 
     def test_result_has_rank(self, bivariate_data):
-        """Result contains cointegration rank determined by trace test.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """Result contains cointegration rank determined by trace test."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -105,10 +89,7 @@ class TestJohansenFit:
         assert 0 <= result.rank <= bivariate_data.shape[1]
 
     def test_result_inherits_base_fields(self, bivariate_data):
-        """Result inherits statistic, pvalue, lags, nobs from BaseTestResult.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult [class]
-        """
+        """Result inherits statistic, pvalue, lags, nobs from BaseTestResult."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -123,11 +104,7 @@ class TestJohansenSummary:
     """Test JohansenTestResult.summary() formatted output."""
 
     def test_summary_contains_header(self, bivariate_data):
-        """summary() contains test name, trend, sample, lags header.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.summary [function]
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.__str__ [function]
-        """
+        """summary() contains test name, trend, sample, lags header."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2, trend="constant")
@@ -140,12 +117,6 @@ class TestJohansenSummary:
     def test_summary_contains_trace_table(self, bivariate_data):
         """summary() contains trace test table with rank, eigenvalue,
         statistic, and critical value columns.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.summary [function]
-        covers: code/python/Ts/TsTests/_johansen.py::_build_table [function]
-        covers: code/python/Ts/TsTests/_johansen.py::_eig_fmt [function]
-        covers: code/python/Ts/TsTests/_johansen.py::_stat_fmt [function]
-        covers: code/python/Ts/TsTests/_johansen.py::_rejected_ranks [function]
         """
         from Ts.TsTests._johansen import JohansenTest
 
@@ -159,10 +130,7 @@ class TestJohansenSummary:
         assert "critical value" in output.lower()
 
     def test_summary_contains_maxeig_table(self, bivariate_data):
-        """summary() contains max-eigenvalue test table.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.summary [function]
-        """
+        """summary() contains max-eigenvalue test table."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -171,11 +139,7 @@ class TestJohansenSummary:
         assert "Max-eigenvalue test" in output
 
     def test_summary_contains_rank_conclusion(self, bivariate_data):
-        """summary() reports cointegration rank at the end.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.summary [function]
-        covers: code/python/Ts/TsTests/_johansen.py::_sequential_rank [function]
-        """
+        """summary() reports cointegration rank at the end."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
@@ -185,42 +149,31 @@ class TestJohansenSummary:
         assert str(result.rank) in output
 
     def test_summary_star_marks_first_non_rejected(self, bivariate_data):
-        """summary() marks the first non-rejected rank with *.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.summary [function]
-        """
+        """summary() marks the first non-rejected rank with *."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
         result = test.fit()
         output = result.summary()
         # At least one row (the first non-rejected) should have '*'
-        assert '*' in output
+        assert "*" in output
 
     def test_summary_rank_zero_eigenvalue_dot(self, bivariate_data):
-        """summary() shows '.' for eigenvalue at rank 0.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTestResult.summary [function]
-        """
+        """summary() shows '.' for eigenvalue at rank 0."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
         result = test.fit()
         output = result.summary()
         # Rank 0 row should show '.' for eigenvalue
-        assert '.' in output
+        assert "." in output
 
 
 class TestJohansenInit:
     """Test JohansenTest construction and parameter validation."""
 
     def test_init_stores_data_and_params(self, bivariate_data):
-        """JohansenTest stores 2-D data, lags, and trend parameters.
-
-        covers: code/python/Ts/TsTests/_johansen.py [module]
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest [class]
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest.__init__ [function]
-        """
+        """JohansenTest stores 2-D data, lags, and trend parameters."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2, trend="constant")
@@ -230,40 +183,55 @@ class TestJohansenInit:
         assert test.result_ is None
 
     def test_default_trend_is_constant(self, bivariate_data):
-        """Default trend is 'constant'.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest.__init__ [function]
-        """
+        """Default trend is 'constant'."""
         from Ts.TsTests._johansen import JohansenTest
 
         test = JohansenTest(bivariate_data, lags=2)
         assert test.trend == "constant"
 
-    def test_1d_data_raises(self, bivariate_data):
-        """1-D data raises ValueError.
+    @pytest.mark.parametrize("trend", ["none", "constant", "trend"])
+    def test_supported_trends_return_finite_critical_values(
+        self,
+        bivariate_data,
+        trend,
+    ):
+        """Every documented trend maps to a supported statsmodels det_order."""
+        result = JohansenTest(
+            bivariate_data,
+            lags=2,
+            trend=trend,
+        ).fit()
 
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest.__init__ [function]
-        """
+        assert np.all(np.isfinite(result.trace_critical_values))
+        assert np.all(np.isfinite(result.maxeig_critical_values))
+
+    def test_1d_data_raises(self, bivariate_data):
+        """1-D data raises ValueError."""
         from Ts.TsTests._johansen import JohansenTest
 
         with pytest.raises(ValueError):
             JohansenTest(np.array([1.0, 2.0, 3.0]), lags=1)
 
     def test_invalid_trend_raises(self, bivariate_data):
-        """Invalid trend specification raises ValueError.
-
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest.__init__ [function]
-        """
+        """Invalid trend specification raises ValueError."""
         from Ts.TsTests._johansen import JohansenTest
 
         with pytest.raises(ValueError):
             JohansenTest(bivariate_data, lags=2, trend="invalid")
 
-    def test_k1_data_raises(self, bivariate_data):
-        """Single variable (k=1) raises ValueError -- no cointegration possible.
+    @pytest.mark.parametrize("trend", ["rconstant", "rtrend"])
+    def test_unsupported_five_case_aliases_raise(self, bivariate_data, trend):
+        """Do not claim unsupported restricted deterministic specifications."""
+        with pytest.raises(ValueError, match="trend must be one of"):
+            JohansenTest(bivariate_data, lags=2, trend=trend)
 
-        covers: code/python/Ts/TsTests/_johansen.py::JohansenTest.__init__ [function]
-        """
+    def test_lags_must_produce_nonnegative_difference_order(self, bivariate_data):
+        """lags=0 would pass k_ar_diff=-1 to statsmodels."""
+        with pytest.raises(ValueError, match="lags must be >= 1"):
+            JohansenTest(bivariate_data, lags=0)
+
+    def test_k1_data_raises(self, bivariate_data):
+        """Single variable (k=1) raises ValueError -- no cointegration possible."""
         from Ts.TsTests._johansen import JohansenTest
 
         with pytest.raises(ValueError):

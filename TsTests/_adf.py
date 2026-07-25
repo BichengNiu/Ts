@@ -13,9 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
-
 from ._base import BaseTest, BaseTestResult
+from ._utils import _clean_1d
 from ._unitroot_plot import _render_critical_value_plot
 
 
@@ -118,17 +117,17 @@ class ADFTest(BaseTest):
         Full test results after calling :meth:`fit`.
     """
 
-    def __init__(self, data,
+    def __init__(
+        self,
+        data,
         trend: str = "c",
         max_lags: int = 8,
         lags: int | None = None,
         autolag: str = "AIC",
     ):
-        self.data = np.asarray(data, dtype=float).ravel()
+        self.data = _clean_1d(data)
         if trend not in ("c", "ct", "ctt", "n"):
-            raise ValueError(
-                f"trend must be 'c', 'ct', 'ctt', or 'n', got {trend!r}"
-            )
+            raise ValueError(f"trend must be 'c', 'ct', 'ctt', or 'n', got {trend!r}")
         self.trend = trend
         self.max_lags = max_lags
         self.lags = lags

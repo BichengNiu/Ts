@@ -1,6 +1,7 @@
 """Tests for Ts.TsSims._cointegration — cointegrated data simulation."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -12,6 +13,7 @@ import pytest
 # ===========================================================================
 # Fixtures
 # ===========================================================================
+
 
 @pytest.fixture
 def rng():
@@ -25,20 +27,24 @@ def simple_result():
     from Ts.TsSims._cointegration import SimCointegratedResult
 
     return SimCointegratedResult(
-        data=np.array([
-            [0.5, -0.3],
-            [1.2, 0.8],
-            [2.1, 1.5],
-            [3.0, 2.2],
-            [4.2, 3.1],
-        ]),
-        residuals=np.array([
-            [0.5, -0.3],
-            [0.7, 0.1],
-            [0.2, 0.4],
-            [0.1, 0.5],
-            [0.5, 0.3],
-        ]),
+        data=np.array(
+            [
+                [0.5, -0.3],
+                [1.2, 0.8],
+                [2.1, 1.5],
+                [3.0, 2.2],
+                [4.2, 3.1],
+            ]
+        ),
+        residuals=np.array(
+            [
+                [0.5, -0.3],
+                [0.7, 0.1],
+                [0.2, 0.4],
+                [0.1, 0.5],
+                [0.5, 0.3],
+            ]
+        ),
         params={
             "k": 2,
             "coint_rank": 1,
@@ -58,20 +64,24 @@ def result_k3_r2():
     from Ts.TsSims._cointegration import SimCointegratedResult
 
     return SimCointegratedResult(
-        data=np.array([
-            [0.5, -0.3, 0.1],
-            [1.2, 0.8, 0.9],
-            [2.1, 1.5, 1.8],
-            [3.0, 2.2, 2.5],
-            [4.2, 3.1, 3.4],
-        ]),
-        residuals=np.array([
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5, 0.6],
-            [0.7, 0.8, 0.9],
-            [1.0, 1.1, 1.2],
-            [1.3, 1.4, 1.5],
-        ]),
+        data=np.array(
+            [
+                [0.5, -0.3, 0.1],
+                [1.2, 0.8, 0.9],
+                [2.1, 1.5, 1.8],
+                [3.0, 2.2, 2.5],
+                [4.2, 3.1, 3.4],
+            ]
+        ),
+        residuals=np.array(
+            [
+                [0.1, 0.2, 0.3],
+                [0.4, 0.5, 0.6],
+                [0.7, 0.8, 0.9],
+                [1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5],
+            ]
+        ),
         params={
             "k": 3,
             "coint_rank": 2,
@@ -89,56 +99,10 @@ def result_k3_r2():
 # TestSimCointegratedResult — container object
 # ===========================================================================
 
-class TestSimCointegratedResult:
 
+class TestSimCointegratedResult:
     def test_get_data_returns_dataframe(self, simple_result):
-        """covers: code/python/Ts/TsSims/__init__.py [module]
-        covers: code/python/Ts/TsSims/_base.py [module]
-        covers: code/python/Ts/TsSims/_base.py::BaseSimResult [class]
-        covers: code/python/Ts/TsSims/_base.py::BaseSimResult.get_data [function]
-        covers: code/python/Ts/TsSims/_cointegration.py [module]
-        covers: code/python/Ts/TsSims/_cointegration.py::SimCointegratedResult [class]
-        covers: code/python/Ts/TsSims/_garch.py [module]
-        covers: code/python/Ts/TsSims/_garch.py::simulate_garch [function]
-        covers: code/python/Ts/TsSims/_garch.py::simulate_igarch [function]
-        covers: code/python/Ts/TsSims/_garch_core.py [module]
-        covers: code/python/Ts/TsSims/_garch_core.py::_to_list [function]
-        covers: code/python/Ts/TsSims/_garch_core.py::_normalize_coef [function]
-        covers: code/python/Ts/TsSims/_garch_core.py::_make_standard_variance_fn [function]
-        covers: code/python/Ts/TsSims/_garch_core.py::_make_standard_variance_fn._variance_fn [function]
-        covers: code/python/Ts/TsSims/_garch_core.py::_generate_innovations [function]
-        covers: code/python/Ts/TsSims/_garch_core.py::_compute_mean [function]
-        covers: code/python/Ts/TsSims/_garch_core.py::_run_garch_simulation [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py [module]
-        covers: code/python/Ts/TsSims/_garch_ext.py::_simulate_gjr_garch [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::_simulate_gjr_garch._init_sigma2_fn [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::_simulate_gjr_garch._variance_fn [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::_simulate_egarch [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::_simulate_egarch._variance_fn [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::simulate_gjr_garch [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::simulate_egarch [function]
-        covers: code/python/Ts/TsSims/_garch_ext.py::simulate_garch_m [function]
-        covers: code/python/Ts/TsSims/_garch_result.py [module]
-        covers: code/python/Ts/TsSims/_garch_result.py::SimGARCHResult [class]
-        covers: code/python/Ts/TsSims/_garch_result.py::SimGARCHResult.conditional_variance [function]
-        covers: code/python/Ts/TsSims/_garch_result.py::SimGARCHResult._detect_model_type [function]
-        covers: code/python/Ts/TsSims/_garch_result.py::SimGARCHResult.summary [function]
-        covers: code/python/Ts/TsSims/_garch_result.py::SimGARCHResult.plot [function]
-        covers: code/python/Ts/TsSims/_garch_result.py::SimGARCHResult.to_dataframe [function]
-        covers: code/python/Ts/TsSims/_sarima.py [module]
-        covers: code/python/Ts/TsSims/_sarima.py::SimSARIMAResult [class]
-        covers: code/python/Ts/TsSims/_sarima.py::SimSARIMAResult.summary [function]
-        covers: code/python/Ts/TsSims/_sarima.py::SimSARIMAResult.plot [function]
-        covers: code/python/Ts/TsSims/_sarima.py::_expand_seasonal_poly [function]
-        covers: code/python/Ts/TsSims/_sarima.py::_build_ar_ma_polynomials [function]
-        covers: code/python/Ts/TsSims/_sarima.py::_apply_inverse_differencing [function]
-        covers: code/python/Ts/TsSims/_sarima.py::simulate_sarima [function]
-        covers: code/python/Ts/TsSims/_ts_ds.py [module]
-        covers: code/python/Ts/TsSims/_ts_ds.py::SimTSDSResult [class]
-        covers: code/python/Ts/TsSims/_ts_ds.py::SimTSDSResult.summary [function]
-        covers: code/python/Ts/TsSims/_ts_ds.py::SimTSDSResult.plot [function]
-        covers: code/python/Ts/TsSims/_ts_ds.py::simulate_trend_stationary [function]
-        covers: code/python/Ts/TsSims/_ts_ds.py::simulate_difference_stationary [function]
+        """
         get_data() returns a pd.DataFrame with k columns."""
         result = simple_result.get_data()
         assert isinstance(result, pd.DataFrame)
@@ -150,7 +114,7 @@ class TestSimCointegratedResult:
         assert list(result.columns) == ["y0", "y1"]
 
     def test_get_params_is_deep_copy(self, simple_result):
-        """covers: code/python/Ts/TsSims/_base.py::BaseSimResult.get_params [function]
+        """
         get_params() returns a copy, not a reference."""
         params1 = simple_result.get_params()
         params1["k"] = 99
@@ -166,8 +130,7 @@ class TestSimCointegratedResult:
         assert params["seed"] == 42
 
     def test_summary_returns_string(self, simple_result):
-        """covers: code/python/Ts/TsSims/_base.py::BaseSimResult.summary [function]
-        covers: code/python/Ts/TsSims/_cointegration.py::SimCointegratedResult.summary [function]
+        """
         summary() returns a non-empty string with key info."""
         text = simple_result.summary()
         assert isinstance(text, str)
@@ -188,8 +151,7 @@ class TestSimCointegratedResult:
         assert "2" in text
 
     def test_plot_returns_fig_axes(self, simple_result):
-        """covers: code/python/Ts/TsSims/_base.py::BaseSimResult.plot [function]
-        covers: code/python/Ts/TsSims/_cointegration.py::SimCointegratedResult.plot [function]
+        """
         plot() returns (fig, axes) with k subplots."""
         fig, axes = simple_result.plot()
         assert isinstance(fig, plt.Figure)
@@ -207,12 +169,15 @@ class TestSimCointegratedResult:
 # TestSimulateCointegratedBasic — function basic behavior
 # ===========================================================================
 
-class TestSimulateCointegratedBasic:
 
+class TestSimulateCointegratedBasic:
     def test_returns_result_with_correct_shape(self, rng):
-        """covers: code/python/Ts/TsSims/_cointegration.py::simulate_cointegrated [function]
+        """
         Returns SimCointegratedResult with data (n, k)."""
-        from Ts.TsSims._cointegration import simulate_cointegrated, SimCointegratedResult
+        from Ts.TsSims._cointegration import (
+            simulate_cointegrated,
+            SimCointegratedResult,
+        )
 
         r = simulate_cointegrated(n=100, k=2, coint_rank=1, seed=42)
 
@@ -239,8 +204,7 @@ class TestSimulateCointegratedBasic:
         assert not np.allclose(r1.data, r2.data)
 
     def test_default_parameters(self, rng):
-        """covers: code/python/Ts/TsSims/_cointegration.py::_make_default_beta [function]
-        covers: code/python/Ts/TsSims/_cointegration.py::_make_default_alpha [function]
+        """
         Works with only n and k specified."""
         from Ts.TsSims._cointegration import simulate_cointegrated
 
@@ -266,10 +230,10 @@ class TestSimulateCointegratedBasic:
 # TestSimulateCointegratedValidation — parameter validation
 # ===========================================================================
 
-class TestSimulateCointegratedValidation:
 
+class TestSimulateCointegratedValidation:
     def test_k_less_than_2_raises(self, rng):
-        """covers: code/python/Ts/TsSims/_cointegration.py::_validate_params [function]
+        """
         k < 2 raises ValueError."""
         from Ts.TsSims._cointegration import simulate_cointegrated
 
@@ -309,7 +273,7 @@ class TestSimulateCointegratedValidation:
             simulate_cointegrated(n=100, k=2, coint_rank=1, beta=bad_beta, seed=42)
 
     def test_unstable_eigenvalues_raises(self, rng):
-        """covers: code/python/Ts/TsSims/_cointegration.py::_check_stability [function]
+        """
         alpha/beta producing unstable eigenvalues raises ValueError."""
         from Ts.TsSims._cointegration import simulate_cointegrated
 
@@ -317,16 +281,17 @@ class TestSimulateCointegratedValidation:
         beta = np.array([[1.0], [0.0]])
 
         with pytest.raises(ValueError, match="stable"):
-            simulate_cointegrated(n=100, k=2, coint_rank=1,
-                                  alpha=unstable_alpha, beta=beta, seed=42)
+            simulate_cointegrated(
+                n=100, k=2, coint_rank=1, alpha=unstable_alpha, beta=beta, seed=42
+            )
 
 
 # ===========================================================================
 # TestSimulateCointegratedCustom — custom parameters
 # ===========================================================================
 
-class TestSimulateCointegratedCustom:
 
+class TestSimulateCointegratedCustom:
     def test_custom_alpha_beta_passed_to_params(self):
         """Custom alpha/beta are stored in params."""
         from Ts.TsSims._cointegration import simulate_cointegrated
@@ -334,8 +299,9 @@ class TestSimulateCointegratedCustom:
         alpha = np.array([[-0.3], [0.0]])
         beta = np.array([[1.0], [-0.5]])
 
-        r = simulate_cointegrated(n=50, k=2, coint_rank=1,
-                                  alpha=alpha, beta=beta, seed=42)
+        r = simulate_cointegrated(
+            n=50, k=2, coint_rank=1, alpha=alpha, beta=beta, seed=42
+        )
 
         params = r.get_params()
         np.testing.assert_array_equal(params["alpha"], alpha)
@@ -368,18 +334,22 @@ class TestSimulateCointegratedCustom:
 # TestCointegrationRoundTrip — closed-loop verification
 # ===========================================================================
 
-class TestCointegrationRoundTrip:
 
+class TestCointegrationRoundTrip:
     def test_johansen_recovers_coint_rank_k2_r1(self):
         """Johansen trace test recovers true coint_rank for k=2, r=1."""
         from Ts.TsSims._cointegration import simulate_cointegrated
         from Ts.TsTests._johansen import JohansenTest
 
         data = simulate_cointegrated(
-            n=500, k=2, coint_rank=1,
+            n=500,
+            k=2,
+            coint_rank=1,
             alpha=np.array([[-0.3], [0.0]]),
             beta=np.array([[1.0], [-1.0]]),
-            sigma=0.5, seed=42, burn=200,
+            sigma=0.5,
+            seed=42,
+            burn=200,
         )
 
         jt = JohansenTest(data.data, lags=1, trend="constant")
@@ -405,9 +375,14 @@ class TestCointegrationRoundTrip:
         pi_true = alpha_true @ beta_true.T
 
         data = simulate_cointegrated(
-            n=500, k=2, coint_rank=1,
-            alpha=alpha_true, beta=beta_true,
-            sigma=0.3, seed=42, burn=200,
+            n=500,
+            k=2,
+            coint_rank=1,
+            alpha=alpha_true,
+            beta=beta_true,
+            sigma=0.3,
+            seed=42,
+            burn=200,
         )
 
         vecm = VECM(data.data, lags=2, coint_rank=1, trend="n")
@@ -416,9 +391,7 @@ class TestCointegrationRoundTrip:
         pi_est = result.alpha @ result.beta.T
 
         rel_error = np.linalg.norm(pi_est - pi_true) / np.linalg.norm(pi_true)
-        assert rel_error < 0.5, (
-            f"Pi recovery error too large: {rel_error:.3f}"
-        )
+        assert rel_error < 0.5, f"Pi recovery error too large: {rel_error:.3f}"
 
     def test_k3_r2_johansen_rank_recovery(self):
         """Johansen sequential trace test recovers r=2 in k=3 system."""
@@ -429,14 +402,18 @@ class TestCointegrationRoundTrip:
         beta = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, -1.0]])
 
         data = simulate_cointegrated(
-            n=500, k=3, coint_rank=2, alpha=alpha, beta=beta,
-            sigma=0.3, seed=42, burn=200,
+            n=500,
+            k=3,
+            coint_rank=2,
+            alpha=alpha,
+            beta=beta,
+            sigma=0.3,
+            seed=42,
+            burn=200,
         )
 
         jt = JohansenTest(data.data, lags=1, trend="constant")
         jt.fit()
 
         selected_rank = jt.result_.rank
-        assert selected_rank >= 2, (
-            f"Expected rank >= 2, got {selected_rank}"
-        )
+        assert selected_rank >= 2, f"Expected rank >= 2, got {selected_rank}"
