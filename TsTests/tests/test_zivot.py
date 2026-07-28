@@ -83,7 +83,7 @@ class TestZivotResultBaseline:
 
     def test_three_models_work(self):
         """All three models use their intended, distinct break regressors."""
-        from Ts.TsTests._break_utils import _make_break_dummies
+        from Ts.TsTests._break_utils import _make_zivot_break_dummies
 
         expected_columns = {
             "intercept": {"DL"},
@@ -97,7 +97,9 @@ class TestZivotResultBaseline:
 
         statistics = {}
         for model in ["intercept", "slope", "both"]:
-            assert set(_make_break_dummies(n, 50, model)) == expected_columns[model]
+            assert (
+                set(_make_zivot_break_dummies(n, 50, model)) == expected_columns[model]
+            )
 
             test = ZivotAndrewsTest(
                 y,

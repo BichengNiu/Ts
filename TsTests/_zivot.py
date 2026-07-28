@@ -18,13 +18,15 @@ from ._base import BaseTest, BaseTestResult
 from ._critical_values import _za_crit
 from ._utils import _parse_input, _validate_model
 from ._break_utils import (
-    _make_break_dummies,
-    _select_lags_by_tstat,
-    _select_lags_by_ic,
     _build_regression_data,
-    _get_regression_columns,
     _extract_rho_stats,
     _extract_coefficients,
+    _get_regression_columns,
+    _make_zivot_break_dummies,
+    _select_lags_by_ic,
+    _select_lags_by_tstat,
+    _validate_nonnegative_int,
+    _validate_time_axis,
 )
 from ._unitroot_plot import _render_tstat_plot, _render_ic_plot
 
@@ -69,7 +71,7 @@ class ZivotAndrewsTestResult(BaseTestResult):
             f"  10%                : {self.cv_10:.3f}\n"
             f"\n"
             f"Conclusion (5%): "
-            f"{'Reject H0 (stationary with break)' if self.statistic < self.cv_05 else 'Cannot reject H0 (unit root)'}\n"
+            f"{'Reject H0 (unit root); evidence favors stationarity around a breaking trend' if self.statistic < self.cv_05 else 'Cannot reject H0 (unit root)'}\n"
         )
 
     def plot_test(self, ax=None):
@@ -151,17 +153,28 @@ class ZivotAndrewsTest(BaseTest):
         time_col=None,
     ):
         self.data, self.time_index = _parse_input(data, time_index, y_col, time_col)
+        _validate_time_axis(self.time_index)
         _validate_model(model)
         self.model = model
-        self.lags = lags
-        self.max_lags = max_lags
-        self.lag_crit = lag_crit
+        self.lags = (
+            None if lags is None else _validate_nonnegative_int(lags, name="lags")
+        )
+        self.max_lags = _validate_nonnegative_int(max_lags, name="max_lags")
+        if isinstance(lag_crit, bool) or not np.isscalar(lag_crit):
+            raise TypeError("lag_crit must be a positive finite scalar")
+        self.lag_crit = float(lag_crit)
+        if not np.isfinite(self.lag_crit) or self.lag_crit <= 0:
+            raise ValueError("lag_crit must be a positive finite scalar")
         if lag_method not in ("tstat", "aic", "bic"):
             raise ValueError(
                 f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
             )
         self.lag_method = lag_method
-        self.trim = trim
+        if isinstance(trim, bool) or not np.isscalar(trim):
+            raise TypeError("trim must be a finite scalar between 0 and 0.5")
+        self.trim = float(trim)
+        if not np.isfinite(self.trim) or not 0 < self.trim < 0.5:
+            raise ValueError("trim must be between 0 and 0.5")
         self.result_: ZivotAndrewsTestResult | None = None
 
     def fit(self) -> ZivotAndrewsTestResult:
@@ -199,7 +212,7 @@ class ZivotAndrewsTest(BaseTest):
         best_reg_cols = None
 
         for i, bp_idx in enumerate(candidate_indices):
-            dummies = _make_break_dummies(T, bp_idx, self.model)
+            dummies = _make_zivot_break_dummies(T, bp_idx, self.model)
 
             # Lag selection for this break point
             if self.lags is None:
@@ -221,6 +234,10 @@ class ZivotAndrewsTest(BaseTest):
 
             X = df[reg_cols].values
             y_dep = df["dy"].values
+            if X.shape[0] <= X.shape[1]:
+                continue
+            if np.linalg.matrix_rank(X) < X.shape[1]:
+                continue
 
             try:
                 res = sm.OLS(y_dep, X).fit()
@@ -228,6 +245,14 @@ class ZivotAndrewsTest(BaseTest):
                 continue
 
             rho_hat, rho_se, t_stat = _extract_rho_stats(res, reg_cols)
+            if (
+                res.df_resid <= 0
+                or not np.isfinite(rho_se)
+                or rho_se <= 0
+                or not np.isfinite(t_stat)
+                or not np.all(np.isfinite(res.resid))
+            ):
+                continue
 
             t_stats[i] = t_stat
 

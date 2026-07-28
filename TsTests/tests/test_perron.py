@@ -86,11 +86,11 @@ class TestPerronResultBaseline:
 
     def test_three_models_work(self):
         """All three models use their intended, distinct break regressors."""
-        from Ts.TsTests._break_utils import _make_break_dummies
+        from Ts.TsTests._break_utils import _make_perron_break_dummies
 
         expected_columns = {
             "intercept": {"DL", "DP"},
-            "slope": {"DT"},
+            "slope": {"DL", "DT"},
             "both": {"DL", "DP", "DT"},
         }
         np.random.seed(42)
@@ -100,12 +100,7 @@ class TestPerronResultBaseline:
 
         statistics = {}
         for model in ["intercept", "slope", "both"]:
-            dummies = _make_break_dummies(
-                n,
-                50,
-                model,
-                include_pulse=True,
-            )
+            dummies = _make_perron_break_dummies(n, 50, model)
             assert set(dummies) == expected_columns[model]
 
             test = PerronTest(

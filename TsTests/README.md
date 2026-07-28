@@ -1,7 +1,7 @@
 # `TsTests` — 时间序列统计检验包
 
-提供时间序列分析中常用的统计检验，涵盖五大类：标准单位根检验、结构性突变单位根检验、
-ARCH 效应检验、正态性检验和协整检验。
+提供时间序列分析中常用的统计检验，涵盖标准单位根检验、结构突变单位根检验、
+回归参数稳定性检验、ARCH 效应检验、正态性检验、协整与因果检验。
 
 ## 模块结构
 
@@ -18,6 +18,11 @@ TsTests/
 ├── _kpss.py              # KPSSTest + KPSSTestResult
 ├── _perron.py            # PerronTest + PerronTestResult
 ├── _zivot.py             # ZivotAndrewsTest + ZivotAndrewsTestResult
+├── _lee_strazicich.py    # LeeStrazicichTwoBreakTest + Result
+├── _regression_break_utils.py  # 回归稳定性检验共享设计构建器
+├── _chow.py              # ChowTest + ChowTestResult
+├── _cusum.py             # CUSUMTest + CUSUMTestResult
+├── _bai_perron.py        # BaiPerronTest + BaiPerronTestResult
 ├── _ljungbox.py          # LjungBoxTest + LjungBoxTestResult
 ├── _engle_lm.py          # EngleLMTest + EngleLMTestResult
 ├── _normality.py         # NormalityTest + NormalityTestResult
@@ -29,6 +34,10 @@ TsTests/
 │   ├── test_kpss.py
 │   ├── test_perron.py
 │   ├── test_zivot.py
+│   ├── test_lee_strazicich.py
+│   ├── test_chow.py
+│   ├── test_cusum.py
+│   ├── test_bai_perron.py
 │   ├── test_ljungbox.py
 │   ├── test_engle_lm.py
 │   ├── test_normality.py
@@ -47,6 +56,10 @@ from Ts.TsTests import (
     KPSSTest,
     PerronTest,
     ZivotAndrewsTest,
+    LeeStrazicichTwoBreakTest,
+    ChowTest,
+    CUSUMTest,
+    BaiPerronTest,
     LjungBoxTest,
     EngleLMTest,
     NormalityTest,
@@ -72,9 +85,33 @@ print(pt.summary())
 pt.result_.plot_test()
 
 # Zivot-Andrews 检验（未知断点）
-za = ZivotAndrewsTest(data, time_index=years, model="both", max_lags=8)
+za = ZivotAndrewsTest(data, time_index=years, model="intercept", max_lags=8)
 za.fit()
 za.result_.plot_test()
+
+# Lee-Strazicich 检验（两个未知断点；H0 中也允许突变）
+ls = LeeStrazicichTwoBreakTest(data, time_index=years, model="C", max_lags=8)
+ls_result = ls.fit()
+print(ls_result.break_years)
+
+# 已知日期的回归系数稳定性：Chow
+chow = ChowTest(y, break_year=years[50], exog=x, time_index=years)
+print(chow.fit())
+
+# 未知位置的整体参数不稳定：OLS 残差 CUSUM
+cusum = CUSUMTest(y, exog=x, time_index=years)
+print(cusum.fit())
+
+# 多个未知回归断点：Bai-Perron
+bp = BaiPerronTest(
+    y,
+    exog=x,
+    time_index=years,
+    max_breaks=3,
+    n_bootstrap=199,
+    random_state=42,
+)
+print(bp.fit().break_years)
 
 # Ljung-Box Q 检验（ARCH 效应检测）
 lb = LjungBoxTest(returns, lags=10)
@@ -109,8 +146,8 @@ print(ty.summary())
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `statistic` | `float` | 检验统计量 |
-| `pvalue` | `float \| None` | p 值（结构突变检验为 None） |
-| `lags` | `int` | 使用的滞后阶数 / 带宽 |
+| `pvalue` | `float \| None` | p 值；仅临界值推断的方法可为 `None` |
+| `lags` | `int \| None` | 使用的滞后阶数 / 带宽；非滞后检验为 `None` |
 | `nobs` | `int` | 有效观测数 |
 | `residuals` | `ndarray \| None` | 残差序列 |
 
@@ -123,12 +160,29 @@ print(ty.summary())
 | KPSS | `KPSSTest` | 平稳 | 标准单位根 | Kwiatkowski et al. (1992) |
 | Perron (1989) | `PerronTest` | 含结构突变的单位根 | 已知断点 | Table IV.B（有限样本） |
 | Zivot-Andrews (1992) | `ZivotAndrewsTest` | 含结构突变的单位根 | 未知断点 | Table 2（渐近） |
+| Lee-Strazicich (2003) | `LeeStrazicichTwoBreakTest` | 含两个结构突变的单位根 | 两个未知断点 | 发表的 Model A/C 渐近临界值 |
+| Chow | `ChowTest` | 指定日期前后回归系数稳定 | 已知断点 | 经典 F 分布 |
+| OLS-CUSUM | `CUSUMTest` | 回归参数稳定 | 未知不稳定位置 | Brownian bridge 渐近分布 |
+| Bai-Perron | `BaiPerronTest` | 回归系数在所有区间稳定 | 多个未知断点 | Rademacher wild bootstrap |
 | Ljung-Box Q-test | `LjungBoxTest` | 无自相关（残差平方） | ARCH 效应 | chi-squared 分布 |
 | Engle LM test | `EngleLMTest` | 无 ARCH 效应 | ARCH 效应 | chi-squared / F 分布 |
 | Jarque-Bera | `NormalityTest` | 正态分布 | 正态性 | chi-squared(2) — 支持 `plot_test()` |
 | Johansen 迹检验 | `JohansenTest` | 协整秩 <= r | 协整 | Osterwald-Lenum (1992) — 支持 `summary(alpha_idx=N)` |
 | Johansen 最大特征根 | `JohansenTest` | 协整秩 = r | 协整 | Osterwald-Lenum (1992) |
 | Toda-Yamamoto | `TodaYamamotoTest` | 无格兰杰因果 | 因果检验 | chi-squared（Wald 检验） |
+
+## 结构突变方法选择
+
+| 研究问题 | 推荐方法 |
+|----------|----------|
+| 单位根，已知一个断点 | `PerronTest` |
+| 单位根，未知一个断点 | `ZivotAndrewsTest` |
+| 单位根，未知两个断点，且断点进入原假设 | `LeeStrazicichTwoBreakTest` |
+| 回归系数稳定性，断点日期事先指定 | `ChowTest` |
+| 回归参数是否存在未知位置的不稳定 | `CUSUMTest` |
+| 回归中存在几个未知断点及其位置 | `BaiPerronTest` |
+
+单位根突变检验和回归参数稳定性检验回答不同问题，不能互相替代。
 
 ## 标准单位根检验参数
 
@@ -178,9 +232,91 @@ print(ty.summary())
 |------|------|--------|------|
 | `data` | array-like | — | 时间序列 |
 | `time_index` | array-like | `None` | 时间索引 |
-| `model` | str | `"both"` | 突变模型: `"intercept"`, `"trend"`, `"both"` |
+| `model` | str | `"intercept"` | 突变模型: `"intercept"`, `"slope"`, `"both"` |
 | `max_lags` | int | `8` | 最大滞后阶数 |
 | `lag_method` | str | `"tstat"` | 滞后选择: `"tstat"`, `"aic"`, `"bic"` |
+
+### LeeStrazicichTwoBreakTest
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `data` | array-like | — | 时间序列 |
+| `time_index` | array-like | `None` | 仅用于断点标签，不改变统计模型 |
+| `model` | str | `"A"` | `"A"` 为两个水平突变；`"C"` 为两个水平和趋势突变 |
+| `lags` | int \| None | `None` | 固定滞后阶数；`None` 时自动选择 |
+| `max_lags` | int | `8` | 自动选择的最大滞后阶数 |
+| `lag_method` | str | `"tstat"` | `"tstat"`, `"aic"`, `"bic"` |
+| `trim` | float | `0.10` | 两端搜索修剪比例 |
+
+## 回归参数稳定性检验参数
+
+`ChowTest`、`CUSUMTest` 和 `BaiPerronTest` 共用回归输入契约：
+
+- 数组输入：`data=y`，解释变量通过 `exog=x` 指定；
+- DataFrame 输入：通过 `y_col`、`time_col`、`exog_cols` 明确列；
+- `trend` 支持 `"n"`、`"c"`、`"ct"`；
+- 不自动删除或插补缺失值，因为这会改变断点位置。
+
+DataFrame 示例：
+
+```python
+import numpy as np
+import pandas as pd
+
+rng = np.random.default_rng(42)
+frame = pd.DataFrame(
+    {
+        "year": np.arange(2000, 2040),
+        "outcome": rng.normal(size=40),
+        "driver": rng.normal(size=40),
+    }
+)
+result = ChowTest(
+    frame,
+    break_year=2019,
+    y_col="outcome",
+    time_col="year",
+    exog_cols=["driver"],
+).fit()
+```
+
+### ChowTest
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `data` | array-like / DataFrame | — | 因变量或包含回归数据的表 |
+| `break_year` | float | — | 事先指定、且必须精确匹配 `time_index` 的断点 |
+| `exog` | array-like | `None` | 数组路径下的解释变量 |
+| `trend` | str | `"c"` | 确定项规格 |
+
+经典 Chow F 推断要求误差独立且同方差；断点必须在查看结果前指定。
+
+### CUSUMTest
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `data` | array-like / DataFrame | — | 因变量或包含回归数据的表 |
+| `exog` | array-like | `None` | 数组路径下的解释变量 |
+| `trend` | str | `"c"` | 确定项规格 |
+
+这是基于全样本 OLS 残差的 CUSUM，不是 Brown–Durbin–Evans 递归残差
+CUSUM；其 Brownian-bridge 推断对回归量分布有经典渐近条件。
+
+### BaiPerronTest
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `data` | array-like / DataFrame | — | 因变量或包含回归数据的表 |
+| `exog` | array-like | `None` | 数组路径下的解释变量 |
+| `max_breaks` | int | `5` | 最大未知断点数 |
+| `breaks` | int \| None | `None` | 固定断点数；`None` 时用 BIC/LWZ 选择 |
+| `criterion` | str | `"bic"` | 断点数选择准则：`"bic"` 或 `"lwz"` |
+| `trim` | float | `0.15` | 最小区间比例 |
+| `n_bootstrap` | int | `99` | wild bootstrap 重复次数，至少 19 |
+| `random_state` | int \| None | `None` | 可复现随机种子 |
+
+实现使用全局动态规划而不是贪心二分，返回 supF、UDmax、WDmax 和断点区间。
+wild bootstrap 对异方差稳健，但当前版本不对序列相关稳健。
 
 ## ARCH 效应检验参数
 
@@ -205,13 +341,18 @@ print(ty.summary())
 | `data` | array-like | — | 残差序列 |
 | `lags` | int | `10` | 滞后阶数 |
 
-## 模型类型（结构突变检验）
+## 突变模型的确定项
 
-| model | 含义 | 突变虚拟变量 |
-|-------|------|-------------|
-| `"intercept"` | 截距突变（Crash Model） | DL, DP |
-| `"slope"` | 趋势斜率突变（Changing-Growth） | DL, DP, DT |
-| `"both"` | 截距 + 斜率同时突变 | DL, DP, DT |
+| 检验 | model | 突变确定项 |
+|------|-------|------------|
+| Perron | `"intercept"` | DL, DP |
+| Perron | `"slope"` | DL, DT |
+| Perron | `"both"` | DL, DP, DT |
+| Zivot-Andrews | `"intercept"` | DL |
+| Zivot-Andrews | `"slope"` | DT |
+| Zivot-Andrews | `"both"` | DL, DT |
+| Lee-Strazicich | `"A"` | 两个 DU |
+| Lee-Strazicich | `"C"` | 两个 DU 和两个 DT |
 
 ## 滞后选择方法（结构突变检验）
 
@@ -223,9 +364,8 @@ print(ty.summary())
 
 ## 绘图功能
 
-标准单位根检验（ADF/PP/KPSS）和结构突变检验（Perron/Zivot-Andrews）的 Result
-类均提供 `plot_test()` 方法，绘制检验统计量与临界值的对比图（由 `TsTsPlots.style`
-统一风格）。
+标准单位根、结构突变单位根和回归参数稳定性检验的 Result 类均提供
+`plot_test()`。图形分别展示统计量与临界值、估计断点、拟合区间或累计残差路径。
 
 ```python
 # 所有单位根检验 Result 均支持 plot_test()
@@ -234,6 +374,10 @@ pp.result_.plot_test()  # Phillips-Perron
 kpss.result_.plot_test()  # KPSS
 pt.result_.plot_test()  # Perron
 za.result_.plot_test()  # Zivot-Andrews（含 t 统计量和 IC 曲线）
+ls.result_.plot_test()  # Lee-Strazicich（两个未知断点）
+chow.result_.plot_test()  # Chow（断点前后拟合）
+cusum.result_.plot_test()  # CUSUM（累计残差）
+bp.result_.plot_test()  # Bai-Perron（多个未知断点和区间拟合）
 ```
 
 ## 协整检验参数

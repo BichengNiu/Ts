@@ -103,3 +103,57 @@ def test_break_tests_reject_nonfinite_data_without_compressing_time():
 def test_zivot_rejects_constant_series_explicitly():
     with pytest.raises(ValueError, match="non-constant"):
         ZivotAndrewsTest(np.ones(40), lags=1).fit()
+
+
+@pytest.mark.parametrize("lags", [-1, True, 1.5])
+@pytest.mark.parametrize("test_class", [PerronTest, ZivotAndrewsTest])
+def test_break_tests_reject_invalid_fixed_lags(test_class, lags):
+    data = np.arange(40, dtype=float) + np.sin(np.arange(40))
+    kwargs = {"break_year": 20} if test_class is PerronTest else {}
+    error = TypeError if isinstance(lags, (bool, float)) else ValueError
+    with pytest.raises(error, match="lags"):
+        test_class(data, lags=lags, **kwargs)
+
+
+@pytest.mark.parametrize("max_lags", [-1, True, 1.5])
+@pytest.mark.parametrize("test_class", [PerronTest, ZivotAndrewsTest])
+def test_break_tests_reject_invalid_max_lags(test_class, max_lags):
+    data = np.arange(40, dtype=float) + np.sin(np.arange(40))
+    kwargs = {"break_year": 20} if test_class is PerronTest else {}
+    error = TypeError if isinstance(max_lags, (bool, float)) else ValueError
+    with pytest.raises(error, match="max_lags"):
+        test_class(data, max_lags=max_lags, **kwargs)
+
+
+@pytest.mark.parametrize("trim", [-0.1, 0.0, 0.5, 0.8, np.nan])
+def test_zivot_rejects_invalid_trim(trim):
+    with pytest.raises(ValueError, match="trim"):
+        ZivotAndrewsTest(np.arange(40, dtype=float), trim=trim)
+
+
+@pytest.mark.parametrize(
+    "time",
+    [
+        np.array([0.0, 1.0, 1.0, 3.0]),
+        np.array([0.0, 2.0, 1.0, 3.0]),
+    ],
+)
+@pytest.mark.parametrize("test_class", [PerronTest, ZivotAndrewsTest])
+def test_break_tests_require_strictly_increasing_unique_time_axis(test_class, time):
+    data = np.arange(4, dtype=float)
+    kwargs = {"break_year": 1.0} if test_class is PerronTest else {}
+    with pytest.raises(ValueError, match="strictly increasing"):
+        test_class(data, time_index=time, **kwargs)
+
+
+def test_perron_requires_exact_break_label():
+    data = np.arange(40, dtype=float) + np.sin(np.arange(40))
+    with pytest.raises(ValueError, match="match exactly one"):
+        PerronTest(data, time_index=np.arange(40), break_year=20.5)
+
+
+@pytest.mark.parametrize("break_year", [3, 37])
+def test_perron_rejects_break_fraction_outside_table(break_year):
+    data = np.arange(40, dtype=float) + np.sin(np.arange(40))
+    with pytest.raises(ValueError, match="break fraction"):
+        PerronTest(data, break_year=break_year)

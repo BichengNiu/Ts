@@ -28,8 +28,9 @@ class BaseTestResult:
     pvalue : float or None
         p-value of the test. May be ``None`` for tests that use critical-value
         comparison (e.g., Perron, Zivot-Andrews).
-    lags : int
-        Number of lags used in the test.
+    lags : int or None
+        Number of lags used in the test. ``None`` for tests without a lag
+        parameter.
     nobs : int
         Effective number of observations.
     residuals : np.ndarray or None
@@ -38,7 +39,7 @@ class BaseTestResult:
 
     statistic: float
     pvalue: float | None
-    lags: int
+    lags: int | None
     nobs: int
     residuals: np.ndarray | None = None
 
@@ -76,7 +77,8 @@ class BaseTestResult:
                 lines.append("  Critical Values:")
                 for k, v in sorted(critical_values.items()):
                     lines.append(f"    {k}: {v:.4f}")
-        lines.append(f"  Lags:           {self.lags}")
+        lags = "N/A" if self.lags is None else str(self.lags)
+        lines.append(f"  Lags:           {lags}")
         lines.append(f"  H0: {h0_desc}")
         return "\n".join(lines)
 

@@ -13,6 +13,14 @@ This package implements statistical tests for time series analysis:
 - :class:`PerronTest` — Perron (1989) test with a *known* break date.
 - :class:`ZivotAndrewsTest` — Zivot & Andrews (1992) test with an
   *unknown* break date (endogenously selected).
+- :class:`LeeStrazicichTwoBreakTest` — minimum LM unit-root test with
+  *two unknown* break dates.
+
+**Regression parameter-stability tests**
+
+- :class:`ChowTest` — coefficient stability at a *known* break date.
+- :class:`CUSUMTest` — unknown regression instability from OLS residuals.
+- :class:`BaiPerronTest` — *multiple unknown* regression break dates.
 
 **ARCH-effect tests**
 
@@ -28,53 +36,55 @@ Quick start
 -----------
 >>> from Ts.TsTests import (
 ...     ADFTest, PhillipsPerronTest, KPSSTest,
-...     PerronTest, ZivotAndrewsTest, LjungBoxTest, EngleLMTest,
+...     PerronTest, ZivotAndrewsTest, LeeStrazicichTwoBreakTest,
+...     ChowTest, CUSUMTest, BaiPerronTest,
 ... )
-
->>> # ADF test
->>> adf = ADFTest(y, trend="c")
->>> print(adf.summary())
-
->>> # KPSS test
->>> kpss = KPSSTest(y, trend="c")
->>> kpss.result_.plot_test()
 """
 
-from ._base import BaseMultiTestResult, BaseTest, BaseTestResult
-from ._perron import PerronTest, PerronTestResult
-from ._zivot import ZivotAndrewsTest, ZivotAndrewsTestResult
-from ._ljungbox import LjungBoxTest, LjungBoxTestResult
-from ._engle_lm import EngleLMTest, EngleLMTestResult
-from ._normality import NormalityTest, NormalityTestResult
 from ._adf import ADFTest, ADFTestResult
-from ._phillips_perron import PhillipsPerronTest, PhillipsPerronTestResult
-from ._kpss import KPSSTest, KPSSTestResult
+from ._bai_perron import BaiPerronTest, BaiPerronTestResult
+from ._base import BaseMultiTestResult, BaseTest, BaseTestResult
+from ._chow import ChowTest, ChowTestResult
+from ._cusum import CUSUMTest, CUSUMTestResult
+from ._engle_lm import EngleLMTest, EngleLMTestResult
 from ._johansen import JohansenTest, JohansenTestResult
+from ._kpss import KPSSTest, KPSSTestResult
+from ._lee_strazicich import (
+    LeeStrazicichTwoBreakTest,
+    LeeStrazicichTwoBreakTestResult,
+)
+from ._ljungbox import LjungBoxTest, LjungBoxTestResult
+from ._normality import NormalityTest, NormalityTestResult
+from ._perron import PerronTest, PerronTestResult
+from ._phillips_perron import PhillipsPerronTest, PhillipsPerronTestResult
 from ._toda_yamamoto import TodaYamamotoTest, TodaYamamotoTestResult
+from ._zivot import ZivotAndrewsTest, ZivotAndrewsTestResult
 
 __all__ = [
-    # Unit root tests
     "ADFTest",
     "ADFTestResult",
+    "BaiPerronTest",
+    "BaiPerronTestResult",
     "BaseMultiTestResult",
-    # Base classes
     "BaseTest",
     "BaseTestResult",
+    "CUSUMTest",
+    "CUSUMTestResult",
+    "ChowTest",
+    "ChowTestResult",
     "EngleLMTest",
     "EngleLMTestResult",
     "JohansenTest",
     "JohansenTestResult",
     "KPSSTest",
     "KPSSTestResult",
-    # ARCH-effect tests
+    "LeeStrazicichTwoBreakTest",
+    "LeeStrazicichTwoBreakTestResult",
     "LjungBoxTest",
     "LjungBoxTestResult",
-    # Normality test
     "NormalityTest",
     "NormalityTestResult",
-    # Structural break tests
     "PerronTest",
-    # Result containers
     "PerronTestResult",
     "PhillipsPerronTest",
     "PhillipsPerronTestResult",

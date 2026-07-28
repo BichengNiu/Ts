@@ -54,6 +54,17 @@ def test_base_test_result_formats_both_result_styles():
     assert "Critical Values:" in text
     assert "1%: -4.1000" in text
 
+    no_lag_result = BaseTestResult(
+        statistic=2.0,
+        pvalue=0.1,
+        lags=None,
+        nobs=30,
+    )
+    assert "Lags:           N/A" in no_lag_result._format_conclusion(
+        "Stability test",
+        "Stable parameters",
+    )
+
 
 def test_base_test_summary_fits_lazily_once():
     test = _LazyTest()

@@ -8,7 +8,6 @@ Hypothesis." *Econometrica*, 57(6), 1361–1401.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -18,13 +17,16 @@ from ._base import BaseTest, BaseTestResult
 from ._critical_values import _perron_crit
 from ._utils import _parse_input, _validate_model
 from ._break_utils import (
-    _make_break_dummies,
-    _select_lags_by_tstat,
-    _select_lags_by_ic,
     _build_regression_data,
-    _get_regression_columns,
     _extract_rho_stats,
     _extract_coefficients,
+    _get_regression_columns,
+    _locate_known_break,
+    _make_perron_break_dummies,
+    _select_lags_by_ic,
+    _select_lags_by_tstat,
+    _validate_nonnegative_int,
+    _validate_time_axis,
 )
 
 
@@ -36,6 +38,7 @@ class PerronTestResult(BaseTestResult):
     rho_se: float = 0.0  # std. error of ρ̂
     break_year: float = 0.0  # break point (in original units)
     break_index: int = 0  # 0-based index of break
+    break_fraction: float = 0.0  # break_index / total observations
     model: str = ""  # "intercept", "slope", or "both"
     cv_01: float = 0.0  # critical value at 1%
     cv_05: float = 0.0  # critical value at 5%
@@ -64,7 +67,7 @@ class PerronTestResult(BaseTestResult):
             f"  10%                : {self.cv_10:.3f}\n"
             f"\n"
             f"Conclusion (5%): "
-            f"{'Reject H0 (stationary with break)' if self.statistic < self.cv_05 else 'Cannot reject H0 (unit root)'}\n"
+            f"{'Reject H0 (unit root); evidence favors stationarity around a breaking trend' if self.statistic < self.cv_05 else 'Cannot reject H0 (unit root)'}\n"
         )
 
     @property
@@ -144,12 +147,26 @@ class PerronTest(BaseTest):
         time_col=None,
     ):
         self.data, self.time_index = _parse_input(data, time_index, y_col, time_col)
-        self.break_year = break_year
+        _validate_time_axis(self.time_index)
+        self.break_index = _locate_known_break(self.time_index, break_year)
+        self.break_year = float(self.time_index[self.break_index])
+        break_fraction = self.break_index / len(self.data)
+        if not 0.1 <= break_fraction <= 0.9:
+            raise ValueError(
+                "break_year must locate a break fraction between 0.1 and 0.9"
+            )
+        self.break_fraction = float(break_fraction)
         _validate_model(model)
         self.model = model
-        self.lags = lags
-        self.max_lags = max_lags
-        self.lag_crit = lag_crit
+        self.lags = (
+            None if lags is None else _validate_nonnegative_int(lags, name="lags")
+        )
+        self.max_lags = _validate_nonnegative_int(max_lags, name="max_lags")
+        if isinstance(lag_crit, bool) or not np.isscalar(lag_crit):
+            raise TypeError("lag_crit must be a positive finite scalar")
+        self.lag_crit = float(lag_crit)
+        if not np.isfinite(self.lag_crit) or self.lag_crit <= 0:
+            raise ValueError("lag_crit must be a positive finite scalar")
         if lag_method not in ("tstat", "aic", "bic"):
             raise ValueError(
                 f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
@@ -172,24 +189,10 @@ class PerronTest(BaseTest):
             raise ValueError("Perron test requires non-constant data.")
 
         time_idx = self.time_index
-
-        # Locate break index
-        break_idx = int(np.argmin(np.abs(time_idx - self.break_year)))
-        # Ensure break is not at the very beginning or end
-        if break_idx < 2 or break_idx > T - 3:
-            warnings.warn(
-                f"Break index {break_idx} is near the boundary (T={T}). "
-                "Results may be unreliable.",
-                stacklevel=2,
-            )
+        break_idx = self.break_index
 
         # Create break dummies
-        dummies = _make_break_dummies(
-            T,
-            break_idx,
-            self.model,
-            include_pulse=True,
-        )
+        dummies = _make_perron_break_dummies(T, break_idx, self.model)
 
         # Lag selection
         if self.lags is None:
@@ -212,6 +215,13 @@ class PerronTest(BaseTest):
 
         X = df[reg_cols].values
         y_dep = df["dy"].values
+        if X.shape[0] <= X.shape[1]:
+            raise ValueError(
+                "Perron test has insufficient residual degrees of freedom "
+                f"({X.shape[0]} observations, {X.shape[1]} regressors)."
+            )
+        if np.linalg.matrix_rank(X) < X.shape[1]:
+            raise ValueError("Perron test regression design matrix is rank deficient.")
 
         # OLS estimation
         try:
@@ -226,11 +236,19 @@ class PerronTest(BaseTest):
 
         # Extract key statistics
         rho_hat, rho_se, t_stat = _extract_rho_stats(res, reg_cols)
+        if (
+            res.df_resid <= 0
+            or not np.isfinite(rho_se)
+            or rho_se <= 0
+            or not np.isfinite(t_stat)
+            or not np.all(np.isfinite(res.resid))
+        ):
+            raise RuntimeError("Perron test produced an invalid numerical fit.")
 
         # Critical values
-        cv_01 = _perron_crit(self.model, T, 0.01)
-        cv_05 = _perron_crit(self.model, T, 0.05)
-        cv_10 = _perron_crit(self.model, T, 0.10)
+        cv_01 = _perron_crit(self.model, self.break_fraction, 0.01)
+        cv_05 = _perron_crit(self.model, self.break_fraction, 0.05)
+        cv_10 = _perron_crit(self.model, self.break_fraction, 0.10)
 
         # Collect coefficients
         coefs, pvals = _extract_coefficients(res, reg_cols)
@@ -245,6 +263,7 @@ class PerronTest(BaseTest):
             rho_se=rho_se,
             break_year=self.break_year,
             break_index=break_idx,
+            break_fraction=self.break_fraction,
             model=self.model,
             cv_01=cv_01,
             cv_05=cv_05,

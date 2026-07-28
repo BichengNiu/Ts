@@ -16,47 +16,68 @@ import statsmodels.api as sm
 # ---------------------------------------------------------------------------
 
 
-def _make_break_dummies(
+def _make_perron_break_dummies(
     T: int,
     break_idx: int,
     model: str,
-    *,
-    include_pulse: bool = False,
 ) -> dict[str, np.ndarray]:
-    """Create dummy variables for a structural break at *break_idx*.
-
-    Parameters
-    ----------
-    T : int
-        Total number of observations.
-    break_idx : int
-        Index (0-based) of the break point. The break is assumed to occur
-        *after* this observation (i.e., the regime shift starts at
-        ``break_idx + 1``).
-    model : str
-        ``"intercept"`` (intercept break), ``"slope"`` (trend break), or ``"both"``.
-    include_pulse : bool
-        Include the one-period ``DP`` dummy for Perron's known-break
-        regressions. Zivot-Andrews regressions do not include this dummy.
-
-    Returns
-    -------
-    dict[str, np.ndarray]
-        Keys are dummy variable names: ``"DL"`` (level shift), ``"DP"``
-        (pulse dummy), ``"DT"`` (slope shift).
-    """
+    """Create the Perron known-break dummies for the selected model."""
     t = np.arange(T)
-    dummies: dict[str, np.ndarray] = {}
+    dl = (t > break_idx).astype(float)
+    dp = (t == break_idx + 1).astype(float)
+    dt = np.maximum(t - break_idx, 0).astype(float)
+    return {
+        "intercept": {"DL": dl, "DP": dp},
+        "slope": {"DL": dl, "DT": dt},
+        "both": {"DL": dl, "DP": dp, "DT": dt},
+    }[model]
 
-    if model in ("intercept", "both"):
-        dummies["DL"] = (t > break_idx).astype(float)
-        if include_pulse:
-            dummies["DP"] = (t == break_idx + 1).astype(float)
 
-    if model in ("slope", "both"):
-        dummies["DT"] = np.maximum(t - break_idx, 0).astype(float)
+def _make_zivot_break_dummies(
+    T: int,
+    break_idx: int,
+    model: str,
+) -> dict[str, np.ndarray]:
+    """Create the Zivot-Andrews unknown-break dummies for the selected model."""
+    t = np.arange(T)
+    dl = (t > break_idx).astype(float)
+    dt = np.maximum(t - break_idx, 0).astype(float)
+    return {
+        "intercept": {"DL": dl},
+        "slope": {"DT": dt},
+        "both": {"DL": dl, "DT": dt},
+    }[model]
 
-    return dummies
+
+def _validate_nonnegative_int(value, *, name: str) -> int:
+    """Return *value* as int after rejecting booleans and negative values."""
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return int(value)
+
+
+def _validate_time_axis(time_index: np.ndarray) -> None:
+    """Require a strictly increasing observation-label axis."""
+    if np.any(np.diff(time_index) <= 0):
+        raise ValueError("time_index must be strictly increasing and unique")
+
+
+def _locate_known_break(time_index: np.ndarray, break_year: float) -> int:
+    """Locate a known break that matches exactly one observation label."""
+    if isinstance(break_year, bool) or not np.isscalar(break_year):
+        raise TypeError("break_year must be a finite scalar")
+    try:
+        break_value = float(break_year)
+    except (TypeError, ValueError) as exc:
+        raise TypeError("break_year must be a finite scalar") from exc
+    if not np.isfinite(break_value):
+        raise ValueError("break_year must be finite")
+    matches = np.flatnonzero(np.isclose(time_index, break_value, rtol=0.0, atol=1e-12))
+    if len(matches) != 1:
+        raise ValueError("break_year must match exactly one time_index value")
+    return int(matches[0])
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +121,8 @@ def _select_lags_by_tstat(
     dy = np.diff(y)
     y_lag1 = y[:-1]  # y_{t-1}
 
-    # Use actual time index for trend if provided, else integer sequence
-    trend = time_index if time_index is not None else np.arange(T, dtype=float)
+    # Deterministic trend is positional. ``time_index`` is a display label only.
+    trend = np.arange(T, dtype=float)
 
     for k in range(max_lags, -1, -1):
         # Build regressor matrix
@@ -258,11 +279,8 @@ def _build_regression_data(
     # Constant
     data["const"] = np.ones(T - 1)
 
-    # Time trend
-    if time_index is not None:
-        data["trend"] = time_index[1:]  # t=2..T
-    else:
-        data["trend"] = np.arange(1, T)
+    # Deterministic trend is positional. ``time_index`` is a display label only.
+    data["trend"] = np.arange(1, T, dtype=float)
 
     # Break dummies (t=2..T)
     for name in ["DL", "DP", "DT"]:
