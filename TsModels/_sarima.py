@@ -492,6 +492,30 @@ def _normalise_future_scenarios(
     return scenarios, default_name
 
 
+@dataclass(frozen=True)
+class ARCycleResult:
+    """Algebraic damped-cycle diagnostic for an AR(2) component.
+
+    The period is measured in original observation intervals. It is available
+    only when the selected AR(2) component has complex conjugate roots and the
+    fitted model's complete AR polynomial is stationary.
+    """
+
+    component: str
+    lag_scale: int
+    phi1: float
+    phi2: float
+    discriminant: float
+    has_complex_roots: bool
+    is_stationary: bool
+    period: float | None
+
+    @property
+    def identified(self):
+        """Whether the fitted AR(2) component identifies a damped cycle."""
+        return self.period is not None
+
+
 @dataclass
 class SARIMAResult(BaseModelResult):
     """Result container for SARIMA model estimation.
@@ -956,6 +980,92 @@ class SARIMAResult(BaseModelResult):
             alpha=alpha,
             n_draws=n_draws,
             seed=seed,
+        )
+
+    def cycle_period(self, *, seasonal=False):
+        """Test an AR(2) component and return its damped-cycle period.
+
+        Complex conjugate roots require phi1 squared plus four times phi2 to
+        be negative. When that condition and AR stationarity both hold, the
+        period is 2*pi divided by the root angle. Seasonal results are scaled
+        by the SARIMA seasonal period so they remain in observation intervals.
+
+        Parameters
+        ----------
+        seasonal : bool, default False
+            If False, inspect non-seasonal lags 1 and 2. If True, inspect
+            seasonal lags s and 2s.
+
+        Returns
+        -------
+        ARCycleResult
+            Coefficients, condition diagnostics, and the period in original
+            observation intervals. The period is None when the complex-root
+            or stationarity condition fails.
+
+        Raises
+        ------
+        TypeError
+            If seasonal is not boolean.
+        ValueError
+            If the selected component does not contain exactly its first and
+            second AR lags.
+        RuntimeError
+            If no fitted statsmodels result or finite AR coefficients exist.
+        """
+        if not isinstance(seasonal, (bool, np.bool_)):
+            raise TypeError("seasonal must be a boolean")
+        if self._statsmodels_result is None:
+            raise RuntimeError("No fitted statsmodels result available")
+
+        if seasonal:
+            active_lags = _active_lags(self._seasonal_order[0])
+            lag_scale = int(self._seasonal_order[3])
+            component = "seasonal"
+            polynomial = np.asarray(
+                self._statsmodels_result.polynomial_seasonal_ar,
+                dtype=float,
+            )
+        else:
+            active_lags = self.ar_lags
+            lag_scale = 1
+            component = "nonseasonal"
+            polynomial = np.asarray(
+                self._statsmodels_result.polynomial_ar,
+                dtype=float,
+            )
+
+        if active_lags != (1, 2):
+            label = "seasonal AR lags" if seasonal else "nonseasonal AR lags"
+            raise ValueError(f"cycle_period requires {label} (1, 2); got {active_lags}")
+
+        second_position = 2 * lag_scale
+        if len(polynomial) <= second_position:
+            raise RuntimeError("Fitted AR polynomial does not contain two coefficients")
+        phi1 = -float(polynomial[lag_scale])
+        phi2 = -float(polynomial[second_position])
+        if not np.all(np.isfinite([phi1, phi2])):
+            raise RuntimeError("Fitted AR(2) coefficients must be finite")
+
+        discriminant = float(phi1**2 + 4.0 * phi2)
+        has_complex_roots = discriminant < 0.0
+        is_stationary = self.is_stationary
+        period = None
+        if has_complex_roots and is_stationary:
+            cosine = phi1 / (2.0 * np.sqrt(-phi2))
+            angular_frequency = float(np.arccos(np.clip(cosine, -1.0, 1.0)))
+            if 0.0 < angular_frequency < np.pi:
+                period = float(lag_scale * 2.0 * np.pi / angular_frequency)
+
+        return ARCycleResult(
+            component=component,
+            lag_scale=lag_scale,
+            phi1=phi1,
+            phi2=phi2,
+            discriminant=discriminant,
+            has_complex_roots=has_complex_roots,
+            is_stationary=is_stationary,
+            period=period,
         )
 
     @property

@@ -270,6 +270,15 @@ class AutoModelResult(BaseModelResult):
             return self.best_result.long_run_equilibrium()
         return None
 
+    def cycle_period(self, *, seasonal=False):
+        """Return the AR(2) cycle diagnostic of the selected SARIMA model."""
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        method = getattr(self.best_result, "cycle_period", None)
+        if method is None:
+            raise TypeError("cycle_period is only available for AutoSARIMA results")
+        return method(seasonal=seasonal)
+
 
 _SUPPORTED_METHODS = frozenset({"grid"})
 

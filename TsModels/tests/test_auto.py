@@ -215,6 +215,19 @@ class TestAutoModelResult:
         assert output.ljung_box is not None
         assert output.engle_lm is not None
 
+    def test_cycle_period_delegates_to_best_result(self, auto_result, base_result):
+        expected = object()
+        calls = []
+
+        def cycle_period(*, seasonal=False):
+            calls.append(seasonal)
+            return expected
+
+        base_result.cycle_period = cycle_period
+
+        assert auto_result.cycle_period(seasonal=True) is expected
+        assert calls == [True]
+
 
 # ============================================================
 # Test Group 3: AutoSARIMA

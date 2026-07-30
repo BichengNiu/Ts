@@ -4,6 +4,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from Ts.TsSims import simulate_sarima
@@ -297,6 +299,136 @@ class TestSARIMARoots:
         fig, ax = fitted_ar1.plot_roots()
         assert isinstance(fig, Figure)
         assert isinstance(ax, Axes)
+
+
+class TestSARIMACyclePeriod:
+    """Test AR(2) and seasonal AR(2) damped-cycle diagnostics."""
+
+    @staticmethod
+    def _result(
+        *,
+        phi1=1.2,
+        phi2=-0.8,
+        order=(2, 0, 0),
+        seasonal_order=(0, 0, 0, 0),
+        stationary=True,
+    ):
+        from Ts.TsModels._sarima import SARIMAResult
+
+        seasonal_period = seasonal_order[3]
+        polynomial_ar = np.array([1.0, -phi1, -phi2])
+        polynomial_seasonal_ar = np.ones(1, dtype=float)
+        params = {"ar.L1": phi1, "ar.L2": phi2}
+        if seasonal_order[0]:
+            polynomial_ar = np.ones(1, dtype=float)
+            polynomial_seasonal_ar = np.zeros(2 * seasonal_period + 1, dtype=float)
+            polynomial_seasonal_ar[0] = 1.0
+            polynomial_seasonal_ar[seasonal_period] = -phi1
+            polynomial_seasonal_ar[2 * seasonal_period] = -phi2
+            params = {
+                f"ar.S.L{seasonal_period}": phi1,
+                f"ar.S.L{2 * seasonal_period}": phi2,
+            }
+
+        arroots = np.array([1.25 + 0.5j, 1.25 - 0.5j])
+        if not stationary:
+            arroots = np.array([0.9 + 0.2j, 0.9 - 0.2j])
+        fitted = SimpleNamespace(
+            polynomial_ar=polynomial_ar,
+            polynomial_seasonal_ar=polynomial_seasonal_ar,
+            arroots=arroots,
+        )
+        return SARIMAResult(
+            model_type="SARIMA",
+            params=params,
+            std_errors={},
+            p_values={},
+            aic=0.0,
+            bic=0.0,
+            log_likelihood=0.0,
+            residuals=np.zeros(20),
+            fitted_values=np.zeros(20),
+            nobs=20,
+            data=np.zeros(20),
+            _order=order,
+            _seasonal_order=seasonal_order,
+            _statsmodels_result=fitted,
+        )
+
+    def test_nonseasonal_ar2_returns_traceable_cycle_result(self):
+        from Ts.TsModels import ARCycleResult
+
+        result = self._result()
+        diagnostic = result.cycle_period()
+        expected = 2 * np.pi / np.arccos(1.2 / (2 * np.sqrt(0.8)))
+
+        assert isinstance(diagnostic, ARCycleResult)
+        assert diagnostic.component == "nonseasonal"
+        assert diagnostic.lag_scale == 1
+        assert diagnostic.phi1 == pytest.approx(1.2)
+        assert diagnostic.phi2 == pytest.approx(-0.8)
+        assert diagnostic.discriminant == pytest.approx(1.2**2 + 4 * -0.8)
+        assert diagnostic.has_complex_roots
+        assert diagnostic.is_stationary
+        assert diagnostic.identified
+        assert diagnostic.period == pytest.approx(expected)
+
+    @pytest.mark.parametrize(("phi1", "phi2"), [(0.5, 0.2), (1.0, -0.25)])
+    def test_nonnegative_discriminant_does_not_identify_cycle(self, phi1, phi2):
+        diagnostic = self._result(phi1=phi1, phi2=phi2).cycle_period()
+
+        assert not diagnostic.has_complex_roots
+        assert diagnostic.is_stationary
+        assert not diagnostic.identified
+        assert diagnostic.period is None
+
+    def test_seasonal_selector_must_be_boolean(self):
+        with pytest.raises(TypeError, match="seasonal must be a boolean"):
+            self._result().cycle_period(seasonal="yes")
+
+    def test_nonstationary_complex_roots_do_not_identify_cycle(self):
+        diagnostic = self._result(
+            phi1=1.5,
+            phi2=-1.1,
+            stationary=False,
+        ).cycle_period()
+
+        assert diagnostic.has_complex_roots
+        assert not diagnostic.is_stationary
+        assert not diagnostic.identified
+        assert diagnostic.period is None
+
+    def test_seasonal_ar2_period_is_scaled_to_observation_intervals(self):
+        result = self._result(
+            order=(0, 0, 0),
+            seasonal_order=(2, 0, 0, 12),
+        )
+        diagnostic = result.cycle_period(seasonal=True)
+        expected = 12 * 2 * np.pi / np.arccos(1.2 / (2 * np.sqrt(0.8)))
+
+        assert diagnostic.component == "seasonal"
+        assert diagnostic.lag_scale == 12
+        assert diagnostic.identified
+        assert diagnostic.period == pytest.approx(expected)
+
+    @pytest.mark.parametrize(
+        ("seasonal", "order", "seasonal_order", "message"),
+        [
+            (False, (1, 0, 0), (0, 0, 0, 0), "nonseasonal AR lags"),
+            (True, (0, 0, 0), (1, 0, 0, 12), "seasonal AR lags"),
+        ],
+    )
+    def test_requires_exactly_first_and_second_ar_lags(
+        self,
+        seasonal,
+        order,
+        seasonal_order,
+        message,
+    ):
+        result = self._result(order=order, seasonal_order=seasonal_order)
+
+        with pytest.raises(ValueError, match=message):
+            result.cycle_period(seasonal=seasonal)
 
 
 class TestSARIMASparseLags:

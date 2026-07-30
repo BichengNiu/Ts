@@ -110,6 +110,7 @@ result.test_residuals(lags=10)
 | | `.ar_lags` / `.ma_lags` | 实际参与估计的非季节 AR/MA 滞后 |
 | | `.fixed_params` | 因稀疏滞后设定而固定为 0 的系数 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
+| | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
 | | `.long_run_equilibrium()` | 无条件均值 (平稳 ARMA, d=0, trend="c" → float；否则 None) |
 | `GARCH` / `GARCHResult` | `.predict(start, end, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
 | | `.conditional_volatility` | 条件波动率 σ_t |
@@ -137,6 +138,32 @@ result.test_residuals(lags=10)
 | | `.coint_rank` | 协整秩 |
 | | `.is_stable` | 基于 companion matrix 的稳定性检查 (bool) |
 | | `.plot_roots(title)` | VECM 逆特征根单位圆图 |
+
+### AR(2) 周期识别
+
+对普通 AR(2)，直接调用 `result.cycle_period()`；对季节 AR(2)，调用
+`result.cycle_period(seasonal=True)`。方法要求所选分量包含连续的第一、第二
+个 AR 滞后。设估计系数为 \(\phi_1, \phi_2\)，只有完整 AR 多项式平稳且
+
+\[
+\phi_1^2 + 4\phi_2 < 0
+\]
+
+时才识别为阻尼周期。普通 AR(2) 的周期为
+
+\[
+T = \frac{2\pi}{\arccos\left(\phi_1/(2\sqrt{-\phi_2})\right)}.
+\]
+
+季节 AR(2) 的结果再乘季节长度 \(s\)，因此始终以原始观测间隔计。返回的
+`ARCycleResult` 同时保留系数、判别式、复根条件、平稳性和 `period`；条件
+不满足时 `identified=False` 且 `period=None`。
+
+```python
+diagnostic = result.cycle_period()
+if diagnostic.identified:
+    print(diagnostic.period)
+```
 
 ## 性能评估与期间接口
 
@@ -526,6 +553,7 @@ result = auto.fit()
 | `candidate_orders` | `list` | 所有成功的参数组合 |
 | `selection_criterion` | `str` | 使用的选择准则 |
 | `.long_run_equilibrium()` | — | 委托给 `best_result.long_run_equilibrium()` |
+| `.cycle_period(seasonal=False)` | `ARCycleResult` | 委托给 `AutoSARIMA` 选中的 `best_result` |
 
 ### VAR
 

@@ -64,7 +64,7 @@ from ._compare import compare_models
 from ._garch import GARCH
 from ._garch_result import GARCHResult
 from ._intervention import EventSpec, PolicyEffectResult
-from ._sarima import SARIMA, SARIMAResult, ScenarioForecastResult
+from ._sarima import ARCycleResult, SARIMA, SARIMAResult, ScenarioForecastResult
 from ._svar import SVAR, SVARResult
 from ._var import (
     VAR,
@@ -88,6 +88,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "ResidualTestResults",
     "SARIMA",
     "SARIMAResult",
+    "ARCycleResult",
     "ScenarioForecastResult",
     "EventSpec",
     "PolicyEffectResult",
