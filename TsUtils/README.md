@@ -1,28 +1,69 @@
 # Ts/TsUtils
 
-时间序列预处理工具包。当前提供四类能力：
+时间序列预处理与识别诊断工具包。当前提供五类能力：
 
 - STL（Seasonal-Trend decomposition using LOESS）分解；
 - 缺失值内插及可审计的填补结果；
 - 普通、对数及显式周期的差分；
-- 时间序列统计摘要与诊断图。
+- 时间序列统计摘要与诊断图；
+- 用于非季节 ARMA 阶数识别的扩展自相关函数（EACF）。
 
-`TsUtils` 只负责进入模型前的数据处理，不估计预测模型。本版本不提供
+`TsUtils` 只负责进入模型前的数据处理与识别诊断，不估计预测模型。本版本不提供
 X-12/X-13 或其他季节调整接口；STL 只做分解，不等同于官方统计口径的季节调整。
 
 ## 公共接口
 
 ```python
 from Ts.TsUtils import (
+    EACFResult,
     STL,
     STLResult,
     difference,
+    eacf,
     interpolate_missing,
     InterpolationResult,
 )
 ```
 
 这些符号也可以从 `Ts` 顶层导入。
+
+完整、可执行的公共接口示例见 [`demo.ipynb`](demo.ipynb)。
+
+## EACF 阶数识别
+
+`eacf()` 在拟合模型前生成非季节 ARMA 的扩展自相关表：
+
+```python
+from Ts.TsUtils import eacf
+
+result = eacf(series, ar_max=7, ma_max=13)
+print(result.summary())
+
+numeric_table = result.values
+coded_table = result.symbols
+```
+
+结果的行对应 AR 阶数 `p`，列对应 MA 阶数 `q`。`x` 表示该位置的扩展自相关
+显著偏离零，`o` 表示其绝对值不超过：
+
+\[
+\frac{2}{\sqrt{n-p-q-1}}
+\]
+
+从左上角开始出现的 `o` 三角形可用于提出 `(p, q)` 候选，但它是识别启发式，
+不自动决定唯一模型；候选仍应通过参数估计、残差诊断和样本外评价复核。
+
+输入接受一维数组、`Series` 和单列 `DataFrame`。多列 `DataFrame` 必须显式指定
+`variable`：
+
+```python
+result = eacf(dataframe, ar_max=5, ma_max=8, variable="GDP")
+```
+
+EACF 不自动差分、删除或插补观测。输入必须是完整、有限、非常数的数值序列；
+所需最少样本量还要保证递推中的最高阶 AR 回归可识别；不足时会报告明确的下限。
+当前接口只识别非季节 ARMA 阶数，
+季节项应结合季节差分、季节相关图和拟合后诊断另行判断。
 
 ## 差分
 
