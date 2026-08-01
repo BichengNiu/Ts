@@ -5,6 +5,9 @@ from __future__ import annotations
 import numpy as np
 
 
+ERROR_METRIC_NAMES = ("mae", "mse", "rmse", "mape", "smape", "theil_u1")
+
+
 def _paired_values(actual, predicted, nan_policy):
     """Return aligned finite float vectors under the requested NaN policy."""
     actual_array = np.asarray(actual, dtype=float)

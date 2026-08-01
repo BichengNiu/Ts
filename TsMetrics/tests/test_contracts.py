@@ -5,7 +5,15 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from Ts.TsMetrics import BacktestResult, OOSResult, backtest, compare_forecasts, oos
+from Ts.TsMetrics import (
+    BacktestResult,
+    OOSComparisonResult,
+    OOSResult,
+    backtest,
+    compare_forecasts,
+    evaluate_models_oos,
+    oos,
+)
 
 
 class _Fitted:
@@ -71,6 +79,15 @@ def _oos_result(mean=(1.0,), actual=(1.0,)):
         model_type="TEST",
         target="observed",
     )
+
+
+def test_multi_model_oos_types_are_public_from_package_root():
+    """The batch workflow has identical root and subpackage entry points."""
+    from Ts import OOSComparisonResult as RootOOSComparisonResult
+    from Ts import evaluate_models_oos as root_evaluate_models_oos
+
+    assert RootOOSComparisonResult is OOSComparisonResult
+    assert root_evaluate_models_oos is evaluate_models_oos
 
 
 def test_protocol_rejects_missing_target_before_fitting():

@@ -6,9 +6,25 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from ._results import BacktestResult, ComparisonResult, OOSResult
+from ._metrics import ERROR_METRIC_NAMES
+from ._oos import oos
+from ._results import (
+    BacktestResult,
+    ComparisonResult,
+    OOSComparisonResult,
+    OOSResult,
+)
 
-_ERROR_METRICS = frozenset({"mae", "mse", "rmse", "mape", "smape", "theil_u1"})
+_ERROR_METRICS = frozenset(ERROR_METRIC_NAMES)
+
+
+def _validate_metric(metric, name="metric"):
+    """Return a supported error metric before expensive evaluation work."""
+    if metric not in _ERROR_METRICS:
+        raise ValueError(
+            f"{name} must be one of {sorted(_ERROR_METRICS)}, got {metric!r}"
+        )
+    return metric
 
 
 def _comparison_items(results, metric):
@@ -17,10 +33,7 @@ def _comparison_items(results, metric):
         raise TypeError("results must be a mapping of names to results")
     if not results:
         raise ValueError("results must not be empty")
-    if metric not in _ERROR_METRICS:
-        raise ValueError(
-            f"metric must be one of {sorted(_ERROR_METRICS)}, got {metric!r}"
-        )
+    _validate_metric(metric)
     return list(results.items())
 
 
@@ -95,4 +108,57 @@ def compare_forecasts(results, *, metric="rmse"):
         metric=metric,
         scores=scores,
         target=reference.target,
+    )
+
+
+def _require_complete_scoring_sample(results):
+    """Reject per-model omission of non-finite validation pairs."""
+    for name, result in results.items():
+        if not np.all(np.isfinite(result.actual)) or not np.all(
+            np.isfinite(result.mean)
+        ):
+            raise ValueError(
+                f"result {name!r} contains non-finite actual or forecast values; "
+                "multi-model OOS comparison requires a complete shared "
+                "validation sample"
+            )
+
+
+def evaluate_models_oos(
+    models,
+    estimation_period,
+    validation_period,
+    *,
+    alpha=0.05,
+    rank_by="rmse",
+):
+    """Evaluate multiple models on one explicit, complete OOS sample.
+
+    Every model receives the same inclusive estimation and validation bounds.
+    The returned report retains each :class:`OOSResult`, exposes all canonical
+    error metrics, and ranks models by ``rank_by``.
+    """
+    _validate_metric(rank_by, "rank_by")
+    if not isinstance(models, Mapping):
+        raise TypeError("models must be a mapping of names to models")
+    if not models:
+        raise ValueError("models must not be empty")
+    if not all(isinstance(name, str) for name in models):
+        raise TypeError("model names must be strings")
+
+    evaluations = {
+        name: oos(
+            model,
+            estimation_period=estimation_period,
+            validation_period=validation_period,
+            alpha=alpha,
+        )
+        for name, model in models.items()
+    }
+
+    compare_forecasts(evaluations, metric=rank_by)
+    _require_complete_scoring_sample(evaluations)
+    return OOSComparisonResult(
+        evaluations=evaluations,
+        rank_by=rank_by,
     )

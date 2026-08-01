@@ -12,7 +12,7 @@ from ._aggregation import (
     metrics_by_horizon,
     oos_metrics_by_series,
 )
-from ._metrics import compute_metrics
+from ._metrics import ERROR_METRIC_NAMES, compute_metrics
 
 
 def _optional_float_array(values):
@@ -62,6 +62,18 @@ def _validate_result_labels(model_type, target):
         raise TypeError("model_type must be a non-empty string")
     if not isinstance(target, str) or not target:
         raise TypeError("target must be a non-empty string")
+
+
+def _rank_scores(scores):
+    """Return deterministic ascending error-score ranking."""
+    return sorted(
+        scores,
+        key=lambda name: (
+            not np.isfinite(scores[name]),
+            scores[name] if np.isfinite(scores[name]) else np.inf,
+            name,
+        ),
+    )
 
 
 @dataclass
@@ -273,11 +285,74 @@ class ComparisonResult:
     @property
     def ranking(self):
         """Return model names sorted by ascending finite score."""
-        return sorted(
-            self.scores,
-            key=lambda name: (
-                not np.isfinite(self.scores[name]),
-                self.scores[name] if np.isfinite(self.scores[name]) else np.inf,
-                name,
-            ),
+        return _rank_scores(self.scores)
+
+
+@dataclass
+class OOSComparisonResult:
+    """Multi-model OOS evaluations and their complete metric table."""
+
+    evaluations: dict[str, OOSResult]
+    rank_by: str
+
+    def __post_init__(self):
+        """Copy public state and validate the report's structural contract."""
+        if not isinstance(self.evaluations, dict):
+            raise TypeError("evaluations must be a dict of names to OOSResult values")
+        if not self.evaluations:
+            raise ValueError("evaluations must not be empty")
+        if not all(isinstance(name, str) for name in self.evaluations):
+            raise TypeError("evaluation names must be strings")
+        if not all(
+            isinstance(evaluation, OOSResult)
+            for evaluation in self.evaluations.values()
+        ):
+            raise TypeError("evaluations must contain only OOSResult values")
+        if self.rank_by not in ERROR_METRIC_NAMES:
+            raise ValueError(
+                f"rank_by must be one of {list(ERROR_METRIC_NAMES)}, "
+                f"got {self.rank_by!r}"
+            )
+        self.evaluations = dict(self.evaluations)
+
+    @property
+    def target(self):
+        """Return the shared forecast target."""
+        return next(iter(self.evaluations.values())).target
+
+    @property
+    def scores(self):
+        """Return one score per model for the selected ranking metric."""
+        return {
+            name: float(evaluation.metrics[self.rank_by])
+            for name, evaluation in self.evaluations.items()
+        }
+
+    @property
+    def ranking(self):
+        """Return model names ordered by the selected error metric."""
+        return _rank_scores(self.scores)
+
+    @property
+    def best_model(self):
+        """Return the best finite-scoring model, or None if no score is finite."""
+        ranking = self.ranking
+        if not ranking or not np.isfinite(self.scores[ranking[0]]):
+            return None
+        return ranking[0]
+
+    @property
+    def table(self):
+        """Return a ranking-ordered DataFrame containing every error metric."""
+        frame = pd.DataFrame.from_dict(
+            {
+                name: evaluation.metrics
+                for name, evaluation in self.evaluations.items()
+            },
+            orient="index",
         )
+        frame = frame.loc[:, [*ERROR_METRIC_NAMES, "n"]]
+        frame.index.name = "model"
+        ranks = {name: rank for rank, name in enumerate(self.ranking, start=1)}
+        frame["rank"] = pd.Series(ranks, dtype=int)
+        return frame.loc[self.ranking].copy()

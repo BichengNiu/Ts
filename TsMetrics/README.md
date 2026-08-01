@@ -20,9 +20,11 @@ from Ts.TsMetrics import (
     oos,
     backtest,
     compare_forecasts,
+    evaluate_models_oos,
     OOSResult,
     BacktestResult,
     ComparisonResult,
+    OOSComparisonResult,
 )
 ```
 
@@ -112,6 +114,36 @@ evaluation = backtest(
 同一训练长度，不会先扩展再滚动。
 
 ## 模型性能比较
+
+当多个模型需要使用同一个估计期和验证期时，使用批量入口：
+
+```python
+report = evaluate_models_oos(
+    {
+        "AR(1)": ar1_model,
+        "AR(2)": ar2_model,
+    },
+    estimation_period=(0, 79),
+    validation_period=(80, 99),
+    rank_by="rmse",
+)
+
+print(report.table)
+print(report.ranking)
+print(report.best_model)
+ar1_evaluation = report.evaluations["AR(1)"]
+```
+
+`report.table` 按排名返回模型 × 指标表，列为 MAE、MSE、RMSE、MAPE、
+sMAPE、Theil U1、有效配对数 `n` 和 `rank`。`report.evaluations` 保留每个
+模型的完整 `OOSResult`，可以继续读取预测值、区间和日期元数据。
+
+批量比较要求每个模型的实际值和点预测在整个验证期内均为有限值。
+任何模型存在缺失或无限预测都会直接报错，不能通过少算困难观测获得更优
+排名。模型之间还必须具有相同预测目标、估计期、验证期和逐元素相同的
+实际观测值。
+
+已有 OOS 或 backtest 结果仍可单独比较一个指定指标：
 
 ```python
 comparison = compare_forecasts(

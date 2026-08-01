@@ -11,9 +11,11 @@ import pytest
 from Ts.TsMetrics import (
     BacktestResult,
     ComparisonResult,
+    OOSComparisonResult,
     OOSResult,
     backtest,
     compare_forecasts,
+    evaluate_models_oos,
     oos,
 )
 from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
@@ -24,6 +26,8 @@ class _MeanResult(BaseModelResult):
     """Deterministic result that forecasts its training mean."""
 
     training_mean: float = 0.0
+    forecast_bias: float = 0.0
+    missing_forecast: bool = False
 
     def predict(self, start=0, end=None, dynamic=False, alpha=0.05):
         """Forecast the stored training mean."""
@@ -31,7 +35,9 @@ class _MeanResult(BaseModelResult):
         if end is None:
             end = start
         horizon = end - start + 1
-        mean = np.full(horizon, self.training_mean)
+        mean = np.full(horizon, self.training_mean + self.forecast_bias)
+        if self.missing_forecast:
+            mean[0] = np.nan
         return PredictResult(
             mean=mean,
             lower=mean - 0.5,
@@ -43,9 +49,18 @@ class _MeanResult(BaseModelResult):
 class _MeanModel(BaseModel):
     """Model double whose fitted value reveals the exact training window."""
 
-    def __init__(self, data, dates=None):
+    def __init__(
+        self,
+        data,
+        dates=None,
+        *,
+        forecast_bias=0.0,
+        missing_forecast=False,
+    ):
         self.data = np.asarray(data, dtype=float)
         self.dates = dates
+        self.forecast_bias = forecast_bias
+        self.missing_forecast = missing_forecast
         self.fit_windows = []
         self.result_ = None
 
@@ -66,6 +81,8 @@ class _MeanModel(BaseModel):
             nobs=len(self.data),
             data=self.data.copy(),
             training_mean=training_mean,
+            forecast_bias=self.forecast_bias,
+            missing_forecast=self.missing_forecast,
         )
         self.result_ = result
         return result
@@ -283,6 +300,95 @@ def test_compare_forecasts_ranks_lower_error_first():
     assert comparison.ranking == ["strong", "weak"]
     assert comparison.scores["strong"] < comparison.scores["weak"]
     assert comparison.target == "observed"
+
+
+def test_evaluate_models_oos_returns_all_metrics_and_shared_periods():
+    """One batch call evaluates and ranks every model on one holdout window."""
+    data = np.arange(15.0)
+    models = {
+        "weak": _MeanModel(data),
+        "strong": _MeanModel(data, forecast_bias=6.5),
+    }
+
+    report = evaluate_models_oos(
+        models,
+        estimation_period=(0, 9),
+        validation_period=(10, 14),
+        rank_by="rmse",
+    )
+
+    assert isinstance(report, OOSComparisonResult)
+    assert report.ranking == ["strong", "weak"]
+    assert report.best_model == "strong"
+    assert report.target == "observed"
+    assert report.table.index.tolist() == ["strong", "weak"]
+    assert report.table.columns.tolist() == [
+        "mae",
+        "mse",
+        "rmse",
+        "mape",
+        "smape",
+        "theil_u1",
+        "n",
+        "rank",
+    ]
+    assert report.table.loc["strong", "rmse"] == pytest.approx(np.sqrt(3.0))
+    assert report.table.loc["strong", "n"] == 5
+    assert report.table.loc["strong", "rank"] == 1
+    for evaluation in report.evaluations.values():
+        np.testing.assert_array_equal(evaluation.estimation_indices, np.arange(10))
+        np.testing.assert_array_equal(
+            evaluation.validation_indices,
+            np.arange(10, 15),
+        )
+    assert all(model.result_ is None for model in models.values())
+
+
+def test_evaluate_models_oos_rejects_nonfinite_scoring_values():
+    """A model cannot win by omitting validation predictions from its score."""
+    data = np.arange(15.0)
+
+    with pytest.raises(ValueError, match=r"missing.*non-finite"):
+        evaluate_models_oos(
+            {
+                "complete": _MeanModel(data),
+                "missing": _MeanModel(data, missing_forecast=True),
+            },
+            estimation_period=(0, 9),
+            validation_period=(10, 14),
+        )
+
+
+def test_evaluate_models_oos_rejects_different_actual_values():
+    """Shared bounds do not conceal models constructed from different data."""
+    first = np.arange(15.0)
+    second = first.copy()
+    second[-1] += 1.0
+
+    with pytest.raises(ValueError, match="same actual values"):
+        evaluate_models_oos(
+            {
+                "first": _MeanModel(first),
+                "second": _MeanModel(second),
+            },
+            estimation_period=(0, 9),
+            validation_period=(10, 14),
+        )
+
+
+def test_evaluate_models_oos_validates_rank_metric_before_fitting():
+    """Invalid batch configuration fails before any model estimation."""
+    model = _MeanModel(np.arange(15.0))
+
+    with pytest.raises(ValueError, match="rank_by"):
+        evaluate_models_oos(
+            {"mean": model},
+            estimation_period=(0, 9),
+            validation_period=(10, 14),
+            rank_by="accuracy",
+        )
+
+    assert model.fit_windows == []
 
 
 def test_compare_forecasts_rejects_incomparable_targets():

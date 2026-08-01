@@ -6,7 +6,7 @@ estimation and forecast generation remain in :mod:`Ts.TsModels`.
 """
 
 from ._backtest import backtest
-from ._compare import compare_forecasts
+from ._compare import compare_forecasts, evaluate_models_oos
 from ._metrics import (
     compute_metrics,
     mae,
@@ -17,15 +17,17 @@ from ._metrics import (
     theil_u1,
 )
 from ._oos import oos
-from ._results import BacktestResult, ComparisonResult, OOSResult
+from ._results import BacktestResult, ComparisonResult, OOSComparisonResult, OOSResult
 
 __all__ = [
     "BacktestResult",
     "ComparisonResult",
+    "OOSComparisonResult",
     "OOSResult",
     "backtest",
     "compare_forecasts",
     "compute_metrics",
+    "evaluate_models_oos",
     "mae",
     "mape",
     "mse",

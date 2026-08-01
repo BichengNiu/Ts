@@ -381,6 +381,10 @@ class BaseModelResult:
             lines.append(f"  {name:<20s} {val:>10.4f}  ({se_str})  p={pv_str}")
         return "\n".join(lines)
 
+    def _fitted_values_for_plot(self):
+        """Return fitted values with any model-specific display masking."""
+        return self.fitted_values
+
     def plot_fit(self, title=None):
         """Plot actual vs fitted values.
 
@@ -403,7 +407,7 @@ class BaseModelResult:
 
         plot_data = {"Actual": self.data}
         if self.fitted_values is not None:
-            plot_data["Fitted"] = self.fitted_values
+            plot_data["Fitted"] = self._fitted_values_for_plot()
 
         fig, ax = plot_series(
             plot_data,

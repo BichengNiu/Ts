@@ -161,6 +161,59 @@ class TestSARIMAXResult:
         assert isinstance(fig, Figure)
         assert isinstance(ax, Axes)
 
+    def test_plot_fit_masks_complete_state_initialization_period(self):
+        """Integrated-model initialization values are not valid fitted data."""
+        import matplotlib.pyplot as plt
+
+        from Ts.TsModels._sarimax import SARIMAX
+
+        rng = np.random.default_rng(2408)
+        data = 7.0 + np.cumsum(rng.normal(0.01, 0.08, 100))
+        result = SARIMAX(
+            data,
+            order=(0, 1, 1),
+            seasonal_order=(0, 1, 0, 12),
+            trend="n",
+        ).fit()
+
+        burn = result._statsmodels_result.loglikelihood_burn
+        assert burn == 13
+        assert result.fitted_values[0] == pytest.approx(0.0)
+
+        fig, ax = result.plot_fit()
+        fitted_line = next(line for line in ax.lines if line.get_label() == "Fitted")
+        displayed = np.asarray(fitted_line.get_ydata(), dtype=float)
+
+        assert np.all(np.isnan(displayed[:burn]))
+        assert np.all(np.isfinite(displayed[burn:]))
+        plt.close(fig)
+
+    def test_forecast_plot_masks_initialization_fitted_line_and_interval(self):
+        """Forecast plots hide fitted means and intervals during burn-in."""
+        import matplotlib.pyplot as plt
+
+        from Ts.TsModels._sarimax import SARIMAX
+
+        rng = np.random.default_rng(2409)
+        data = 7.0 + np.cumsum(rng.normal(0.01, 0.08, 100))
+        result = SARIMAX(
+            data,
+            order=(0, 1, 1),
+            seasonal_order=(0, 1, 0, 12),
+            trend="n",
+        ).fit()
+        prediction = result.predict(start=result.nobs, end=result.nobs + 2)
+        burn = result._statsmodels_result.loglikelihood_burn
+
+        assert np.all(np.isnan(prediction._full_fitted[:burn]))
+        assert np.all(np.isnan(prediction._full_lower[:burn]))
+        assert np.all(np.isnan(prediction._full_upper[:burn]))
+
+        fig, ax = prediction.plot(ci=True)
+        fitted_line = next(line for line in ax.lines if line.get_label() == "Fitted")
+        assert np.all(np.isnan(fitted_line.get_ydata()[:burn]))
+        plt.close(fig)
+
     def test_plot_diagnostics_inherited(self, fitted_result):
         """plot_diagnostics() returns (fig, axes) with 3 panels."""
         from matplotlib.figure import Figure

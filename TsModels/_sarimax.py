@@ -538,6 +538,27 @@ class SARIMAXResult(BaseModelResult):
     _seasonal_order: tuple | None = None
     _statsmodels_result: object = None
     _trend: str = "c"
+
+    def _mask_state_initialization(self, values):
+        """Mask state-space burn-in values that are not valid fitted data."""
+        if values is None:
+            return None
+        masked = np.asarray(values, dtype=float).copy()
+        if self._statsmodels_result is None:
+            return masked
+        burn = int(self._statsmodels_result.loglikelihood_burn)
+        if burn < 0 or burn > len(masked):
+            raise RuntimeError(
+                "statsmodels returned an invalid loglikelihood_burn value: "
+                f"{burn} for {len(masked)} observations"
+            )
+        masked[:burn] = np.nan
+        return masked
+
+    def _fitted_values_for_plot(self):
+        """Return fitted values after the state-space initialization period."""
+        return self._mask_state_initialization(self.fitted_values)
+
     _dates: pd.DatetimeIndex | None = None
     _ordinary_exog: np.ndarray | None = None
     _ordinary_exog_names: tuple[str, ...] = ()
@@ -866,8 +887,8 @@ class SARIMAXResult(BaseModelResult):
                 start=0, end=self.nobs - 1
             )
             full_frame = full_pred.summary_frame(alpha=alpha)
-            _full_lower = np.asarray(full_frame["mean_ci_lower"])
-            _full_upper = np.asarray(full_frame["mean_ci_upper"])
+            _full_lower = self._mask_state_initialization(full_frame["mean_ci_lower"])
+            _full_upper = self._mask_state_initialization(full_frame["mean_ci_upper"])
 
         return PredictResult(
             mean=mean,
@@ -875,7 +896,7 @@ class SARIMAXResult(BaseModelResult):
             upper=upper,
             is_oos=is_oos,
             _full_data=self.data,
-            _full_fitted=self.fitted_values,
+            _full_fitted=self._fitted_values_for_plot(),
             _full_lower=_full_lower,
             _full_upper=_full_upper,
             _start=start,
