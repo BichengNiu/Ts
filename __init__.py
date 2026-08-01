@@ -29,11 +29,13 @@ from .TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 # TsUtils — preprocessing and identification diagnostics
 # ---------------------------------------------------------------------------
 from .TsUtils import (
+    BoxCoxResult,
     EACFResult,
     InterpolationResult,
     STL,
     STLResult,
     TimeSeriesSummary,
+    boxcox,
     difference,
     eacf,
     interpolate_missing,
@@ -134,9 +136,11 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "plot_acf",
     "plot_pacf",
     # TsUtils
+    "BoxCoxResult",
     "STL",
     "STLResult",
     "TimeSeriesSummary",
+    "boxcox",
     "difference",
     "eacf",
     "EACFResult",

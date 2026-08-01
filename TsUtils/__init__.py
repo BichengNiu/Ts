@@ -5,6 +5,7 @@ without estimating predictive models.
 """
 
 from ._difference import difference
+from ._boxcox import BoxCoxResult, boxcox
 from ._eacf import EACFResult, eacf
 from ._interpolation import InterpolationResult, interpolate_missing
 from ._stl import STL, STLResult
@@ -12,10 +13,12 @@ from ._summary import TimeSeriesSummary
 
 __all__ = [
     "STL",
+    "BoxCoxResult",
     "EACFResult",
     "InterpolationResult",
     "STLResult",
     "TimeSeriesSummary",
+    "boxcox",
     "difference",
     "eacf",
     "interpolate_missing",

@@ -1,10 +1,11 @@
 # Ts/TsUtils
 
-时间序列预处理与识别诊断工具包。当前提供五类能力：
+时间序列预处理与识别诊断工具包。当前提供六类能力：
 
 - STL（Seasonal-Trend decomposition using LOESS）分解；
 - 缺失值内插及可审计的填补结果；
 - 普通、对数及显式周期的差分；
+- 可审计、可复用参数的 Box-Cox 幂变换；
 - 时间序列统计摘要与诊断图；
 - 用于非季节 ARMA 阶数识别的扩展自相关函数（EACF）。
 
@@ -15,9 +16,11 @@ X-12/X-13 或其他季节调整接口；STL 只做分解，不等同于官方统
 
 ```python
 from Ts.TsUtils import (
+    BoxCoxResult,
     EACFResult,
     STL,
     STLResult,
+    boxcox,
     difference,
     eacf,
     interpolate_missing,
@@ -111,6 +114,46 @@ difference(data, *, order=1, log=False, lag=1)
 计算；返回值保持原容器类型、索引、Series 名称、DataFrame 列名和行数，不修改
 调用方数据。差分产生的前置缺失值不会被删除，输入中的缺失值按 pandas 的标准
 差分规则传播；正负无穷、布尔值、复数和非数值列会被拒绝。
+
+## Box-Cox 变换
+
+`boxcox()` 使用 SciPy 的最大似然方法自动估计幂参数 λ，并始终返回包含转换后
+数据和实际 λ 的 `BoxCoxResult`：
+
+```python
+from Ts.TsUtils import boxcox
+
+fitted = boxcox(training_series)
+transformed = fitted.data
+estimated_lmbda = fitted.lmbda
+
+# 将训练集估计的参数复用于后续观测，避免使用未来信息重新估计。
+future_transformed = boxcox(future_series, lmbda=estimated_lmbda).data
+```
+
+公共签名：
+
+```python
+boxcox(data, *, lmbda=None)
+```
+
+对于 `Series`，`result.lmbda` 是一个浮点数。对于 `DataFrame`，每列独立转换，
+`result.lmbda` 是以原列名为索引的 `Series`。也可以给所有列指定同一个 λ，或按列
+传入参数：
+
+```python
+automatic = boxcox(frame)
+shared = boxcox(frame, lmbda=0.5)
+per_column = boxcox(frame, lmbda={"output": 0.0, "prices": 0.25})
+```
+
+`lmbda=0` 对应自然对数变换。自动估计要求每列至少有两个非缺失且不完全相同的
+观测。缺失值在估计时被忽略，但会保留在输出中的原位置；输入索引、名称、列名和
+长度保持不变，调用方数据不会被修改。
+
+Box-Cox 只定义于严格正值。该接口拒绝零、负值和无穷值，不会自动添加平移常数，
+因为平移会改变转换结果及 λ 的统计含义。如果业务上确有平移依据，应由调用方先
+显式完成并记录该处理。
 
 ## STL 分解
 
