@@ -82,7 +82,7 @@ class TestPlotSeries:
         assert not hasattr(ax, "right_ax")
         plt.close(fig)
 
-    def test_three_series_split_at_largest_scale_gap(self):
+    def test_three_distinct_scales_create_three_axes(self):
         data = {
             "middle": [100, 200, 300],
             "small": [1, 2, 3],
@@ -91,9 +91,97 @@ class TestPlotSeries:
 
         fig, ax = plot_series(data, facet=False)
 
-        assert [line.get_label() for line in ax.lines] == ["middle", "small"]
+        assert len(fig.axes) == 3
+        assert [line.get_label() for line in ax.lines] == ["middle"]
+        assert ax.right_ax is ax.extra_y_axes[0]
+        assert [line.get_label() for line in ax.extra_y_axes[0].lines] == ["small"]
+        assert [line.get_label() for line in ax.extra_y_axes[1].lines] == ["large"]
+        position, value = ax.extra_y_axes[1].spines["right"].get_position()
+        assert position == "axes"
+        assert value == pytest.approx(1.12)
+        plt.close(fig)
+
+    def test_similar_scales_remain_in_one_automatic_group(self):
+        data = {
+            "small": [1, 2, 3],
+            "similar": [5, 10, 15],
+            "large": [1000, 2000, 3000],
+        }
+
+        fig, ax = plot_series(data, facet=False)
+
+        assert len(fig.axes) == 2
+        assert [line.get_label() for line in ax.lines] == ["small", "similar"]
         assert [line.get_label() for line in ax.right_ax.lines] == ["large"]
         plt.close(fig)
+
+    def test_max_y_axes_merges_the_closest_automatic_groups(self):
+        data = {
+            "small": [1, 2, 3],
+            "middle": [100, 200, 300],
+            "large": [1_000_000, 2_000_000, 3_000_000],
+        }
+
+        fig, ax = plot_series(data, facet=False, max_y_axes=2)
+
+        assert len(fig.axes) == 2
+        assert [line.get_label() for line in ax.lines] == ["small", "middle"]
+        assert [line.get_label() for line in ax.right_ax.lines] == ["large"]
+        plt.close(fig)
+
+    def test_manual_axis_groups_override_automatic_scale_groups(self):
+        data = {
+            "level": [100, 200, 300],
+            "rate_a": [1, 2, 3],
+            "rate_b": [4, 5, 6],
+        }
+        groups = {"level": "level", "rate_a": "rates", "rate_b": "rates"}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            axis_groups=groups,
+        )
+
+        assert [line.get_label() for line in ax.lines] == ["level"]
+        assert [line.get_label() for line in ax.right_ax.lines] == [
+            "rate_a",
+            "rate_b",
+        ]
+        assert ax.extra_y_axes == [ax.right_ax]
+        plt.close(fig)
+
+    @pytest.mark.parametrize(
+        ("axis_groups", "max_y_axes", "message"),
+        [
+            (["a", "b"], 3, "axis_groups must be a mapping"),
+            ({"a": 0}, 3, "axis_groups labels must exactly match"),
+            ({"a": 0, "b": 0, "extra": 1}, 3, "axis_groups labels must exactly match"),
+            ({"a": [], "b": []}, 3, "axis_groups values must be hashable"),
+            ({"a": 0, "b": 1}, 1, "axis_groups defines 2 groups"),
+        ],
+    )
+    def test_rejects_invalid_manual_axis_groups(
+        self,
+        axis_groups,
+        max_y_axes,
+        message,
+    ):
+        with pytest.raises((TypeError, ValueError), match=message):
+            plot_series(
+                {"a": [1, 2], "b": [2, 3]},
+                facet=False,
+                axis_groups=axis_groups,
+                max_y_axes=max_y_axes,
+            )
+
+    def test_manual_axis_groups_require_overlay_mode(self):
+        with pytest.raises(ValueError, match="axis_groups requires facet=False"):
+            plot_series(
+                {"a": [1, 2], "b": [2, 3]},
+                axis_groups={"a": 0, "b": 1},
+            )
 
     def test_multiple_series_facet_rejects_existing_axes(self):
         fig, ax = plt.subplots()
@@ -115,6 +203,8 @@ class TestPlotSeries:
                 0,
                 "scale_ratio_threshold must be positive",
             ),
+            ("max_y_axes", 0, "max_y_axes must be at least 1"),
+            ("max_y_axes", 1.5, "max_y_axes must be an integer"),
         ],
     )
     def test_rejects_invalid_layout_options(self, keyword, value, message):

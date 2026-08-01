@@ -24,15 +24,22 @@ Examples
 >>> # DataFrame, a column as the time variable
 >>> df2 = pd.DataFrame({"year": [2000, 2001, 2002], "a": [1, 2, 3], "b": [3, 2, 1]})
 >>> fig, axes = plot_series(df2, x="year")
->>> # Overlay named series; large scale gaps automatically use two y-axes
+>>> # Overlay named series; large scale gaps automatically create more y-axes
 >>> fig, ax = plot_series(
-...     {"rate": [1, 2, 3], "level": [1000, 2000, 3000]},
+...     {
+...         "rate": [1, 2, 3],
+...         "level": [1000, 2000, 3000],
+...         "population": [1_000_000, 2_000_000, 3_000_000],
+...     },
 ...     facet=False,
 ... )
 >>> right_ax = ax.right_ax
+>>> all_right_axes = ax.extra_y_axes
 """
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -245,28 +252,128 @@ def _robust_scale(values) -> float | None:
     return scale if np.isfinite(scale) and scale > 0 else None
 
 
-def _secondary_axis_labels(series: dict, threshold: float) -> set[str]:
-    """Split series at the largest scale gap and return the secondary group."""
+def _validate_max_y_axes(value) -> int:
+    """Validate the total number of y-axes allowed in overlay mode."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value,
+        (int, np.integer),
+    ):
+        raise TypeError("max_y_axes must be an integer")
+    if value < 1:
+        raise ValueError("max_y_axes must be at least 1")
+    return int(value)
+
+
+def _manual_axis_groups(
+    series: dict,
+    axis_groups,
+    max_y_axes: int,
+) -> list[list[str]]:
+    """Validate and order an explicit ``series label -> group id`` mapping."""
+    if not isinstance(axis_groups, Mapping):
+        raise TypeError("axis_groups must be a mapping")
+
+    series_labels = list(series)
+    if set(axis_groups) != set(series_labels):
+        missing = sorted(set(series_labels) - set(axis_groups))
+        unknown = sorted(set(axis_groups) - set(series_labels))
+        raise ValueError(
+            "axis_groups labels must exactly match the plotted series; "
+            f"missing={missing}, unknown={unknown}"
+        )
+
+    grouped: dict[object, list[str]] = {}
+    for label in series_labels:
+        group_id = axis_groups[label]
+        try:
+            hash(group_id)
+        except TypeError as error:
+            raise TypeError("axis_groups values must be hashable") from error
+        grouped.setdefault(group_id, []).append(label)
+
+    groups = list(grouped.values())
+    if len(groups) > max_y_axes:
+        raise ValueError(
+            f"axis_groups defines {len(groups)} groups but max_y_axes is {max_y_axes}"
+        )
+    return groups
+
+
+def _merge_closest_scale_groups(
+    groups: list[dict],
+    max_y_axes: int,
+) -> list[dict]:
+    """Merge neighboring scale groups at their smallest remaining gap."""
+    while len(groups) > max_y_axes:
+        ratios = [
+            groups[index + 1]["scales"][0] / groups[index]["scales"][-1]
+            for index in range(len(groups) - 1)
+        ]
+        merge_index = int(np.argmin(ratios))
+        groups[merge_index]["labels"].extend(groups[merge_index + 1]["labels"])
+        groups[merge_index]["scales"].extend(groups[merge_index + 1]["scales"])
+        del groups[merge_index + 1]
+    return groups
+
+
+def _automatic_axis_groups(
+    series: dict,
+    threshold: float,
+    max_y_axes: int,
+) -> list[list[str]]:
+    """Group adjacent robust scales, preserving the first series on the left."""
+    series_labels = list(series)
     scaled = [
         (label, scale)
         for label, values in series.items()
         if (scale := _robust_scale(values)) is not None
     ]
-    if len(scaled) < 2:
-        return set()
+    if len(scaled) < 2 or max_y_axes == 1:
+        return [series_labels]
 
     scaled.sort(key=lambda item: item[1])
-    ratios = [
-        scaled[index + 1][1] / scaled[index][1] for index in range(len(scaled) - 1)
-    ]
-    split_index = int(np.argmax(ratios))
-    if ratios[split_index] < threshold:
-        return set()
+    groups = [{"labels": [scaled[0][0]], "scales": [scaled[0][1]]}]
+    for label, scale in scaled[1:]:
+        previous_scale = groups[-1]["scales"][-1]
+        if scale / previous_scale < threshold:
+            groups[-1]["labels"].append(label)
+            groups[-1]["scales"].append(scale)
+        else:
+            groups.append({"labels": [label], "scales": [scale]})
 
-    lower = {label for label, _scale in scaled[: split_index + 1]}
-    upper = {label for label, _scale in scaled[split_index + 1 :]}
-    first_label = next(iter(series))
-    return lower if first_label in upper else upper
+    groups = _merge_closest_scale_groups(groups, max_y_axes)
+
+    scaled_labels = {label for label, _scale in scaled}
+    unscaled_labels = [label for label in series_labels if label not in scaled_labels]
+    if unscaled_labels:
+        groups[0]["labels"].extend(unscaled_labels)
+
+    order = {label: index for index, label in enumerate(series_labels)}
+    resolved = [sorted(group["labels"], key=order.get) for group in groups]
+    primary_index = next(
+        index for index, labels in enumerate(resolved) if series_labels[0] in labels
+    )
+    return [
+        resolved[primary_index],
+        *resolved[:primary_index],
+        *resolved[primary_index + 1 :],
+    ]
+
+
+def _resolve_axis_groups(
+    series: dict,
+    *,
+    axis_groups,
+    auto_dual_y: bool,
+    threshold: float,
+    max_y_axes: int,
+) -> list[list[str]]:
+    """Resolve manual groups or automatically group series by robust scale."""
+    if axis_groups is not None:
+        return _manual_axis_groups(series, axis_groups, max_y_axes)
+    if len(series) < 2 or not auto_dual_y:
+        return [list(series)]
+    return _automatic_axis_groups(series, threshold, max_y_axes)
 
 
 def _series_color(colors, index: int) -> str:
@@ -408,6 +515,8 @@ def plot_series(
     sharey: bool = False,
     auto_dual_y: bool = True,
     scale_ratio_threshold: float = 10.0,
+    axis_groups: Mapping[str, object] | None = None,
+    max_y_axes: int = 3,
     ax=None,
     unit: str | None = None,
 ) -> tuple[plt.Figure, plt.Axes | np.ndarray]:
@@ -506,12 +615,22 @@ def plot_series(
         Whether faceted panels share the same y-axis scale. Defaults to
         ``False``.
     auto_dual_y : bool
-        When ``facet=False``, automatically use a secondary y-axis if the
-        robust scale ratio reaches ``scale_ratio_threshold``. Defaults to
-        ``True``.
+        When ``facet=False`` and ``axis_groups`` is not supplied,
+        automatically group similar robust scales and create additional
+        y-axes as needed. The name is retained for backward compatibility.
+        Defaults to ``True``.
     scale_ratio_threshold : float
-        Positive scale ratio that triggers the automatic secondary y-axis.
+        Positive adjacent scale ratio that starts a new automatic axis group.
         Defaults to 10.
+    axis_groups : mapping, optional
+        Explicit ``{series_label: group_id}`` assignment used when
+        ``facet=False``. Series with the same hashable group identifier share
+        one y-axis. The mapping must contain every plotted label exactly once
+        and overrides ``auto_dual_y``. Defaults to automatic scale grouping.
+    max_y_axes : int
+        Maximum total number of y-axes, including the primary left axes.
+        Automatic groups beyond this limit are merged by the closest scale
+        gap; explicit groups beyond the limit raise an error. Defaults to 3.
     ax : matplotlib.axes.Axes, optional
         Existing axes to draw on. Multi-series faceting requires ``ax=None``;
         pass ``facet=False`` to overlay multiple series on an existing axes.
@@ -524,8 +643,10 @@ def plot_series(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes or numpy.ndarray
         A single axes for a single series or overlay. Faceting returns a
-        one-dimensional array of axes. In automatic dual-axis mode, the
-        secondary axes is available as ``ax.right_ax`` and ``fig.axes[1]``.
+        one-dimensional array of axes. In multi-axis overlay mode, the first
+        secondary axes is available as ``ax.right_ax``. All
+        right-side axes are available through ``ax.extra_y_axes`` and all
+        axes through ``fig.axes``.
     """
     x_values, series, default_xlabel = _resolve_input(data, x, y)
     colors = _resolve_colors(colors, len(series))
@@ -542,6 +663,7 @@ def plot_series(
         "scale_ratio_threshold",
         scale_ratio_threshold,
     )
+    max_y_axes = _validate_max_y_axes(max_y_axes)
 
     if labels is not None:
         labels = list(labels)
@@ -552,6 +674,9 @@ def plot_series(
         series = {labels[i]: v for i, v in enumerate(series.values())}
 
     legend_labels = _validate_legend_labels(legend_labels, len(series))
+
+    if axis_groups is not None and facet and len(series) >= 2:
+        raise ValueError("axis_groups requires facet=False for multiple series")
 
     if facet and len(series) >= 2:
         if ax is not None:
@@ -664,19 +789,34 @@ def plot_series(
     draw_shade(ax, shade, shade_color, shade_alpha)
     draw_vlines(ax, vlines, vline_color, vline_linestyle, vline_linewidth)
 
-    secondary_labels = set()
-    if len(series) >= 2 and auto_dual_y:
-        secondary_labels = _secondary_axis_labels(
-            series,
-            scale_ratio_threshold,
+    resolved_groups = _resolve_axis_groups(
+        series,
+        axis_groups=axis_groups,
+        auto_dual_y=auto_dual_y,
+        threshold=scale_ratio_threshold,
+        max_y_axes=max_y_axes,
+    )
+    right_axes = []
+    for group_index in range(1, len(resolved_groups)):
+        right_axis = ax.twinx()
+        right_axis.spines["right"].set_position(
+            ("axes", 1.0 + 0.12 * (group_index - 1))
         )
-    right_ax = ax.twinx() if secondary_labels else None
-    if right_ax is not None:
-        ax.right_ax = right_ax
+        right_axes.append(right_axis)
+
+    ax.extra_y_axes = right_axes
+    if right_axes:
+        ax.right_ax = right_axes[0]
+
+    axis_by_label = {
+        label: ([ax, *right_axes][group_index])
+        for group_index, group_labels in enumerate(resolved_groups)
+        for label in group_labels
+    }
 
     lines = []
     for index, (label, values) in enumerate(series.items()):
-        target_ax = right_ax if label in secondary_labels else ax
+        target_ax = axis_by_label[label]
         lines.append(
             _plot_one_series(
                 target_ax,
@@ -709,24 +849,28 @@ def plot_series(
     )
 
     if ymin is not None:
-        ax.set_ylim(bottom=ymin)
-        if right_ax is not None:
-            right_ax.set_ylim(bottom=ymin)
+        for y_axis in [ax, *right_axes]:
+            y_axis.set_ylim(bottom=ymin)
 
-    if right_ax is not None:
-        right_ax.set_ylabel(
-            " / ".join(label for label in series if label in secondary_labels),
+    display_labels = legend_labels or list(series)
+    display_name_by_label = dict(zip(series, display_labels, strict=True))
+    for group_labels, right_axis in zip(
+        resolved_groups[1:],
+        right_axes,
+        strict=True,
+    ):
+        right_axis.set_ylabel(
+            " / ".join(display_name_by_label[label] for label in group_labels),
             fontsize=AXIS_LABEL_FONTSIZE,
         )
         if unit is not None:
-            draw_unit_label(right_ax, unit, axis="y")
-        style_axes(right_ax, grid=False)
-        right_ax.spines["right"].set_visible(True)
-        right_ax.yaxis.set_label_position("right")
-        right_ax.yaxis.tick_right()
+            draw_unit_label(right_axis, unit, axis="y")
+        style_axes(right_axis, grid=False)
+        right_axis.spines["right"].set_visible(True)
+        right_axis.yaxis.set_label_position("right")
+        right_axis.yaxis.tick_right()
 
     if show_legend and lines:
-        display_labels = legend_labels or list(series)
         ax.legend(
             lines,
             display_labels,
@@ -747,5 +891,9 @@ def plot_series(
         labels=list(series),
         unit=unit,
     )
+
+    if len(right_axes) >= 2:
+        right_margin = max(0.5, 0.88 - 0.10 * (len(right_axes) - 1))
+        fig.subplots_adjust(right=right_margin)
 
     return fig, ax

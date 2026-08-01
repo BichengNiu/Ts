@@ -55,3 +55,12 @@
 4. Run `python -m pytest -p no:cacheprovider -q`; expect the full repository to pass.
 5. Run `python -m ruff check TsPlots TsModels TsSims`, `python -m ruff format --check TsPlots TsModels TsSims`, and `git diff --check`; expect all checks to pass.
 6. Review `git status --short` and confirm the pre-existing `TsUtils/demo.ipynb` and Box-Cox plan changes remain untouched.
+
+## Implementation Result
+
+- Automatic grouping now creates up to `max_y_axes` scale groups and merges the closest adjacent groups when necessary.
+- `axis_groups` provides strict manual grouping and overrides automatic detection.
+- The first right axes remains available as `ax.right_ax`; all right axes are exposed through `ax.extra_y_axes`.
+- Multiple right spines are shifted outward and the figure reserves additional right margin.
+- `TsPlots/demo.ipynb` contains 49 cells (22 executable) and runs top-to-bottom without errors.
+- Final checks: `1228 passed`, Ruff lint/format passed, and `git diff --check` passed.

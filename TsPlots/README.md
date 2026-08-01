@@ -77,8 +77,10 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `facet` | bool | `True` | 两条及以上序列是否按序列纵向分面；单序列不受影响 |
 | `sharex` | bool | `True` | 分面子图是否统一 X 轴标度 |
 | `sharey` | bool | `False` | 分面子图是否统一 Y 轴标度 |
-| `auto_dual_y` | bool | `True` | `facet=False` 时，尺度差异达到阈值是否自动使用双 Y 轴 |
-| `scale_ratio_threshold` | float | `10.0` | 触发自动双 Y 轴的最小稳健尺度比，必须为正有限数 |
+| `auto_dual_y` | bool | `True` | `facet=False` 且未手动分组时，是否按稳健尺度自动建立多个 Y 轴；保留原参数名以兼容旧代码 |
+| `scale_ratio_threshold` | float | `10.0` | 自动分组时划分相邻尺度组的最小尺度比，必须为正有限数 |
+| `axis_groups` | mapping | `None` | 手动指定 `{序列标签: 组标识}`；相同组标识共用一个 Y 轴，并覆盖自动判断 |
+| `max_y_axes` | int | `3` | Y 轴总数上限（含左轴）；自动模式超限时合并最接近的组，手动模式超限时报错 |
 | `ax` | Axes | `None` | 传入已有坐标轴；多序列分面不接受单个 `ax`，此时应设 `facet=False` |
 
 ### 返回对象
@@ -87,10 +89,12 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 |------|--------|----------|
 | 单序列 | `(fig, ax)` | `ax.lines`、`ax.get_xlabel()`、`ax.get_ylabel()` |
 | 多序列且 `facet=True` | `(fig, axes)` | `axes` 是一维 `numpy.ndarray`；用 `axes[0]`、`axes[1]` 访问各分面 |
-| 多序列且 `facet=False`，未触发双轴 | `(fig, ax)` | 所有线都在 `ax.lines` 中 |
-| 多序列且 `facet=False`，触发双轴 | `(fig, ax)` | 左轴为 `ax`；右轴为 `ax.right_ax`，也可用 `fig.axes[1]` 获取 |
+| 多序列且 `facet=False`，只有一个尺度组 | `(fig, ax)` | 所有线都在 `ax.lines` 中；`ax.extra_y_axes == []` |
+| 多序列且 `facet=False`，存在多个尺度组 | `(fig, ax)` | 左轴为 `ax`；第一个右轴为 `ax.right_ax`；全部右轴为 `ax.extra_y_axes`；全部轴为 `fig.axes` |
 
-自动双轴使用稳健尺度判断：每条序列的尺度为“绝对值 95% 分位数”和“5%–95% 分位距”中的较大者。尺度比达到 `scale_ratio_threshold` 时，在最大的相邻尺度断点处分组；包含第一条序列的组保留在左轴。
+自动模式下，每条序列的稳健尺度取“绝对值 95% 分位数”和“5%–95% 分位距”中的较大者。按尺度排序后，相邻尺度比小于 `scale_ratio_threshold` 的序列归入同组；达到或超过阈值时建立新组。若组数超过 `max_y_axes`，函数依次合并尺度差距最小的相邻组。包含第一条输入序列的组始终使用左轴，其余轴依次放在右侧。
+
+手动模式要求 `axis_groups` 的键与最终绘制标签完全一致，组标识必须可哈希，且组数不能超过 `max_y_axes`。手动分组优先于 `auto_dual_y`；多序列分面模式下不能同时指定 `axis_groups`。
 
 ### 示例
 
@@ -122,17 +126,32 @@ print(gdp_ax.get_title(loc="left"), cpi_ax.get_title(loc="left"))
 # 分面时分别控制坐标轴标度：X 轴不统一，Y 轴统一
 fig, axes = plot_series(df, sharex=False, sharey=True)
 
-# 关闭分面：量级相差很大时自动使用双 Y 轴
+# 关闭分面：按相近尺度自动分组，可创建多个右侧 Y 轴
 scale_data = {
     "增长率（%）": [2.1, 2.8, 3.0, 2.6],
     "GDP（亿元）": [12000, 13500, 15100, 16800],
+    "人口（人）": [1_200_000, 1_230_000, 1_260_000, 1_290_000],
 }
 fig, ax = plot_series(scale_data, facet=False, title="不同量级序列")
 left_ax = ax
-right_ax = ax.right_ax  # 等价于 fig.axes[1]
-print(left_ax.get_ylabel(), right_ax.get_ylabel())
+first_right_ax = ax.right_ax
+all_right_axes = ax.extra_y_axes
+print(len(fig.axes), len(all_right_axes))
 
-# 如需强制所有序列画在同一 Y 轴，关闭自动双轴
+# 用户指定分组：增长率单独一组，GDP 和人口分别使用其他 Y 轴
+manual_groups = {
+    "增长率（%）": "比率",
+    "GDP（亿元）": "经济总量",
+    "人口（人）": "人口规模",
+}
+fig, ax = plot_series(
+    scale_data,
+    facet=False,
+    axis_groups=manual_groups,
+    max_y_axes=3,
+)
+
+# 如需强制所有序列画在同一 Y 轴，关闭自动分组
 fig, ax = plot_series(scale_data, facet=False, auto_dual_y=False)
 
 # 单序列仍返回一个 Axes；可叠加阴影、参考线和注释
