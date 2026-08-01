@@ -252,22 +252,24 @@ class TestSARIMAXResult:
             trend="n",
         ).fit()
         burn = result._statsmodels_result.loglikelihood_burn
-        valid_residuals = result.residuals[burn:]
+        raw_residuals = np.asarray(result._statsmodels_result.resid, dtype=float)
 
         assert burn == 13
-        assert result.residuals[0] == pytest.approx(data[0])
+        assert raw_residuals[0] == pytest.approx(data[0])
+        assert len(result.residuals) == result.nobs - burn
+        np.testing.assert_allclose(result.residuals, raw_residuals[burn:])
+        assert np.all(np.isfinite(result.residuals))
 
         fig, axes = result.plot_diagnostics()
         displayed = np.asarray(axes[0].lines[0].get_ydata(), dtype=float)
-        assert np.all(np.isnan(displayed[:burn]))
-        assert np.all(np.isfinite(displayed[burn:]))
+        np.testing.assert_allclose(displayed, result.residuals)
 
-        expected_acf = sm_acf(valid_residuals, nlags=40, fft=True)
+        expected_acf = sm_acf(result.residuals, nlags=40, fft=True)
         assert axes[1].patches[0].get_height() == pytest.approx(expected_acf[1])
 
         diagnostics = result.test_residuals(lags=5)
         expected_wn = LjungBoxTest(
-            valid_residuals,
+            result.residuals,
             lags=5,
             apply_squared=False,
         ).fit()

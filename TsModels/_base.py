@@ -332,7 +332,8 @@ class BaseModelResult:
     log_likelihood : float
         Maximised log-likelihood.
     residuals : np.ndarray
-        Residual series (length *nobs*).
+        Statistically valid residual series. Its length may be less than
+        *nobs* when a model discards state-initialization periods.
     fitted_values : np.ndarray or None
         Fitted values (length *nobs*). May be ``None`` for pure volatility
         models.
@@ -384,14 +385,6 @@ class BaseModelResult:
     def _fitted_values_for_plot(self):
         """Return fitted values with any model-specific display masking."""
         return self.fitted_values
-
-    def _residuals_for_plot(self):
-        """Return residuals with any model-specific display masking."""
-        return self.residuals
-
-    def _residuals_for_diagnostics(self):
-        """Return statistically valid residuals for tests and correlograms."""
-        return self.residuals
 
     def plot_fit(self, title=None):
         """Plot actual vs fitted values.
@@ -450,10 +443,10 @@ class BaseModelResult:
             title = f"{self.model_type}: Diagnostic Plots"
 
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 10))
-        diagnostic_residuals = self._residuals_for_diagnostics()
+        diagnostic_residuals = self.residuals
 
         plot_series(
-            self._residuals_for_plot(),
+            diagnostic_residuals,
             ax=ax1,
             title="Residuals",
             ytitle="Residual",
@@ -530,7 +523,7 @@ class BaseModelResult:
         """
         from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
 
-        diagnostic_residuals = self._residuals_for_diagnostics()
+        diagnostic_residuals = self.residuals
 
         wn = LjungBoxTest(
             diagnostic_residuals,

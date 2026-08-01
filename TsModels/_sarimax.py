@@ -590,18 +590,6 @@ class SARIMAXResult(BaseModelResult):
         """Return fitted values after the state-space initialization period."""
         return self._mask_state_initialization(self.fitted_values)
 
-    def _residuals_for_plot(self):
-        """Mask state-space initialization residuals without shifting time."""
-        return self._mask_state_initialization(self.residuals)
-
-    def _residuals_for_diagnostics(self):
-        """Exclude state-space initialization residuals from diagnostics."""
-        masked = self._mask_state_initialization(self.residuals)
-        if self._statsmodels_result is None:
-            return masked
-        burn = int(self._statsmodels_result.loglikelihood_burn)
-        return masked[burn:]
-
     _dates: pd.DatetimeIndex | None = None
     _ordinary_exog: np.ndarray | None = None
     _ordinary_exog_names: tuple[str, ...] = ()
@@ -1554,7 +1542,8 @@ class SARIMAX(BaseModel):
             std_errors[name] = float(bse_val)
             p_values[name] = float(pval)
 
-        resid = np.asarray(fitted.resid)
+        burn = int(fitted.loglikelihood_burn)
+        resid = np.asarray(fitted.resid)[burn:].copy()
         if self.log:
             fitted_prediction = fitted.get_prediction(start=0, end=len(self.data) - 1)
             fitted_vals, _, _ = _prediction_arrays(
@@ -1562,7 +1551,7 @@ class SARIMAX(BaseModel):
                 0.05,
                 log=True,
             )
-            fitted_vals[: int(fitted.loglikelihood_burn)] = np.nan
+            fitted_vals[:burn] = np.nan
         else:
             fitted_vals = np.asarray(fitted.fittedvalues)
 

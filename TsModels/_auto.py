@@ -257,18 +257,6 @@ class AutoModelResult(BaseModelResult):
             raise RuntimeError("No best_result available")
         return self.best_result.predict(**kwargs)
 
-    def _residuals_for_plot(self):
-        """Delegate model-specific residual masking to the selected result."""
-        if self.best_result is None:
-            return super()._residuals_for_plot()
-        return self.best_result._residuals_for_plot()
-
-    def _residuals_for_diagnostics(self):
-        """Delegate valid-residual selection to the selected result."""
-        if self.best_result is None:
-            return super()._residuals_for_diagnostics()
-        return self.best_result._residuals_for_diagnostics()
-
     def long_run_equilibrium(self):
         """Return the long-run equilibrium of the best model.
 
