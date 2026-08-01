@@ -1,6 +1,6 @@
 # Ts/TsModels
 
-时间序列模型估计工具包。提供 SARIMA、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsMetrics、TsTests 衔接。
+时间序列模型估计工具包。提供 SARIMAX、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsMetrics、TsTests 衔接。
 
 ## Missing-data contract
 
@@ -23,19 +23,19 @@ complete rows. No model imputes raw observations.
 TsModels/
 ├── __init__.py         # 统一导出接口
 ├── _base.py            # BaseModel (ABC) + BaseModelResult + ResidualTestResults (dataclass)
-├── _sarima.py          # SARIMA + SARIMAResult
+├── _sarimax.py          # SARIMAX + SARIMAXResult
 ├── _garch_result.py    # GARCHResult (dataclass) + 参数缩放辅助函数
 ├── _garch_base.py      # _BaseVolModel — 参数验证 + fit 调度 + IGARCH MLE
 ├── _garch.py           # GARCH — 公开 API 入口
 ├── _var.py             # VAR + VARResult — 向量自回归
 ├── _svar.py            # SVAR + SVARResult — 结构向量自回归
 ├── _vecm.py            # VECM + VECMResult — 向量误差修正模型
-├── _auto.py            # AutoSARIMA + AutoGARCH + AutoModelResult
+├── _auto.py            # AutoSARIMAX + AutoGARCH + AutoModelResult
 ├── _compare.py         # compare_models — Stata 风格对比表格
 ├── tests/
 │   ├── __init__.py
 │   ├── test_base.py
-│   ├── test_sarima.py
+│   ├── test_sarimax.py
 │   ├── test_garch.py
 │   ├── test_auto.py
 │   ├── test_compare.py
@@ -51,12 +51,12 @@ TsModels/
 ```python
 import numpy as np
 
-from Ts.TsModels import SARIMA, GARCH, VAR
+from Ts.TsModels import SARIMAX, GARCH, VAR
 from Ts.TsSims import simulate_sarima, simulate_garch
 
 # AR(1) 估计
 data = simulate_sarima(n=200, order=(1, 0, 0), ar=[0.7], seed=42).data
-model = SARIMA(data, order=(1, 0, 0))
+model = SARIMAX(data, order=(1, 0, 0))
 result = model.fit()
 print(result.summary())
 result.plot_diagnostics()
@@ -102,7 +102,7 @@ result.test_residuals(lags=10)
 
 | 模型 | 方法 | 说明 |
 |------|------|------|
-| `SARIMA` / `SARIMAResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
+| `SARIMAX` / `SARIMAXResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
 | | `.arroots` | AR 多项式特征根 (ndarray) |
 | | `.maroots` | MA 多项式特征根 (ndarray) |
 | | `.is_stationary` | AR 多项式的全部根是否位于单位圆外 |
@@ -199,7 +199,7 @@ evaluation = model.oos(
 `estimation_dates`、`validation_dates`。旧 `split` 参数和结果字段已经删除，
 不存在弃用期或兼容路径。`predict(oos_start=...)` 伪样本外路径同样不存在。
 
-所有继承 `BaseModel` 的预测模型（SARIMA、GARCH、VAR、VECM、SVAR 及 Auto 模型）
+所有继承 `BaseModel` 的预测模型（SARIMAX、GARCH、VAR、VECM、SVAR 及 Auto 模型）
 共享该接口。
 
 ```python
@@ -223,9 +223,9 @@ model.backcast(steps, alpha=0.05)
 `window_size` 仅适用于 `window='rolling'`；扩展窗口传入该参数会明确报错，不会静默忽略。
 
 ```python
-from Ts.TsModels import SARIMA
+from Ts.TsModels import SARIMAX
 
-model = SARIMA(y, order=(1, 0, 0))
+model = SARIMAX(y, order=(1, 0, 0))
 
 # 扩展窗口：每次加入新观测
 expanding = model.backtest(
@@ -278,10 +278,23 @@ print(backcast.mean)
 
 ## 模型参数
 
-### SARIMA
+### SARIMAX
 
 ```python
-SARIMA(data, order=(1,0,0), seasonal_order=(0,0,0,0), trend="c", *, dates=None, exog=None, missing="raise")
+SARIMAX(
+    data,
+    order=(1, 0, 0),
+    seasonal_order=(0, 0, 0, 0),
+    trend="c",
+    enforce_stationarity=True,
+    enforce_invertibility=True,
+    *,
+    dates=None,
+    exog=None,
+    exog_names=None,
+    events=None,
+    missing="raise",
+)
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -292,15 +305,20 @@ SARIMA(data, order=(1,0,0), seasonal_order=(0,0,0,0), trend="c", *, dates=None, 
 | `trend` | str | `"c"` | 趋势设定：`"n"`, `"c"`, `"t"`, `"ct"` |
 | `enforce_stationarity` | bool | `True` | 强制 AR 多项式平稳性 |
 | `enforce_invertibility` | bool | `True` | 强制 MA 多项式可逆性 |
+| `dates` | datetime-like | `None` | 数组输入的显式日期；`Series` 自动使用其 `DatetimeIndex` |
+| `exog` | array-like/DataFrame | `None` | 普通外生变量；DataFrame 可同时包含历史和未来日期 |
+| `exog_names` | sequence[str] | `None` | 数组外生变量的必填列名；DataFrame 使用自身列名 |
+| `events` | sequence[EventSpec] | `None` | 脉冲、阶跃或事件窗口设计 |
+| `missing` | `"raise"`/`"drop"` | `"raise"` | 内生和历史外生变量的联合缺失行策略 |
 
 稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
 
 ```python
 # AR(3)，但固定 ar.L2 = 0
-ar_result = SARIMA(data, order=([1, 3], 0, 0)).fit()
+ar_result = SARIMAX(data, order=([1, 3], 0, 0)).fit()
 
 # ARMA(1,3)，但固定 ma.L2 = 0
-arma_result = SARIMA(data, order=(1, 0, [1, 3])).fit()
+arma_result = SARIMAX(data, order=(1, 0, [1, 3])).fit()
 ```
 
 `summary()` 会报告实际 AR/MA 滞后、固定为 0 的系数、根的最小模、
@@ -432,15 +450,15 @@ mu/_cons、kappa/sigma2、alpha[1]/L.arch、beta[1]/L.garch
 
 ## 自动最优参数选择
 
-`AutoSARIMA` 和 `AutoGARCH` 通过网格搜索自动选择最优模型阶数。
+`AutoSARIMAX` 和 `AutoGARCH` 通过网格搜索自动选择最优模型阶数。
 
 ```python
-from Ts.TsModels import AutoSARIMA, AutoGARCH
+from Ts.TsModels import AutoSARIMAX, AutoGARCH
 from Ts.TsSims import simulate_sarima, simulate_garch
 
-# 自动选择最优 ARIMA 阶数
+# 自动选择最优 SARIMAX 阶数
 data = simulate_sarima(n=200, order=(1, 0, 0), ar=[0.7], seed=42).data
-auto = AutoSARIMA(data, p=(0, 3), d=(0, 1), q=(0, 3), criterion="aic")
+auto = AutoSARIMAX(data, p=(0, 3), d=(0, 1), q=(0, 3), criterion="aic")
 result = auto.fit()
 print(result.summary())
 # 显示: 搜索方式, 选择准则, 最优阶数, 成功/尝试模型数, 最优模型参数表
@@ -451,13 +469,13 @@ auto = AutoGARCH(data, p=(1, 4), q=(0, 4), criterion="bic")
 result = auto.fit()
 
 # 最优模型结果可通过 best_result 访问
-best = result.best_result  # SARIMAResult 或 GARCHResult
+best = result.best_result  # SARIMAXResult 或 GARCHResult
 ```
 
-### AutoSARIMA
+### AutoSARIMAX
 
 ```python
-AutoSARIMA(
+AutoSARIMAX(
     data,
     p=(0, 3),
     d=(0, 1),
@@ -469,7 +487,13 @@ AutoSARIMA(
     trend="c",
     criterion="aic",
     method="grid",
+    *,
     dates=None,
+    exog=None,
+    exog_names=None,
+    events=None,
+    enforce_stationarity=True,
+    enforce_invertibility=True,
     missing="raise",
 )
 ```
@@ -480,6 +504,13 @@ AutoSARIMA(
 | `P`, `D`, `Q` | `(min, max)` | `(0,1)` | 季节阶数范围（s=0 时忽略） |
 | `s` | int | `0` | 季节周期（0=无季节性） |
 | `criterion` | str | `"aic"` | 选择准则: `aic`, `bic`, `hqic`, `aicc` |
+| `dates` | datetime-like | `None` | 严格观测日期 |
+| `exog` | array-like/DataFrame | `None` | 每个候选模型共享的普通外生变量及可选未来路径 |
+| `exog_names` | sequence[str] | `None` | 数组外生变量的必填列名 |
+| `events` | sequence[EventSpec] | `None` | 每个候选模型共享的事件设计 |
+| `enforce_stationarity` | bool | `True` | 所有候选模型是否强制平稳性 |
+| `enforce_invertibility` | bool | `True` | 所有候选模型是否强制可逆性 |
+| `missing` | `"raise"`/`"drop"` | `"raise"` | 搜索前统一处理内生与外生缺失行 |
 
 ### AutoGARCH
 
@@ -553,7 +584,7 @@ result = auto.fit()
 | `candidate_orders` | `list` | 所有成功的参数组合 |
 | `selection_criterion` | `str` | 使用的选择准则 |
 | `.long_run_equilibrium()` | — | 委托给 `best_result.long_run_equilibrium()` |
-| `.cycle_period(seasonal=False)` | `ARCycleResult` | 委托给 `AutoSARIMA` 选中的 `best_result` |
+| `.cycle_period(seasonal=False)` | `ARCycleResult` | 委托给 `AutoSARIMAX` 选中的 `best_result` |
 
 ### VAR
 
@@ -750,7 +781,7 @@ result.test_residuals(lags=10)
 ## 依赖
 
 - `numpy`, `pandas`, `scipy`, `matplotlib`
-- `statsmodels` (SARIMA / VAR / VECM 估计)
+- `statsmodels` (SARIMAX / VAR / VECM 估计)
 - `arch` (GARCH 估计)
 - `TsPlots` (绘图风格)
 - `TsTests` (残差诊断检验)
@@ -766,10 +797,10 @@ python -m pytest TsModels/tests -v
 
 ```powershell
 $env:PYTHONPATH = (Resolve-Path ..)
-python -c "from Ts.TsModels import SARIMA, GARCH, VAR; print(SARIMA, GARCH, VAR)"
+python -c "from Ts.TsModels import SARIMAX, GARCH, VAR; print(SARIMAX, GARCH, VAR)"
 ```
 
-## ARIMAX、事件与政策效果
+## SARIMAX、事件与政策效果
 
 下面的例子同时演示带日期索引的控制变量、自动保存的未来默认路径、
 多个预测情境以及事件设计：
@@ -778,7 +809,7 @@ python -c "from Ts.TsModels import SARIMA, GARCH, VAR; print(SARIMA, GARCH, VAR)
 import numpy as np
 import pandas as pd
 
-from Ts.TsModels import EventSpec, SARIMA
+from Ts.TsModels import EventSpec, SARIMAX
 
 rng = np.random.default_rng(42)
 dates = pd.date_range("2020-01-01", periods=36, freq="MS")
@@ -823,7 +854,7 @@ events = [
     ),
 ]
 
-model = SARIMA(
+model = SARIMAX(
     y,
     exog=controls,
     events=events,

@@ -353,7 +353,7 @@ def test_comparison_result_rejects_negative_error_scores():
 
 def test_predict_rejects_removed_pseudo_oos_argument():
     """Pseudo-OOS is removed instead of retained as a compatibility path."""
-    from Ts.TsModels import SARIMA
+    from Ts.TsModels import SARIMAX
     from Ts.TsSims import simulate_sarima
 
     data = simulate_sarima(
@@ -363,19 +363,19 @@ def test_predict_rejects_removed_pseudo_oos_argument():
         seed=42,
         burn=50,
     ).data
-    fitted = SARIMA(data, order=(1, 0, 0)).fit()
+    fitted = SARIMAX(data, order=(1, 0, 0)).fit()
 
     with pytest.raises(TypeError, match="oos_start"):
         fitted.predict(oos_start=25)
 
 
 def test_oos_passes_holdout_exog_without_holdout_y():
-    from Ts.TsModels import SARIMA
+    from Ts.TsModels import SARIMAX
 
     dates = pd.date_range("2020-01-01", periods=30, freq="MS")
     exog = pd.DataFrame({"x": np.arange(30.0)}, index=dates)
     data = pd.Series(2.0 * exog["x"].to_numpy(), index=dates)
-    model = SARIMA(
+    model = SARIMAX(
         data,
         exog=exog,
         order=(0, 0, 0),
@@ -393,14 +393,14 @@ def test_oos_passes_holdout_exog_without_holdout_y():
 
 
 def test_record_mode_reports_missing_future_exog_dates():
-    from Ts.TsModels import SARIMA
+    from Ts.TsModels import SARIMAX
 
     dates = pd.date_range("2022-01-01", periods=23, freq="MS")
     exog = pd.DataFrame(
         {"x": np.arange(23.0)},
         index=dates,
     )
-    model = SARIMA(
+    model = SARIMAX(
         pd.Series(1.5 * exog["x"].to_numpy(), index=dates),
         exog=exog,
         order=(0, 0, 0),

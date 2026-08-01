@@ -1,4 +1,4 @@
-"""Auto-estimation for SARIMA and GARCH models.
+"""Auto-estimation for SARIMAX and GARCH models.
 
 Provides automatic optimal parameter selection via grid search over
 user-specified parameter ranges and evaluation criteria.
@@ -6,11 +6,11 @@ user-specified parameter ranges and evaluation criteria.
 Classes
 -------
 _BaseAutoModel
-    Shared grid-search logic for AutoSARIMA and AutoGARCH.
+    Shared grid-search logic for AutoSARIMAX and AutoGARCH.
 AutoModelResult
     Result container for auto-estimation (inherits BaseModelResult).
-AutoSARIMA
-    Auto SARIMA model selection via grid search.
+AutoSARIMAX
+    Auto SARIMAX model selection via grid search.
 AutoGARCH
     Auto GARCH model selection via grid search.
 """
@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 from Ts.TsUtils._validation import _resolve_missing_rows
 
@@ -89,7 +90,7 @@ class AutoModelResult(BaseModelResult):
     best_result : BaseModelResult
         The best model's full result object.
     best_order : tuple
-        Optimal parameter combination (e.g. ``(1, 0, 0)`` for SARIMA or
+        Optimal parameter combination (e.g. ``(1, 0, 0)`` for SARIMAX or
         ``(p, o, q)`` for GARCH / GJR-GARCH).
     candidate_results : list
         All successfully fitted :class:`BaseModelResult` objects.
@@ -105,10 +106,10 @@ class AutoModelResult(BaseModelResult):
     n_attempted : int, optional
         Number of order combinations attempted, including failed fits.
     best_seasonal_order : tuple, optional
-        Seasonal order selected by :class:`AutoSARIMA`, if seasonal search
+        Seasonal order selected by :class:`AutoSARIMAX`, if seasonal search
         was enabled.
     candidate_seasonal_orders : list, optional
-        Seasonal orders corresponding to successful AutoSARIMA candidates.
+        Seasonal orders corresponding to successful AutoSARIMAX candidates.
     search_messages : list of str, optional
         Warnings and failed-fit messages collected during the search.
     """
@@ -271,12 +272,12 @@ class AutoModelResult(BaseModelResult):
         return None
 
     def cycle_period(self, *, seasonal=False):
-        """Return the AR(2) cycle diagnostic of the selected SARIMA model."""
+        """Return the AR(2) cycle diagnostic of the selected SARIMAX model."""
         if self.best_result is None:
             raise RuntimeError("No best_result available")
         method = getattr(self.best_result, "cycle_period", None)
         if method is None:
-            raise TypeError("cycle_period is only available for AutoSARIMA results")
+            raise TypeError("cycle_period is only available for AutoSARIMAX results")
         return method(seasonal=seasonal)
 
 
@@ -284,7 +285,7 @@ _SUPPORTED_METHODS = frozenset({"grid"})
 
 
 class _BaseAutoModel(BaseModel):
-    """Shared grid-search logic for AutoSARIMA and AutoGARCH."""
+    """Shared grid-search logic for AutoSARIMAX and AutoGARCH."""
 
     def _validate_params(self, data, criterion, method):
         """Common validation shared by subclasses.
@@ -384,8 +385,8 @@ class _BaseAutoModel(BaseModel):
         )
 
 
-class AutoSARIMA(_BaseAutoModel):
-    """Auto SARIMA model selection via grid search.
+class AutoSARIMAX(_BaseAutoModel):
+    """Auto SARIMAX model selection via grid search.
 
     Searches over a user-specified range of ``(p, d, q)`` and optional
     ``(P, D, Q, s)`` combinations, selecting the order that minimises
@@ -421,6 +422,19 @@ class AutoSARIMA(_BaseAutoModel):
     dates : datetime-like sequence, optional
         Strict sample dates. A Series DatetimeIndex is inferred automatically.
         Array inputs may provide dates explicitly.
+    exog : array-like or pandas.DataFrame, optional
+        Ordinary exogenous variables shared by every candidate. A dated
+        DataFrame may include rows after the estimation sample for default
+        future forecasting.
+    exog_names : sequence[str], optional
+        Required column names for array exog. DataFrame columns are
+        authoritative and must not be overridden.
+    events : sequence[EventSpec], optional
+        Event designs shared by every candidate.
+    enforce_stationarity : bool
+        Whether every candidate enforces AR stationarity. Default ``True``.
+    enforce_invertibility : bool
+        Whether every candidate enforces MA invertibility. Default ``True``.
     """
 
     def __init__(
@@ -436,26 +450,43 @@ class AutoSARIMA(_BaseAutoModel):
         trend="c",
         criterion="aic",
         method="grid",
+        *,
         dates=None,
+        exog=None,
+        exog_names=None,
+        events=None,
+        enforce_stationarity=True,
+        enforce_invertibility=True,
         missing="raise",
     ):
-        raw_data = np.asarray(data, dtype=float).ravel()
-        finite_rows = np.isfinite(raw_data)
-        model_dates = _normalise_model_dates(data, dates, len(raw_data))
-        dropped_positions = _resolve_missing_rows(
-            finite_rows,
-            missing,
-        )
-        data = raw_data[finite_rows] if missing == "drop" else raw_data.copy()
-        self.missing = missing
-        if missing == "drop" and model_dates is not None:
-            model_dates = model_dates[finite_rows].copy()
-        self.dropped_positions = dropped_positions
+        from Ts.TsModels._sarimax import SARIMAX
 
-        self.data = self._validate_params(data, criterion, method)
+        prototype = SARIMAX(
+            data,
+            order=(0, 0, 0),
+            seasonal_order=(0, 0, 0, 0),
+            trend=trend,
+            enforce_stationarity=enforce_stationarity,
+            enforce_invertibility=enforce_invertibility,
+            dates=dates,
+            exog=exog,
+            exog_names=exog_names,
+            events=events,
+            missing=missing,
+        )
+
+        self.data = self._validate_params(prototype.data, criterion, method)
+        self.missing = missing
+        self.dropped_positions = prototype.dropped_positions
         self.criterion = criterion
-        self.dates = model_dates
         self.method = method
+        self.dates = None if prototype.dates is None else prototype.dates.copy()
+        self.exog = None if prototype.exog is None else prototype.exog.copy()
+        self.exog_names = prototype.exog_names
+        self.future_exog = (
+            None if prototype.future_exog is None else prototype.future_exog.copy()
+        )
+        self.events = prototype.events
 
         self.p_range = self._validate_range(p, "p")
         self.d_range = self._validate_range(d, "d")
@@ -465,6 +496,8 @@ class AutoSARIMA(_BaseAutoModel):
         self.Q_range = self._validate_range(Q, "Q")
         self.s = s
         self.trend = trend
+        self.enforce_stationarity = enforce_stationarity
+        self.enforce_invertibility = enforce_invertibility
 
     @staticmethod
     def _validate_range(rng, name):
@@ -478,6 +511,51 @@ class AutoSARIMA(_BaseAutoModel):
             raise ValueError(f"{name}: min ({lo}) must be <= max ({hi})")
         return (lo, hi)
 
+    def _candidate_exog(self):
+        """Return copied historical and default-future exog for one candidate."""
+        if self.exog is None:
+            return None
+        if self.dates is None:
+            return self.exog.copy()
+
+        historical = pd.DataFrame(
+            self.exog,
+            index=self.dates.copy(),
+            columns=self.exog_names,
+        )
+        if self.future_exog is None:
+            return historical
+        return pd.concat([historical, self.future_exog.copy()])
+
+    def _clone_for_evaluation(self, data, exog=None, *, dates=None):
+        """Rebuild automatic-selection state for one isolated training window."""
+        return type(self)(
+            data,
+            p=self.p_range,
+            d=self.d_range,
+            q=self.q_range,
+            P=self.P_range,
+            D=self.D_range,
+            Q=self.Q_range,
+            s=self.s,
+            trend=self.trend,
+            criterion=self.criterion,
+            method=self.method,
+            dates=dates,
+            exog=exog,
+            exog_names=self.exog_names if exog is not None else None,
+            events=self.events,
+            enforce_stationarity=self.enforce_stationarity,
+            enforce_invertibility=self.enforce_invertibility,
+            missing="raise",
+        )
+
+    def _evaluation_predict_kwargs(self, start, stop):
+        """Return aligned future exogenous values and dates for evaluation."""
+        from Ts.TsModels._sarimax import SARIMAX
+
+        return SARIMAX._evaluation_predict_kwargs(self, start, stop)
+
     def fit(self):
         """Run grid search and return the best model.
 
@@ -487,7 +565,7 @@ class AutoSARIMA(_BaseAutoModel):
         """
         import itertools
 
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
         p_lo, p_hi = self.p_range
         d_lo, d_hi = self.d_range
@@ -514,15 +592,27 @@ class AutoSARIMA(_BaseAutoModel):
 
         # Each order is a (nonseasonal, seasonal) pair
         orders = itertools.product(nonseasonal, seasonal)
+        candidate_exog = self._candidate_exog()
 
         def build_model(order_tuple):
             ns_order, s_order = order_tuple
-            return SARIMA(
+            return SARIMAX(
                 self.data,
                 order=ns_order,
                 seasonal_order=s_order,
                 trend=self.trend,
+                enforce_stationarity=self.enforce_stationarity,
+                enforce_invertibility=self.enforce_invertibility,
                 dates=self.dates,
+                exog=candidate_exog,
+                exog_names=(
+                    self.exog_names
+                    if candidate_exog is not None
+                    and not isinstance(candidate_exog, pd.DataFrame)
+                    else None
+                ),
+                events=self.events,
+                missing="raise",
             )
 
         (

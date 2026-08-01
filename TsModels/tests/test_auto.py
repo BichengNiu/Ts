@@ -1,10 +1,11 @@
-"""Tests for Ts.TsModels._auto — AutoSARIMA, AutoGARCH, AutoModelResult."""
+"""Tests for Ts.TsModels._auto — AutoSARIMAX, AutoGARCH, AutoModelResult."""
 
 import matplotlib
 
 matplotlib.use("Agg")
 
 import numpy as np
+import pandas as pd
 import pytest
 from Ts.TsSims import simulate_sarima, simulate_garch
 
@@ -143,7 +144,7 @@ class TestAutoModelResult:
         rng = np.random.default_rng(42)
         resid = rng.normal(0, 1, size=n)
         return BaseModelResult(
-            model_type="SARIMA",
+            model_type="SARIMAX",
             params={"ar.L1": 0.7, "sigma2": 1.0},
             std_errors={"ar.L1": 0.1, "sigma2": 0.2},
             p_values={"ar.L1": 0.001, "sigma2": 0.01},
@@ -230,12 +231,12 @@ class TestAutoModelResult:
 
 
 # ============================================================
-# Test Group 3: AutoSARIMA
+# Test Group 3: AutoSARIMAX
 # ============================================================
 
 
-class TestAutoSARIMA:
-    """Tests for AutoSARIMA construction and fit()."""
+class TestAutoSARIMAX:
+    """Tests for AutoSARIMAX construction and fit()."""
 
     @pytest.fixture
     def ar1_data(self):
@@ -251,27 +252,27 @@ class TestAutoSARIMA:
 
     def test_fit_returns_auto_model_result(self, ar1_data):
         """fit() returns AutoModelResult."""
-        from Ts.TsModels._auto import AutoSARIMA, AutoModelResult
+        from Ts.TsModels._auto import AutoSARIMAX, AutoModelResult
 
-        auto = AutoSARIMA(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
+        auto = AutoSARIMAX(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
         result = auto.fit()
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
 
     def test_result_stored(self, ar1_data):
         """result_ is set after fit()."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        auto = AutoSARIMA(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
+        auto = AutoSARIMAX(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
         assert auto.result_ is None
         auto.fit()
         assert auto.result_ is not None
 
     def test_best_has_minimum_criterion_on_ar1(self, ar1_data):
         """Best model's criterion is minimum among candidates (AR1 data)."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        auto = AutoSARIMA(ar1_data, p=(0, 2), d=(0, 0), q=(0, 2), criterion="aic")
+        auto = AutoSARIMAX(ar1_data, p=(0, 2), d=(0, 0), q=(0, 2), criterion="aic")
         result = auto.fit()
         best_val = result.aic
         for val in result.criterion_values:
@@ -279,9 +280,9 @@ class TestAutoSARIMA:
 
     def test_best_has_minimum_criterion_on_ma1(self, ma1_data):
         """Best model's criterion is minimum among candidates (MA1 data)."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        auto = AutoSARIMA(ma1_data, p=(0, 2), d=(0, 0), q=(0, 2), criterion="bic")
+        auto = AutoSARIMAX(ma1_data, p=(0, 2), d=(0, 0), q=(0, 2), criterion="bic")
         result = auto.fit()
         best_val = result.bic
         for val in result.criterion_values:
@@ -289,57 +290,57 @@ class TestAutoSARIMA:
 
     def test_small_range_single_combo(self, ar1_data):
         """If range covers only one order, that model is selected."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        auto = AutoSARIMA(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
+        auto = AutoSARIMAX(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
         result = auto.fit()
         assert result.best_order == (1, 0, 0)
         assert len(result.candidate_results) == 1
 
     def test_invalid_criterion_raises(self, ar1_data):
         """Unknown criterion raises ValueError in __init__."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
         with pytest.raises(ValueError):
-            AutoSARIMA(ar1_data, criterion="xyz")
+            AutoSARIMAX(ar1_data, criterion="xyz")
 
     def test_invalid_method_raises(self, ar1_data):
         """Unknown method raises ValueError in __init__."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
         with pytest.raises(ValueError):
-            AutoSARIMA(ar1_data, method="stepwise")
+            AutoSARIMAX(ar1_data, method="stepwise")
 
     def test_range_order_validation(self, ar1_data):
         """p/d/q must be (min, max) tuples with min <= max."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
         with pytest.raises(ValueError):
-            AutoSARIMA(ar1_data, p=(3, 1))
+            AutoSARIMAX(ar1_data, p=(3, 1))
 
     def test_summary_has_auto_label(self, ar1_data):
-        """summary() contains Auto SARIMA header."""
-        from Ts.TsModels._auto import AutoSARIMA
+        """summary() contains Auto SARIMAX header."""
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        auto = AutoSARIMA(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
+        auto = AutoSARIMAX(ar1_data, p=(1, 1), d=(0, 0), q=(0, 0))
         result = auto.fit()
         text = result.summary()
-        assert "Auto SARIMA" in text
+        assert "Auto SARIMAX" in text
 
     def test_candidate_orders_tracked(self, ar1_data):
         """candidate_orders list has correct length."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        auto = AutoSARIMA(ar1_data, p=(1, 2), d=(0, 0), q=(0, 1), criterion="aic")
+        auto = AutoSARIMAX(ar1_data, p=(1, 2), d=(0, 0), q=(0, 1), criterion="aic")
         result = auto.fit()
         assert len(result.candidate_orders) == 4  # 2*1*2 = 4
         assert result.candidate_orders[0] == (1, 0, 0)
 
     def test_seasonal_orders_are_retained(self, ar1_data):
         """Seasonal grid metadata remains available after model selection."""
-        from Ts.TsModels._auto import AutoSARIMA
+        from Ts.TsModels._auto import AutoSARIMAX
 
-        result = AutoSARIMA(
+        result = AutoSARIMAX(
             ar1_data,
             p=(0, 0),
             d=(0, 0),
@@ -668,3 +669,119 @@ class TestAutoGARCH_Validation:
         with pytest.raises(ValueError):
             auto = AutoGARCH(simple_data, p=(1, 1), q=(1, 1), vol="INVALID")
             auto.fit()
+
+
+class TestAutoSARIMAXExogenous:
+    """AutoSARIMAX preserves the manual estimator's exogenous contracts."""
+
+    @staticmethod
+    def _dated_data(*, include_future=True):
+        rng = np.random.default_rng(2026)
+        dates = pd.date_range("2020-01-01", periods=48, freq="MS")
+        all_dates = pd.date_range(
+            dates[0],
+            periods=51 if include_future else 48,
+            freq="MS",
+        )
+        exog = pd.DataFrame(
+            {"driver": np.linspace(-1.0, 1.5, len(all_dates))},
+            index=all_dates,
+        )
+        data = pd.Series(
+            1.75 * exog.loc[dates, "driver"].to_numpy()
+            + rng.normal(scale=0.05, size=len(dates)),
+            index=dates,
+        )
+        return data, exog
+
+    def test_fit_preserves_exog_and_default_future_path(self):
+        """Every candidate receives named exog and the selected result forecasts it."""
+        from Ts.TsModels import AutoSARIMAX
+
+        data, exog = self._dated_data()
+        model = AutoSARIMAX(
+            data,
+            exog=exog,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+            trend="n",
+        )
+        result = model.fit()
+
+        assert model.exog_names == ("driver",)
+        assert model.future_exog.index.equals(exog.index[-3:])
+        assert result.model_type == "SARIMAX"
+        assert result.best_result.exog_names == ("driver",)
+        assert result.best_result.params["driver"] == pytest.approx(1.75, abs=0.05)
+        forecast = result.predict(start=len(data), end=len(data) + 2)
+        assert forecast.mean.shape == (3,)
+        assert np.isfinite(forecast.mean).all()
+
+    def test_named_future_scenarios_delegate_to_best_result(self):
+        """AutoModelResult retains SARIMAX named-scenario prediction."""
+        from Ts.TsModels import AutoSARIMAX, ScenarioForecastResult
+
+        data, exog = self._dated_data(include_future=False)
+        fitted = AutoSARIMAX(
+            data,
+            exog=exog,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+            trend="n",
+        ).fit()
+        future_dates = pd.date_range(data.index[-1], periods=4, freq="MS")[1:]
+        baseline = pd.DataFrame({"driver": [0.0, 0.2, 0.4]}, index=future_dates)
+        stress = pd.DataFrame({"driver": [1.0, 1.2, 1.4]}, index=future_dates)
+
+        scenarios = fitted.predict(
+            start=len(data),
+            end=len(data) + 2,
+            future_exog={"baseline": baseline, "stress": stress},
+        )
+
+        assert isinstance(scenarios, ScenarioForecastResult)
+        assert tuple(scenarios.scenarios) == ("baseline", "stress")
+        assert np.all(scenarios["stress"].mean > scenarios["baseline"].mean)
+
+    def test_missing_drop_aligns_endog_exog_and_dates_once(self):
+        """Automatic selection applies the joint missing-row policy before search."""
+        from Ts.TsModels import AutoSARIMAX
+
+        data, exog = self._dated_data(include_future=False)
+        data.iloc[4] = np.nan
+        exog.iloc[9, 0] = np.inf
+
+        model = AutoSARIMAX(
+            data,
+            exog=exog,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            missing="drop",
+        )
+
+        assert model.dropped_positions == (4, 9)
+        assert len(model.data) == len(model.exog) == len(model.dates) == 46
+        assert np.isfinite(model.data).all()
+        assert np.isfinite(model.exog).all()
+
+    def test_invalid_exog_fails_before_grid_search(self):
+        """Shared input validation reports malformed exog at construction time."""
+        from Ts.TsModels import AutoSARIMAX
+
+        with pytest.raises(ValueError, match="exog_names"):
+            AutoSARIMAX(
+                np.arange(20.0),
+                exog=np.ones((20, 1)),
+                p=(0, 0),
+                d=(0, 0),
+                q=(0, 0),
+            )

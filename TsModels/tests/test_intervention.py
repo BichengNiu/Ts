@@ -322,7 +322,7 @@ def test_build_event_matrix_requires_target_subset_and_matching_timezone():
 
 
 def _fitted_policy_model(seed=31):
-    from Ts.TsModels import SARIMA
+    from Ts.TsModels import SARIMAX
     from Ts.TsModels._intervention import EventSpec
 
     rng = np.random.default_rng(seed)
@@ -333,7 +333,7 @@ def _fitted_policy_model(seed=31):
     other = np.zeros(120)
     other[[45, 95]] = 1
     y = 1.8 * step - 0.7 * other + rng.normal(scale=0.05, size=120)
-    return SARIMA(
+    return SARIMAX(
         pd.Series(y, index=dates),
         events=[
             EventSpec(
@@ -447,7 +447,7 @@ def test_policy_effect_result_rejects_misaligned_paths():
 
 
 def _fitted_window_model(seed=47):
-    from Ts.TsModels import SARIMA
+    from Ts.TsModels import SARIMAX
     from Ts.TsModels._intervention import EventSpec, build_event_matrix
 
     rng = np.random.default_rng(seed)
@@ -464,7 +464,7 @@ def _fitted_window_model(seed=47):
     coefficients = np.array([-0.1, 0.05, 1.2, 0.7, 0.3])
     y = design.to_numpy() @ coefficients
     y += rng.normal(scale=0.05, size=len(dates))
-    return SARIMA(
+    return SARIMAX(
         pd.Series(y, index=dates),
         events=[event],
         order=(0, 0, 0),

@@ -23,7 +23,7 @@ class TestBaseModelResult:
         resid = data - fitted
 
         return BaseModelResult(
-            model_type="SARIMA",
+            model_type="SARIMAX",
             params={"ar.L1": 0.5, "sigma2": 1.0},
             std_errors={"ar.L1": 0.1, "sigma2": 0.05},
             p_values={"ar.L1": 0.001, "sigma2": 0.0},
@@ -41,7 +41,7 @@ class TestBaseModelResult:
 
         covers: code/python/Ts/TsModels/_base.py::BaseModelResult [class]
         """
-        assert result.model_type == "SARIMA"
+        assert result.model_type == "SARIMAX"
         assert result.nobs == 100
         assert len(result.residuals) == 100
         assert result.aic == 280.5
@@ -57,7 +57,7 @@ class TestBaseModelResult:
         """summary() returns a non-empty string with model info."""
         text = result.summary()
         assert isinstance(text, str)
-        assert "SARIMA" in text
+        assert "SARIMAX" in text
         assert "280.50" in text
 
     def test_plot_fit_returns_fig_ax(self, result):

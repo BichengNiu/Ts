@@ -1,10 +1,10 @@
-"""Tests for dated SARIMA/ARIMAX input contracts."""
+"""Tests for dated SARIMAX/ARIMAX input contracts."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from Ts.TsModels import SARIMA
+from Ts.TsModels import SARIMAX
 
 
 def test_new_arimax_types_are_public():
@@ -30,7 +30,7 @@ def test_dataframe_exog_splits_history_and_default_future():
     y = pd.Series(np.arange(12.0), index=y_dates)
     exog = pd.DataFrame({"price": np.arange(15.0)}, index=all_dates)
 
-    model = SARIMA(y, exog=exog, order=(0, 0, 0), trend="n")
+    model = SARIMAX(y, exog=exog, order=(0, 0, 0), trend="n")
 
     assert model.exog.shape == (12, 1)
     assert model.exog_names == ("price",)
@@ -41,9 +41,9 @@ def test_dataframe_exog_splits_history_and_default_future():
 
 def test_ndarray_exog_requires_names_and_equal_length():
     with pytest.raises(ValueError, match="exog_names"):
-        SARIMA(np.arange(12.0), exog=np.ones((12, 1)))
+        SARIMAX(np.arange(12.0), exog=np.ones((12, 1)))
     with pytest.raises(ValueError, match="12 observations"):
-        SARIMA(
+        SARIMAX(
             np.arange(12.0),
             exog=np.ones((11, 1)),
             exog_names=["x"],
@@ -52,7 +52,7 @@ def test_ndarray_exog_requires_names_and_equal_length():
 
 def test_ndarray_exog_must_be_two_dimensional():
     with pytest.raises(ValueError, match="two-dimensional"):
-        SARIMA(
+        SARIMAX(
             np.arange(12.0),
             exog=np.ones(12),
             exog_names=["x"],
@@ -66,7 +66,7 @@ def test_missing_drop_removes_y_exog_and_dates_jointly():
     y.iloc[2] = np.nan
     x.iloc[4, 0] = np.nan
 
-    model = SARIMA(y, exog=x, missing="drop")
+    model = SARIMAX(y, exog=x, missing="drop")
 
     assert len(model.data) == 10
     assert dates[2] not in model.dates
@@ -82,23 +82,23 @@ def test_missing_raise_is_default_and_rejects_infinite_values():
     y.iloc[1] = np.nan
 
     with pytest.raises(ValueError, match="non-finite"):
-        SARIMA(y, exog=x)
+        SARIMAX(y, exog=x)
 
     y.iloc[1] = 1.0
     x.iloc[3, 0] = np.inf
     with pytest.raises(ValueError, match="non-finite"):
-        SARIMA(y, exog=x)
+        SARIMAX(y, exog=x)
 
 
 def test_unknown_missing_policy_fails():
     with pytest.raises(ValueError, match="missing"):
-        SARIMA(np.arange(12.0), missing="fill")
+        SARIMAX(np.arange(12.0), missing="fill")
 
 
 def test_ndarray_data_accepts_explicit_dates():
     dates = pd.date_range("2025-01-01", periods=12, freq="MS")
 
-    model = SARIMA(np.arange(12.0), dates=dates)
+    model = SARIMAX(np.arange(12.0), dates=dates)
 
     assert model.dates.equals(dates)
 
@@ -108,7 +108,7 @@ def test_series_rejects_conflicting_dates_argument():
     y = pd.Series(np.arange(12.0), index=dates)
 
     with pytest.raises(ValueError, match=r"dates.*Series"):
-        SARIMA(y, dates=dates)
+        SARIMAX(y, dates=dates)
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ def test_series_rejects_conflicting_dates_argument():
 )
 def test_dates_must_be_unique_and_increasing(dates):
     with pytest.raises(ValueError, match=r"unique|increasing"):
-        SARIMA(np.arange(12.0), dates=dates)
+        SARIMAX(np.arange(12.0), dates=dates)
 
 
 def test_dataframe_exog_must_cover_every_historical_date():
@@ -129,7 +129,7 @@ def test_dataframe_exog_must_cover_every_historical_date():
     x = pd.DataFrame({"x": np.arange(11.0)}, index=dates.delete(5))
 
     with pytest.raises(ValueError, match="2025-06-01"):
-        SARIMA(y, exog=x)
+        SARIMAX(y, exog=x)
 
 
 def test_dataframe_rejects_extra_historical_rows():
@@ -139,7 +139,7 @@ def test_dataframe_rejects_extra_historical_rows():
     x = pd.DataFrame({"x": np.arange(13.0)}, index=extra_dates)
 
     with pytest.raises(ValueError, match="extra historical"):
-        SARIMA(y, exog=x)
+        SARIMAX(y, exog=x)
 
 
 def test_dataframe_columns_are_authoritative():
@@ -148,26 +148,26 @@ def test_dataframe_columns_are_authoritative():
     x = pd.DataFrame({"x": np.arange(12.0)}, index=dates)
 
     with pytest.raises(ValueError, match=r"exog_names.*DataFrame"):
-        SARIMA(y, exog=x, exog_names=["renamed"])
+        SARIMAX(y, exog=x, exog_names=["renamed"])
 
 
 def test_exog_names_must_be_unique_nonempty_and_match_columns():
     y = np.arange(12.0)
 
     with pytest.raises(ValueError, match="one name per"):
-        SARIMA(y, exog=np.ones((12, 2)), exog_names=["x"])
+        SARIMAX(y, exog=np.ones((12, 2)), exog_names=["x"])
     with pytest.raises(ValueError, match="unique"):
-        SARIMA(y, exog=np.ones((12, 2)), exog_names=["x", "x"])
+        SARIMAX(y, exog=np.ones((12, 2)), exog_names=["x", "x"])
     with pytest.raises(ValueError, match="non-empty"):
-        SARIMA(y, exog=np.ones((12, 1)), exog_names=[""])
+        SARIMAX(y, exog=np.ones((12, 1)), exog_names=[""])
 
 
 def test_inputs_are_copied_and_plain_sarima_still_works():
     y = np.arange(12.0)
     x = np.arange(12.0).reshape(-1, 1)
 
-    model = SARIMA(y, exog=x, exog_names=["x"])
-    plain = SARIMA(y)
+    model = SARIMAX(y, exog=x, exog_names=["x"])
+    plain = SARIMAX(y)
     expected_x = x.copy()
     y[:] = -1
     x[:] = -1
@@ -225,7 +225,7 @@ def _arimax_fixture(seed=42, n=300):
 def test_arimax_recovers_exogenous_coefficient():
     y, x = _arimax_fixture()
 
-    result = SARIMA(
+    result = SARIMAX(
         y,
         exog=x,
         order=(1, 0, 0),
@@ -249,7 +249,7 @@ def test_pulse_event_coefficient_is_estimated_by_name():
         index=dates,
     )
 
-    result = SARIMA(
+    result = SARIMAX(
         y,
         events=[
             EventSpec(
@@ -281,7 +281,7 @@ def test_cumulative_step_coefficient_is_estimated():
         index=dates,
     )
 
-    result = SARIMA(
+    result = SARIMAX(
         y,
         events=[
             EventSpec(
@@ -303,7 +303,7 @@ def test_event_window_omits_reference_column():
 
     dates = pd.date_range("2000-01-01", periods=80, freq="MS")
     y = pd.Series(np.random.default_rng(5).normal(size=80), index=dates)
-    result = SARIMA(
+    result = SARIMAX(
         y,
         events=[
             EventSpec(
@@ -332,13 +332,13 @@ def test_events_require_dates_and_event_spec_instances():
     from Ts.TsModels._intervention import EventSpec
 
     with pytest.raises(ValueError, match="dated data"):
-        SARIMA(
+        SARIMAX(
             np.arange(12.0),
             events=[EventSpec("policy", ["2025-01-01"], "pulse")],
         )
     dates = pd.date_range("2025-01-01", periods=12, freq="MS")
     with pytest.raises(TypeError, match="EventSpec"):
-        SARIMA(
+        SARIMAX(
             pd.Series(np.arange(12.0), index=dates),
             events=[{"name": "policy"}],
         )
@@ -351,21 +351,21 @@ def test_design_validation_rejects_unidentified_or_collinear_columns():
     y = pd.Series(np.arange(30.0), index=dates)
 
     with pytest.raises(ValueError, match=r"all-zero.*event__future"):
-        SARIMA(
+        SARIMAX(
             y,
             events=[EventSpec("future", ["2030-01-01"], "pulse")],
         )
 
     x = np.arange(30.0)
     with pytest.raises(ValueError, match="rank deficient"):
-        SARIMA(
+        SARIMAX(
             y,
             exog=np.column_stack([x, 2 * x]),
             exog_names=["x", "twice_x"],
         )
 
     with pytest.raises(ValueError, match=r"constant.*trend"):
-        SARIMA(
+        SARIMAX(
             y,
             exog=np.ones((30, 1)),
             exog_names=["constant"],
@@ -375,7 +375,7 @@ def test_design_validation_rejects_unidentified_or_collinear_columns():
 
 def test_ordinary_exog_cannot_use_event_namespace():
     with pytest.raises(ValueError, match="event__"):
-        SARIMA(
+        SARIMAX(
             np.arange(12.0),
             exog=np.ones((12, 1)),
             exog_names=["event__policy"],
@@ -397,7 +397,7 @@ def _dated_model_with_future_exog(include_future=True):
         {"x": x if include_future else x[:36]},
         index=exog_dates,
     )
-    return SARIMA(
+    return SARIMAX(
         y,
         exog=exog,
         order=(0, 0, 0),
@@ -420,7 +420,7 @@ def test_default_future_exog_returns_one_predict_result():
 
 
 def test_mapping_returns_default_and_named_scenarios():
-    from Ts.TsModels._sarima import ScenarioForecastResult
+    from Ts.TsModels._sarimax import ScenarioForecastResult
 
     model = _dated_model_with_future_exog()
     future_dates = model.future_exog.index
@@ -443,7 +443,7 @@ def test_mapping_returns_default_and_named_scenarios():
 
 
 def test_custom_only_mapping_has_no_default_scenario():
-    from Ts.TsModels._sarima import ScenarioForecastResult
+    from Ts.TsModels._sarimax import ScenarioForecastResult
 
     model = _dated_model_with_future_exog(include_future=False)
     dates = pd.date_range("2023-01-01", periods=3, freq="MS")
@@ -582,7 +582,7 @@ def test_scenario_result_validates_access_and_plots():
     import matplotlib.pyplot as plt
 
     from Ts.TsModels._base import PredictResult
-    from Ts.TsModels._sarima import ScenarioForecastResult
+    from Ts.TsModels._sarimax import ScenarioForecastResult
 
     prediction = PredictResult(
         mean=np.array([1.0, 2.0]),
@@ -631,7 +631,7 @@ def test_predict_accepts_date_bounds_across_sample_boundary():
 
 
 def test_multi_scenario_mixed_prediction_keeps_all_dates():
-    from Ts.TsModels._sarima import ScenarioForecastResult
+    from Ts.TsModels._sarimax import ScenarioForecastResult
 
     model = _dated_model_with_future_exog()
     future_dates = model.future_exog.index
@@ -660,7 +660,7 @@ def test_future_event_is_generated_without_future_exog_column():
         3.0 * historical_indicator + rng.normal(scale=0.03, size=36),
         index=dates,
     )
-    fitted = SARIMA(
+    fitted = SARIMAX(
         y,
         events=[
             EventSpec(
@@ -697,7 +697,7 @@ def test_irregular_dates_require_explicit_future_dates():
         pd.date_range("2020-01-01", periods=20, freq="D").delete(8)
     )
     y = pd.Series(np.arange(19.0), index=dates)
-    fitted = SARIMA(y, order=(0, 0, 0), trend="c").fit()
+    fitted = SARIMAX(y, order=(0, 0, 0), trend="c").fit()
 
     with pytest.raises(ValueError, match="future_dates"):
         fitted.predict(start=fitted.nobs, end=fitted.nobs)

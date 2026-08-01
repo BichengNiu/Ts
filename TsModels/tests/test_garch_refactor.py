@@ -366,9 +366,9 @@ class TestImportPaths:
         assert compare_models is not None
 
     def test_import_sarima_from_tsmodels(self):
-        from Ts.TsModels import SARIMA
+        from Ts.TsModels import SARIMAX
 
-        assert SARIMA is not None
+        assert SARIMAX is not None
 
     def test_import_simulate_garch_from_tssims(self):
         from Ts.TsSims import simulate_garch

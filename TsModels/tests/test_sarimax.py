@@ -1,4 +1,4 @@
-"""Tests for Ts.TsModels._sarima — SARIMA and SARIMAResult."""
+"""Tests for Ts.TsModels._sarimax — SARIMAX and SARIMAXResult."""
 
 import matplotlib
 
@@ -25,45 +25,45 @@ def ma1_data():
     return r.data
 
 
-class TestSARIMA:
-    """Test SARIMA construction and fit()."""
+class TestSARIMAX:
+    """Test SARIMAX construction and fit()."""
 
     def test_init_stores_data_and_order(self, ar1_data):
-        """SARIMA stores data and order parameters.
+        """SARIMAX stores data and order parameters.
 
-        covers: code/python/Ts/TsModels/_sarima.py [module]
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA [class]
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA.__init__ [function]
+        covers: code/python/Ts/TsModels/_sarimax.py [module]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX [class]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX.__init__ [function]
         """
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        model = SARIMA(ar1_data, order=(1, 0, 0))
+        model = SARIMAX(ar1_data, order=(1, 0, 0))
         assert model.order == (1, 0, 0)
         assert model.result_ is None
 
     def test_fit_returns_sarima_result(self, ar1_data):
-        """fit() returns SARIMAResult with expected fields.
+        """fit() returns SARIMAXResult with expected fields.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA.fit [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX.fit [function]
         """
-        from Ts.TsModels._sarima import SARIMA, SARIMAResult
+        from Ts.TsModels._sarimax import SARIMAX, SARIMAXResult
 
-        model = SARIMA(ar1_data, order=(1, 0, 0))
+        model = SARIMAX(ar1_data, order=(1, 0, 0))
         result = model.fit()
 
-        assert isinstance(result, SARIMAResult)
+        assert isinstance(result, SARIMAXResult)
         assert model.result_ is result
-        assert result.model_type == "SARIMA"
+        assert result.model_type == "SARIMAX"
         assert result.nobs == 200
 
     def test_fit_recovers_ar_coefficient(self, ar1_data):
         """AR(1) fit recovers coefficient close to true value 0.7.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA.fit [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX.fit [function]
         """
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        model = SARIMA(ar1_data, order=(1, 0, 0))
+        model = SARIMAX(ar1_data, order=(1, 0, 0))
         result = model.fit()
 
         ar_estimate = result.params.get("ar.L1")
@@ -73,54 +73,54 @@ class TestSARIMA:
     def test_ma1_fit_basic(self, ma1_data):
         """MA(1) model fits without error.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA.fit [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX.fit [function]
         """
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        model = SARIMA(ma1_data, order=(0, 0, 1))
+        model = SARIMAX(ma1_data, order=(0, 0, 1))
         result = model.fit()
 
-        assert result.model_type == "SARIMA"
+        assert result.model_type == "SARIMAX"
         assert result.residuals.shape[0] == 200
 
     def test_invalid_order_raises(self, ar1_data):
         """Invalid order tuple raises ValueError.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA.__init__ [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX.__init__ [function]
         """
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
         with pytest.raises(ValueError):
-            SARIMA(ar1_data, order=(1,))
+            SARIMAX(ar1_data, order=(1,))
 
     def test_data_too_short_raises(self, ar1_data):
         """Too few observations raises ValueError.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMA.__init__ [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAX.__init__ [function]
         """
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
         short_data = np.array([1.0, 2.0])
         with pytest.raises(ValueError):
-            SARIMA(short_data, order=(1, 0, 0))
+            SARIMAX(short_data, order=(1, 0, 0))
 
 
-class TestSARIMAResult:
-    """Test SARIMAResult methods."""
+class TestSARIMAXResult:
+    """Test SARIMAXResult methods."""
 
     @pytest.fixture
     def fitted_result(self, ar1_data):
         """Fit an AR(1) and return the result."""
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        model = SARIMA(ar1_data, order=(1, 0, 0))
+        model = SARIMAX(ar1_data, order=(1, 0, 0))
         return model.fit()
 
     def test_summary_has_key_fields(self, fitted_result):
         """summary() contains AIC, BIC, and parameter estimates.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult [class]
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.summary [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult [class]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.summary [function]
         """
         text = fitted_result.summary()
         assert "AIC" in text
@@ -130,7 +130,7 @@ class TestSARIMAResult:
     def test_predict_in_sample(self, fitted_result):
         """predict() within sample range returns PredictResult with correct length.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.predict [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.predict [function]
         """
         from Ts.TsModels._base import PredictResult
 
@@ -141,7 +141,7 @@ class TestSARIMAResult:
     def test_forecast_returns_mean_and_intervals(self, fitted_result):
         """predict() beyond sample returns PredictResult with lower/upper CI.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.predict [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.predict [function]
         """
         pr = fitted_result.predict(start=fitted_result.nobs, end=fitted_result.nobs + 9)
         assert len(pr.mean) == 10
@@ -190,34 +190,34 @@ def arma11_data():
     return r.data
 
 
-class TestSARIMARoots:
-    """Test SARIMAResult arroots, maroots, and plot_roots."""
+class TestSARIMAXRoots:
+    """Test SARIMAXResult arroots, maroots, and plot_roots."""
 
     @pytest.fixture
     def fitted_ar1(self, ar1_data):
         """Fit AR(1) model."""
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        return SARIMA(ar1_data, order=(1, 0, 0)).fit()
+        return SARIMAX(ar1_data, order=(1, 0, 0)).fit()
 
     @pytest.fixture
     def fitted_ma1(self, ma1_data):
         """Fit MA(1) model."""
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        return SARIMA(ma1_data, order=(0, 0, 1)).fit()
+        return SARIMAX(ma1_data, order=(0, 0, 1)).fit()
 
     @pytest.fixture
     def fitted_arma11(self, arma11_data):
         """Fit ARMA(1,1) model."""
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        return SARIMA(arma11_data, order=(1, 0, 1)).fit()
+        return SARIMAX(arma11_data, order=(1, 0, 1)).fit()
 
     def test_arroots_property_ar1(self, fitted_ar1):
         """AR(1) has one AR root, non-empty ndarray.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.arroots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.arroots [function]
         """
         roots = fitted_ar1.arroots
         assert isinstance(roots, np.ndarray)
@@ -226,7 +226,7 @@ class TestSARIMARoots:
     def test_maroots_property_ma1(self, fitted_ma1):
         """MA(1) has one MA root, non-empty ndarray.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.maroots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.maroots [function]
         """
         roots = fitted_ma1.maroots
         assert isinstance(roots, np.ndarray)
@@ -235,22 +235,22 @@ class TestSARIMARoots:
     def test_arroots_empty_for_ma1(self, fitted_ma1):
         """MA(1) has zero AR roots.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.arroots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.arroots [function]
         """
         assert len(fitted_ma1.arroots) == 0
 
     def test_maroots_empty_for_ar1(self, fitted_ar1):
         """AR(1) has zero MA roots.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.maroots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.maroots [function]
         """
         assert len(fitted_ar1.maroots) == 0
 
     def test_arroots_maroots_arma11(self, fitted_arma11):
         """ARMA(1,1) has both AR and MA roots.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.arroots [function]
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.maroots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.arroots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.maroots [function]
         """
         assert len(fitted_arma11.arroots) == 1
         assert len(fitted_arma11.maroots) == 1
@@ -259,9 +259,9 @@ class TestSARIMARoots:
         self,
         arma11_data,
     ):
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        result = SARIMA(
+        result = SARIMAX(
             arma11_data,
             order=(1, 0, 1),
             enforce_stationarity=False,
@@ -279,7 +279,7 @@ class TestSARIMARoots:
     def test_plot_roots_returns_fig_ax(self, fitted_arma11):
         """plot_roots() returns (fig, ax) for ARMA(1,1).
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.plot_roots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.plot_roots [function]
         """
         from matplotlib.figure import Figure
         from matplotlib.axes import Axes
@@ -291,7 +291,7 @@ class TestSARIMARoots:
     def test_plot_roots_with_ar1_only(self, fitted_ar1):
         """plot_roots() works when only AR roots exist (no MA).
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.plot_roots [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.plot_roots [function]
         """
         from matplotlib.figure import Figure
         from matplotlib.axes import Axes
@@ -301,7 +301,7 @@ class TestSARIMARoots:
         assert isinstance(ax, Axes)
 
 
-class TestSARIMACyclePeriod:
+class TestSARIMAXCyclePeriod:
     """Test AR(2) and seasonal AR(2) damped-cycle diagnostics."""
 
     @staticmethod
@@ -313,7 +313,7 @@ class TestSARIMACyclePeriod:
         seasonal_order=(0, 0, 0, 0),
         stationary=True,
     ):
-        from Ts.TsModels._sarima import SARIMAResult
+        from Ts.TsModels._sarimax import SARIMAXResult
 
         seasonal_period = seasonal_order[3]
         polynomial_ar = np.array([1.0, -phi1, -phi2])
@@ -338,8 +338,8 @@ class TestSARIMACyclePeriod:
             polynomial_seasonal_ar=polynomial_seasonal_ar,
             arroots=arroots,
         )
-        return SARIMAResult(
-            model_type="SARIMA",
+        return SARIMAXResult(
+            model_type="SARIMAX",
             params=params,
             std_errors={},
             p_values={},
@@ -431,7 +431,7 @@ class TestSARIMACyclePeriod:
             result.cycle_period(seasonal=seasonal)
 
 
-class TestSARIMASparseLags:
+class TestSARIMAXSparseLags:
     """Sparse AR/MA lag specifications fix omitted coefficients at zero."""
 
     @pytest.fixture
@@ -444,9 +444,9 @@ class TestSARIMASparseLags:
             seed=2401,
             burn=200,
         ).data
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        return SARIMA(
+        return SARIMAX(
             data,
             order=([1, 3], 0, 0),
             trend="c",
@@ -462,9 +462,9 @@ class TestSARIMASparseLags:
             seed=2402,
             burn=200,
         ).data
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
-        return SARIMA(
+        return SARIMAX(
             data,
             order=(1, 0, [1, 3]),
             trend="n",
@@ -493,7 +493,7 @@ class TestSARIMASparseLags:
         sparse_ar_result,
     ):
         text = sparse_ar_result.summary()
-        assert "Order: SARIMA(3, 0, 0)" in text
+        assert "Order: SARIMAX(3, 0, 0)" in text
         assert "Active AR Lags     : 1, 3" in text
         assert "Fixed at Zero      : ar.L2" in text
         assert "AR Stationarity    : Passed" in text
@@ -520,10 +520,10 @@ class TestSARIMASparseLags:
         assert sparse_ar_result.long_run_equilibrium() == pytest.approx(expected)
 
     def test_sparse_lags_are_sorted_and_immutable(self, ar1_data):
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
         lags = [3, 1]
-        model = SARIMA(ar1_data, order=(lags, 0, 0))
+        model = SARIMAX(ar1_data, order=(lags, 0, 0))
         lags.append(2)
         assert model.order == ((1, 3), 0, 0)
 
@@ -544,21 +544,21 @@ class TestSARIMASparseLags:
         error,
         message,
     ):
-        from Ts.TsModels._sarima import SARIMA
+        from Ts.TsModels._sarimax import SARIMAX
 
         with pytest.raises(error, match=message):
-            SARIMA(ar1_data, order=order)
+            SARIMAX(ar1_data, order=order)
 
 
-class TestSARIMAPredict:
-    """Test unified SARIMAResult.predict() across observed and future ranges."""
+class TestSARIMAXPredict:
+    """Test unified SARIMAXResult.predict() across observed and future ranges."""
 
     @pytest.fixture
     def result(self, ar1_data):
-        """Fit AR(1) and return SARIMAResult for prediction tests."""
-        from Ts.TsModels._sarima import SARIMA
+        """Fit AR(1) and return SARIMAXResult for prediction tests."""
+        from Ts.TsModels._sarimax import SARIMAX
 
-        model = SARIMA(ar1_data, order=(1, 0, 0))
+        model = SARIMAX(ar1_data, order=(1, 0, 0))
         return model.fit()
 
     def test_predict_in_sample_full(self, result):
@@ -633,11 +633,11 @@ class TestSARIMAPredict:
             result.predict(**kwargs)
 
     def test_oos_uses_separate_evaluation_result(self, result):
-        """SARIMA holdout scoring is owned by TsMetrics."""
-        from Ts.TsModels import SARIMA
+        """SARIMAX holdout scoring is owned by TsMetrics."""
+        from Ts.TsModels import SARIMAX
 
         split = int(result.nobs * 0.7)
-        evaluation = SARIMA(
+        evaluation = SARIMAX(
             result.data,
             order=result._order,
         ).oos(
@@ -664,5 +664,5 @@ class TestSARIMAPredict:
     def test_cover_remaining(self, ar1_data):
         """Aggregate covers for items exercised indirectly.
 
-        covers: code/python/Ts/TsModels/_sarima.py::SARIMAResult.long_run_equilibrium [function]
+        covers: code/python/Ts/TsModels/_sarimax.py::SARIMAXResult.long_run_equilibrium [function]
         """

@@ -1,6 +1,6 @@
-"""SARIMA model estimation via statsmodels SARIMAX.
+"""SARIMAX model estimation via statsmodels SARIMAX.
 
-Provides :class:`SARIMA` and :class:`SARIMAResult`.
+Provides :class:`SARIMAX` and :class:`SARIMAXResult`.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 
 from Ts.TsUtils._validation import (
     _resolve_missing_rows,
@@ -32,7 +32,7 @@ from Ts.TsModels._intervention import (
 
 
 @dataclass(frozen=True)
-class _SARIMAInputs:
+class _SARIMAXInputs:
     endog: np.ndarray
     dates: pd.DatetimeIndex | None
     exog: np.ndarray | None
@@ -215,7 +215,7 @@ def _normalise_array_exog(exog, endog_length, exog_names):
     return values.copy(), names
 
 
-def _normalise_sarima_inputs(
+def _normalise_sarimax_inputs(
     data,
     *,
     dates=None,
@@ -260,7 +260,7 @@ def _normalise_sarima_inputs(
         if historical_exog is not None:
             historical_exog = historical_exog[finite]
 
-    return _SARIMAInputs(
+    return _SARIMAXInputs(
         endog=endog.copy(),
         dates=data_dates,
         exog=(
@@ -517,16 +517,16 @@ class ARCycleResult:
 
 
 @dataclass
-class SARIMAResult(BaseModelResult):
-    """Result container for SARIMA model estimation.
+class SARIMAXResult(BaseModelResult):
+    """Result container for SARIMAX model estimation.
 
-    Inherits all fields from :class:`BaseModelResult` and adds SARIMA-specific
+    Inherits all fields from :class:`BaseModelResult` and adds SARIMAX-specific
     prediction and forecasting methods.
 
     Parameters
     ----------
     _order : tuple or None
-        SARIMA order (p, d, q).
+        SARIMAX order (p, d, q).
     _seasonal_order : tuple or None
         Seasonal order (P, D, Q, s).
     _statsmodels_result : object
@@ -643,14 +643,14 @@ class SARIMAResult(BaseModelResult):
     def summary(self) -> str:
         """Return a formatted parameter summary string.
 
-        Overrides BaseModelResult to add SARIMA-specific details (order,
+        Overrides BaseModelResult to add SARIMAX-specific details (order,
         seasonal_order), sparse-lag constraints, and AR/MA root conditions.
         """
         base = super().summary()
         lines = base.split("\n")
         header_lines = [lines[0]]
         if self._order:
-            header_lines.append(f"Order: SARIMA{_display_order(self._order)}")
+            header_lines.append(f"Order: SARIMAX{_display_order(self._order)}")
         if self._seasonal_order and self._seasonal_order != (0, 0, 0, 0):
             header_lines.append(f"Seasonal Order: {self._seasonal_order}")
         if self.ar_lags:
@@ -988,7 +988,7 @@ class SARIMAResult(BaseModelResult):
         Complex conjugate roots require phi1 squared plus four times phi2 to
         be negative. When that condition and AR stationarity both hold, the
         period is 2*pi divided by the root angle. Seasonal results are scaled
-        by the SARIMA seasonal period so they remain in observation intervals.
+        by the SARIMAX seasonal period so they remain in observation intervals.
 
         Parameters
         ----------
@@ -1205,7 +1205,7 @@ class SARIMAResult(BaseModelResult):
             ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
 
         if title is None:
-            order_str = f"SARIMA{_display_order(self._order)}"
+            order_str = f"SARIMAX{_display_order(self._order)}"
             if self._seasonal_order and self._seasonal_order != (0, 0, 0, 0):
                 order_str += str(self._seasonal_order)
             title = f"{order_str}: Inverse AR and MA Roots"
@@ -1216,7 +1216,7 @@ class SARIMAResult(BaseModelResult):
 
     def long_run_equilibrium(self):
         """Return the unconditional mean (long-run equilibrium) of the
-        estimated SARIMA process.
+        estimated SARIMAX process.
 
         For a stationary ARMA/SARMA process with reduced AR polynomial
         :math:`A(B)` and constant :math:`c`:
@@ -1274,8 +1274,8 @@ class SARIMAResult(BaseModelResult):
         return intercept / denom
 
 
-class SARIMA(BaseModel):
-    """SARIMA model estimation via statsmodels SARIMAX.
+class SARIMAX(BaseModel):
+    """SARIMAX model estimation via statsmodels SARIMAX.
 
     Parameters
     ----------
@@ -1319,7 +1319,7 @@ class SARIMA(BaseModel):
         events=None,
         missing="raise",
     ):
-        inputs = _normalise_sarima_inputs(
+        inputs = _normalise_sarimax_inputs(
             data,
             dates=dates,
             exog=exog,
@@ -1404,11 +1404,11 @@ class SARIMA(BaseModel):
         return kwargs
 
     def fit(self):
-        """Estimate the SARIMA model via maximum likelihood.
+        """Estimate the SARIMAX model via maximum likelihood.
 
         Returns
         -------
-        SARIMAResult
+        SARIMAXResult
         """
         p, d, q = self.order
         P, D, Q, s = self.seasonal_order
@@ -1422,7 +1422,7 @@ class SARIMA(BaseModel):
         if model_exog is not None and model_dates is None:
             model_exog = model_exog.reset_index(drop=True)
 
-        model = SARIMAX(
+        model = StatsmodelsSARIMAX(
             self.data,
             exog=model_exog,
             dates=model_dates,
@@ -1447,8 +1447,8 @@ class SARIMA(BaseModel):
         resid = np.asarray(fitted.resid)
         fitted_vals = np.asarray(fitted.fittedvalues)
 
-        result = SARIMAResult(
-            model_type="SARIMA",
+        result = SARIMAXResult(
+            model_type="SARIMAX",
             params=params,
             std_errors=std_errors,
             p_values=p_values,

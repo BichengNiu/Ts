@@ -5,17 +5,17 @@ This package consolidates six sub-packages under a unified namespace.
 - :mod:`Ts.TsPlots`  — shared plotting (series, scatter, ACF/PACF)
 - :mod:`Ts.TsSims`   — synthetic data generation (SARIMA, GARCH, TS/DS)
 - :mod:`Ts.TsUtils`  — preprocessing and identification diagnostics
-- :mod:`Ts.TsModels` — model estimation (SARIMA, GARCH)
+- :mod:`Ts.TsModels` — model estimation (SARIMAX, GARCH)
 - :mod:`Ts.TsMetrics` — forecast metrics and leakage-free evaluation
 - :mod:`Ts.TsTests`  — statistical tests (unit root, structural break, ARCH)
 
 Quick start
 -----------
->>> from Ts import STL, interpolate_missing, eacf, SARIMA, AutoSARIMA, ADFTest
+>>> from Ts import STL, interpolate_missing, eacf, SARIMAX, AutoSARIMAX, ADFTest
 >>> from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
 >>> from Ts.TsUtils import STL, interpolate_missing, eacf
->>> from Ts.TsModels import SARIMA, GARCH, AutoSARIMA, AutoGARCH
+>>> from Ts.TsModels import SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
 >>> from Ts.TsMetrics import rmse, oos, backtest, compare_forecasts
 >>> from Ts.TsTests import ADFTest, KPSSTest, LjungBoxTest
 """
@@ -66,12 +66,13 @@ from .TsModels import (
     BaseModel,
     BaseModelResult,
     ResidualTestResults,
-    SARIMA,
+    SARIMAX,
+    SARIMAXResult,
     ScenarioForecastResult,
     EventSpec,
     PolicyEffectResult,
     GARCH,
-    AutoSARIMA,
+    AutoSARIMAX,
     AutoGARCH,
     AutoModelResult,
     compare_models,
@@ -166,12 +167,13 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "BaseModelResult",
     "ResidualTestResults",
     # TsModels — models
-    "SARIMA",
+    "SARIMAX",
+    "SARIMAXResult",
     "ScenarioForecastResult",
     "EventSpec",
     "PolicyEffectResult",
     "GARCH",
-    "AutoSARIMA",
+    "AutoSARIMAX",
     "AutoGARCH",
     "AutoModelResult",
     # TsModels — utilities

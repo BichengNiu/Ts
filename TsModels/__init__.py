@@ -1,13 +1,13 @@
 """TsModels — Time series model estimation toolkit.
 
-This package provides unified interfaces for estimating SARIMA, GARCH, VAR,
+This package provides unified interfaces for estimating SARIMAX, GARCH, VAR,
 SVAR, and VECM models. Result objects integrate with
 TsPlots for plotting and, where applicable, TsTests for diagnostics.
 
 Main interfaces
 ---------------
-SARIMA
-    SARIMA model estimation via statsmodels SARIMAX.
+SARIMAX
+    SARIMAX model estimation via statsmodels SARIMAX.
 GARCH
     GARCH(p,q) model estimation via the ``arch`` library.  Handles both
     pure ARCH (q = 0) and GARCH (q >= 1) volatility models.
@@ -21,8 +21,8 @@ SVAR
 
 Result classes
 --------------
-SARIMAResult
-    Container for SARIMA estimation output. Provides ``.summary()``,
+SARIMAXResult
+    Container for SARIMAX estimation output. Provides ``.summary()``,
     ``.predict()``, ``.plot_fit()``, ``.plot_diagnostics()``,
     ``.test_residuals()``.
 GARCHResult
@@ -35,12 +35,12 @@ SVARResult
 
 Quick start
 -----------
->>> from Ts.TsModels import SARIMA, GARCH
+>>> from Ts.TsModels import SARIMAX, GARCH
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
 
 >>> # AR(1) estimation
 >>> data = simulate_sarima(n=200, order=(1, 0, 0), ar=[0.7], seed=42).data
->>> model = SARIMA(data, order=(1, 0, 0))
+>>> model = SARIMAX(data, order=(1, 0, 0))
 >>> result = model.fit()
 >>> print(result.summary())
 >>> result.plot_diagnostics()
@@ -57,14 +57,14 @@ Quick start
 >>> result = model.fit()
 """
 
-from ._auto import AutoGARCH, AutoModelResult, AutoSARIMA
+from ._auto import AutoGARCH, AutoModelResult, AutoSARIMAX
 from ._backcast import BackcastResult
 from ._base import BaseModel, BaseModelResult, PredictResult, ResidualTestResults
 from ._compare import compare_models
 from ._garch import GARCH
 from ._garch_result import GARCHResult
 from ._intervention import EventSpec, PolicyEffectResult
-from ._sarima import ARCycleResult, SARIMA, SARIMAResult, ScenarioForecastResult
+from ._sarimax import ARCycleResult, SARIMAX, SARIMAXResult, ScenarioForecastResult
 from ._svar import SVAR, SVARResult
 from ._var import (
     VAR,
@@ -86,8 +86,8 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "BaseModelResult",
     "PredictResult",
     "ResidualTestResults",
-    "SARIMA",
-    "SARIMAResult",
+    "SARIMAX",
+    "SARIMAXResult",
     "ARCycleResult",
     "ScenarioForecastResult",
     "EventSpec",
@@ -105,7 +105,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "VECMOrderResult",
     "SVAR",
     "SVARResult",
-    "AutoSARIMA",
+    "AutoSARIMAX",
     "AutoGARCH",
     "AutoModelResult",
     "compare_models",

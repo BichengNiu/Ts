@@ -5,12 +5,12 @@ import pytest
 
 from Ts.TsModels import (
     GARCH,
-    SARIMA,
+    SARIMAX,
     SVAR,
     VAR,
     VECM,
     AutoGARCH,
-    AutoSARIMA,
+    AutoSARIMAX,
 )
 
 
@@ -35,11 +35,11 @@ def _multivariate_data():
 
 UNIVARIATE_FACTORIES = [
     pytest.param(
-        lambda data, missing: SARIMA(data, missing=missing),
+        lambda data, missing: SARIMAX(data, missing=missing),
         id="sarima",
     ),
     pytest.param(
-        lambda data, missing: AutoSARIMA(
+        lambda data, missing: AutoSARIMAX(
             data,
             p=(0, 0),
             d=(0, 0),
@@ -126,7 +126,7 @@ def test_multivariate_models_drop_complete_rows_and_record_positions(factory):
     assert np.all(np.isfinite(model.data))
 
 
-@pytest.mark.parametrize("model_class", [SARIMA, GARCH, VAR, VECM])
+@pytest.mark.parametrize("model_class", [SARIMAX, GARCH, VAR, VECM])
 def test_unknown_missing_policy_is_rejected(model_class):
     """The shared contract accepts only raise and drop."""
     data = _multivariate_data() if model_class in {VAR, VECM} else _univariate_data()

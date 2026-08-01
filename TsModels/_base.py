@@ -318,7 +318,7 @@ class BaseModelResult:
     Parameters
     ----------
     model_type : str
-        Model identifier (e.g. ``"SARIMA"``, ``"ARCH"``, ``"GARCH"``).
+        Model identifier (e.g. ``"SARIMAX"``, ``"ARCH"``, ``"GARCH"``).
     params : dict
         Estimated parameter values keyed by name.
     std_errors : dict
@@ -532,7 +532,7 @@ class BaseModelResult:
 
         Subclasses override this to return the appropriate long-run concept:
 
-        - **SARIMA** (stationary, no differencing): unconditional mean
+        - **SARIMAX** (stationary, no differencing): unconditional mean
           :math:`E[y_t]` (``float``).
         - **VAR** (stable, no time trend): unconditional mean vector
           :math:`E[\\mathbf{y}_t]` (``np.ndarray`` of shape ``(k,)``).

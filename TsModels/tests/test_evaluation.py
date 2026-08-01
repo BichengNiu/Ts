@@ -36,7 +36,7 @@ class TestEvaluationResultContracts:
             upper=None,
             origins=np.array([20, 21]),
             failures=[],
-            model_type="SARIMA",
+            model_type="SARIMAX",
             window="expanding",
             target="observed",
         )
@@ -57,7 +57,7 @@ class TestEvaluationResultContracts:
                 upper=None,
                 origins=np.array([20, 21]),
                 failures=[],
-                model_type="SARIMA",
+                model_type="SARIMAX",
                 window="expanding",
                 target="observed",
             )
@@ -72,7 +72,7 @@ class TestEvaluationResultContracts:
             lower=None,
             upper=None,
             indices=np.array([-3, -2, -1]),
-            model_type="SARIMA",
+            model_type="SARIMAX",
             target="observed",
         )
 
@@ -89,7 +89,7 @@ class TestEvaluationResultContracts:
                 lower=None,
                 upper=None,
                 indices=np.array([-2, -1]),
-                model_type="SARIMA",
+                model_type="SARIMAX",
                 target="observed",
             )
 
@@ -414,10 +414,10 @@ class TestBacktestModelIntegration:
         return np.column_stack([y, x])
 
     def test_sarima_backtest(self):
-        """SARIMA produces finite multistep rolling-origin forecasts."""
-        from Ts.TsModels import SARIMA
+        """SARIMAX produces finite multistep rolling-origin forecasts."""
+        from Ts.TsModels import SARIMAX
 
-        model = SARIMA(self._univariate_data(), order=(1, 0, 0))
+        model = SARIMAX(self._univariate_data(), order=(1, 0, 0))
         result = model.backtest(initial_window=60, horizon=2, step=10)
 
         assert result.mean.shape == (2, 2)
@@ -483,10 +483,10 @@ class TestBacktestModelIntegration:
         assert np.all(result.mean > 0.0)
 
     def test_auto_sarima_backtest_with_single_candidate(self):
-        """AutoSARIMA can reselect its single candidate in each window."""
-        from Ts.TsModels import AutoSARIMA
+        """AutoSARIMAX can reselect its single candidate in each window."""
+        from Ts.TsModels import AutoSARIMAX
 
-        model = AutoSARIMA(
+        model = AutoSARIMAX(
             self._univariate_data(),
             p=(1, 1),
             d=(0, 0),
@@ -521,11 +521,41 @@ class TestBacktestModelIntegration:
         assert result.mean.shape == (1, 1)
         assert result.target == "absolute_demeaned_return_proxy"
 
+    def test_auto_sarimax_backtest_aligns_exogenous_windows(self):
+        """Automatic reselection receives only aligned training and future exog."""
+        from Ts.TsModels import AutoSARIMAX
+
+        rng = np.random.default_rng(23)
+        dates = pd.date_range("2022-01-01", periods=30, freq="MS")
+        exog = pd.DataFrame({"x": rng.normal(size=30)}, index=dates)
+        data = pd.Series(
+            1.4 * exog["x"].to_numpy() + rng.normal(scale=0.05, size=30),
+            index=dates,
+        )
+        model = AutoSARIMAX(
+            data,
+            exog=exog,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+            trend="n",
+        )
+
+        result = model.backtest(initial_window=20, horizon=2, step=4)
+
+        assert result.origins.tolist() == [20, 24, 28]
+        assert result.mean.shape == (3, 2)
+        assert np.isfinite(result.mean).all()
+        assert model.result_ is None
+
     def test_arimax_backtest_aligns_training_and_future_context(
         self,
         monkeypatch,
     ):
-        from Ts.TsModels import SARIMA
+        from Ts.TsModels import SARIMAX
         from Ts.TsModels._intervention import EventSpec
 
         rng = np.random.default_rng(21)
@@ -550,7 +580,7 @@ class TestBacktestModelIntegration:
             "step",
             date_rule="exact",
         )
-        model = SARIMA(
+        model = SARIMAX(
             data,
             exog=exog,
             events=[event],

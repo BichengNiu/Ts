@@ -159,9 +159,9 @@ target == "absolute_demeaned_return_proxy"
 python -m pytest Ts/TsMetrics/tests -p no:cacheprovider -q
 ```
 
-## ARIMAX 的 OOS 与历史回测
+## SARIMAX 的 OOS 与历史回测
 
-对带普通外生变量的 SARIMA/ARIMAX，OOS 和 backtest 会在每个预测起点：
+对带普通外生变量的 SARIMAX/SARIMAX，OOS 和 backtest 会在每个预测起点：
 
 - 只使用该起点之前的 `y`、外生变量和日期重新估计模型；
 - 将目标窗口对应的未来外生变量传给预测，不把未来 `y` 传入拟合；

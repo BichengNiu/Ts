@@ -6,19 +6,19 @@ import pytest
 
 from Ts.TsModels import (
     GARCH,
-    SARIMA,
+    SARIMAX,
     SVAR,
     VAR,
     VECM,
     AutoGARCH,
-    AutoSARIMA,
+    AutoSARIMAX,
 )
 
 
 def _univariate_factories():
     return [
-        lambda data: SARIMA(data, order=(0, 0, 0)),
-        lambda data: AutoSARIMA(
+        lambda data: SARIMAX(data, order=(0, 0, 0)),
+        lambda data: AutoSARIMAX(
             data,
             p=(0, 0),
             d=(0, 0),
@@ -175,7 +175,7 @@ def test_sarima_exog_covers_the_gap_and_validation_period():
     dates = pd.date_range("2020-01-01", periods=60, freq="MS")
     exog = pd.DataFrame({"x": np.linspace(0.0, 2.0, 60)}, index=dates)
     data = pd.Series(2.0 * exog["x"].to_numpy(), index=dates)
-    model = SARIMA(data, exog=exog, order=(0, 0, 0), trend="n")
+    model = SARIMAX(data, exog=exog, order=(0, 0, 0), trend="n")
 
     result = model.oos(
         estimation_period=(dates[2], dates[41]),
@@ -191,7 +191,7 @@ def test_sarima_rejects_exog_missing_inside_forecast_bridge():
     dates = pd.date_range("2020-01-01", periods=60, freq="MS")
     exog = pd.DataFrame({"x": np.linspace(0.0, 2.0, 60)}, index=dates)
     data = pd.Series(2.0 * exog["x"].to_numpy(), index=dates)
-    model = SARIMA(data, exog=exog, order=(0, 0, 0), trend="n")
+    model = SARIMAX(data, exog=exog, order=(0, 0, 0), trend="n")
     model.exog = model.exog[:45].copy()
 
     with pytest.raises(ValueError, match="future exog is missing dates"):
