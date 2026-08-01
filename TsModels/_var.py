@@ -845,6 +845,7 @@ class VARResult(BaseModelResult):
             plot_series(
                 plot_data,
                 ax=axes[i],
+                facet=False,
                 title=f"Variable: {name}",
                 ytitle="Value",
             )

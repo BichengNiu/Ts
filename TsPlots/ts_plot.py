@@ -20,12 +20,16 @@ Examples
 >>> from Ts.TsPlots import plot_series
 >>> # DataFrame, index as time
 >>> df = pd.DataFrame({"a": [1, 2, 3], "b": [3, 2, 1]}, index=[2000, 2001, 2002])
->>> fig, ax = plot_series(df)
+>>> fig, axes = plot_series(df)
 >>> # DataFrame, a column as the time variable
 >>> df2 = pd.DataFrame({"year": [2000, 2001, 2002], "a": [1, 2, 3], "b": [3, 2, 1]})
->>> fig, ax = plot_series(df2, x="year")
->>> # dict of named series
->>> fig, ax = plot_series({"s1": [1, 2, 3], "s2": [3, 2, 1]}, x=[1, 2, 3])
+>>> fig, axes = plot_series(df2, x="year")
+>>> # Overlay named series; large scale gaps automatically use two y-axes
+>>> fig, ax = plot_series(
+...     {"rate": [1, 2, 3], "level": [1000, 2000, 3000]},
+...     facet=False,
+... )
+>>> right_ax = ax.right_ax
 """
 
 from __future__ import annotations
@@ -44,7 +48,13 @@ from .style import (
     DEFAULT_PALETTE,
     DEFAULT_LINESTYLES,
     DEFAULT_MARKERS,
+    FIGSIZE,
+    TITLE_FONTSIZE,
     AXIS_LABEL_FONTSIZE,
+    LEGEND_FONTSIZE,
+    style_axes,
+    draw_unit_label,
+    draw_note_and_bottom_title,
     draw_shade,
     draw_vlines,
 )
@@ -213,6 +223,151 @@ def _resolve_input(data, x, y) -> tuple[np.ndarray, dict, str]:
     raise TypeError(f"Unsupported data type: {type(data)!r}")
 
 
+def _validate_bool(name: str, value) -> bool:
+    """Return a real boolean or reject ambiguous truthy/falsy values."""
+    if not isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be a boolean")
+    return bool(value)
+
+
+def _robust_scale(values) -> float | None:
+    """Estimate a series magnitude without being dominated by one outlier."""
+    try:
+        array = np.asarray(values, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        return None
+    finite = array[np.isfinite(array)]
+    if finite.size == 0:
+        return None
+    q05, q95 = np.percentile(finite, [5, 95])
+    magnitude = float(np.percentile(np.abs(finite), 95))
+    scale = max(magnitude, float(q95 - q05))
+    return scale if np.isfinite(scale) and scale > 0 else None
+
+
+def _secondary_axis_labels(series: dict, threshold: float) -> set[str]:
+    """Split series at the largest scale gap and return the secondary group."""
+    scaled = [
+        (label, scale)
+        for label, values in series.items()
+        if (scale := _robust_scale(values)) is not None
+    ]
+    if len(scaled) < 2:
+        return set()
+
+    scaled.sort(key=lambda item: item[1])
+    ratios = [
+        scaled[index + 1][1] / scaled[index][1] for index in range(len(scaled) - 1)
+    ]
+    split_index = int(np.argmax(ratios))
+    if ratios[split_index] < threshold:
+        return set()
+
+    lower = {label for label, _scale in scaled[: split_index + 1]}
+    upper = {label for label, _scale in scaled[split_index + 1 :]}
+    first_label = next(iter(series))
+    return lower if first_label in upper else upper
+
+
+def _series_color(colors, index: int) -> str:
+    if colors is not None:
+        return colors[index]
+    return DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)]
+
+
+def _plot_one_series(
+    ax,
+    x_values,
+    values,
+    label,
+    index,
+    *,
+    colors,
+    linewidth,
+    markersize,
+    marker_edge_width,
+    show_values,
+    value_decimals,
+):
+    """Draw one series and its optional point-value annotations."""
+    color = _series_color(colors, index)
+    linestyle = DEFAULT_LINESTYLES[index % len(DEFAULT_LINESTYLES)]
+    marker = DEFAULT_MARKERS[index % len(DEFAULT_MARKERS)]
+    is_even = index % 2 == 0
+    line = ax.plot(
+        x_values,
+        values,
+        linestyle=linestyle,
+        linewidth=linewidth,
+        marker=marker,
+        markersize=markersize,
+        color=color,
+        markerfacecolor=color if is_even else "white",
+        markeredgecolor=color,
+        markeredgewidth=marker_edge_width,
+        label=label,
+    )[0]
+
+    if not show_values:
+        return line
+
+    fmt = f".{value_decimals}f"
+    n_points = len(values)
+    for point_index, (x_value, y_value) in enumerate(
+        zip(x_values, values, strict=False)
+    ):
+        previous = float(values[point_index - 1]) if point_index > 0 else float(y_value)
+        following = (
+            float(values[point_index + 1])
+            if point_index < n_points - 1
+            else float(y_value)
+        )
+        if float(y_value) >= (previous + following) / 2:
+            y_offset, vertical_alignment = -(markersize + 10), "top"
+        else:
+            y_offset, vertical_alignment = markersize + 4, "bottom"
+        ax.annotate(
+            f"{y_value:{fmt}}",
+            xy=(x_value, y_value),
+            xytext=(0, y_offset),
+            textcoords="offset points",
+            ha="center",
+            va=vertical_alignment,
+            fontsize=11,
+            color=color,
+        )
+    return line
+
+
+def _configure_x_axis(ax, x_values, *, xtick_step, max_ticks, freq) -> None:
+    """Apply datetime or numeric tick selection to one axes."""
+    x_array = np.asarray(x_values)
+    is_datetime = np.issubdtype(x_array.dtype, np.datetime64) or (
+        pd.api.types.is_datetime64_any_dtype(x_array)
+    )
+    is_numeric = np.issubdtype(x_array.dtype, np.number)
+
+    if is_datetime and freq is not None:
+        _apply_freq_ticks(ax, x_values, freq, max_ticks=max_ticks)
+    elif is_numeric and xtick_step is not None:
+        x_min, x_max = int(np.min(x_values)), int(np.max(x_values))
+        ax.set_xticks(range(x_min, x_max + 1, xtick_step))
+    elif is_numeric:
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
+
+
+def _validate_legend_labels(legend_labels, series_count: int):
+    if legend_labels is None:
+        return None
+    resolved = list(legend_labels)
+    if len(resolved) != series_count:
+        raise ValueError(
+            f"legend_labels has {len(resolved)} entries but there are "
+            f"{series_count} series."
+        )
+    return resolved
+
+
 def plot_series(
     data,
     x=None,
@@ -248,9 +403,14 @@ def plot_series(
     shade=None,
     shade_color: str = "#d0d0d0",
     shade_alpha: float = 0.3,
+    facet: bool = True,
+    sharex: bool = True,
+    sharey: bool = False,
+    auto_dual_y: bool = True,
+    scale_ratio_threshold: float = 10.0,
     ax=None,
     unit: str | None = None,
-) -> tuple[plt.Figure, plt.Axes]:
+) -> tuple[plt.Figure, plt.Axes | np.ndarray]:
     """Plot an arbitrary number of time series with cycling styles.
 
     Styling cycles per series so that each added line differs in color, line
@@ -336,8 +496,25 @@ def plot_series(
         Fill color for shaded regions. Defaults to ``"#d0d0d0"``.
     shade_alpha : float
         Opacity of shaded regions (0–1). Defaults to 0.3.
+    facet : bool
+        For two or more series, draw one vertical panel per series. Defaults
+        to ``True``. A single series always uses one axes.
+    sharex : bool
+        Whether faceted panels share the same x-axis scale. Defaults to
+        ``True``.
+    sharey : bool
+        Whether faceted panels share the same y-axis scale. Defaults to
+        ``False``.
+    auto_dual_y : bool
+        When ``facet=False``, automatically use a secondary y-axis if the
+        robust scale ratio reaches ``scale_ratio_threshold``. Defaults to
+        ``True``.
+    scale_ratio_threshold : float
+        Positive scale ratio that triggers the automatic secondary y-axis.
+        Defaults to 10.
     ax : matplotlib.axes.Axes, optional
-        Existing axes to draw on. If None, a new figure and axes are created.
+        Existing axes to draw on. Multi-series faceting requires ``ax=None``;
+        pass ``facet=False`` to overlay multiple series on an existing axes.
     unit : str, optional
         Unit label appended to the y-axis label, formatted as
         ``（单位：XX）``. Defaults to None.
@@ -345,7 +522,10 @@ def plot_series(
     Returns
     -------
     fig : matplotlib.figure.Figure
-    ax : matplotlib.axes.Axes
+    ax : matplotlib.axes.Axes or numpy.ndarray
+        A single axes for a single series or overlay. Faceting returns a
+        one-dimensional array of axes. In automatic dual-axis mode, the
+        secondary axes is available as ``ax.right_ax`` and ``fig.axes[1]``.
     """
     x_values, series, default_xlabel = _resolve_input(data, x, y)
     colors = _resolve_colors(colors, len(series))
@@ -353,6 +533,14 @@ def plot_series(
         "xtick_step",
         xtick_step,
         integer=True,
+    )
+    facet = _validate_bool("facet", facet)
+    sharex = _validate_bool("sharex", sharex)
+    sharey = _validate_bool("sharey", sharey)
+    auto_dual_y = _validate_bool("auto_dual_y", auto_dual_y)
+    scale_ratio_threshold = _validate_positive_step(
+        "scale_ratio_threshold",
+        scale_ratio_threshold,
     )
 
     if labels is not None:
@@ -363,6 +551,112 @@ def plot_series(
             )
         series = {labels[i]: v for i, v in enumerate(series.values())}
 
+    legend_labels = _validate_legend_labels(legend_labels, len(series))
+
+    if facet and len(series) >= 2:
+        if ax is not None:
+            raise ValueError(
+                "Multi-series faceting cannot draw on one existing ax; "
+                "pass facet=False to overlay the series on that axes."
+            )
+
+        _ensure_fonts()
+        figure_height = max(FIGSIZE[1], 3.5 * len(series))
+        fig, axes = plt.subplots(
+            len(series),
+            1,
+            figsize=(FIGSIZE[0], figure_height),
+            sharex=sharex,
+            sharey=sharey,
+            squeeze=False,
+        )
+        axes = axes[:, 0]
+        x_label = xtitle if xtitle is not None else default_xlabel
+        display_labels = legend_labels or list(series)
+
+        for index, ((label, values), panel_ax) in enumerate(
+            zip(series.items(), axes, strict=True)
+        ):
+            draw_shade(panel_ax, shade, shade_color, shade_alpha)
+            draw_vlines(
+                panel_ax,
+                vlines,
+                vline_color,
+                vline_linestyle,
+                vline_linewidth,
+            )
+            line = _plot_one_series(
+                panel_ax,
+                x_values,
+                values,
+                label,
+                index,
+                colors=colors,
+                linewidth=linewidth,
+                markersize=markersize,
+                marker_edge_width=marker_edge_width,
+                show_values=show_values,
+                value_decimals=value_decimals,
+            )
+            panel_ax.set_title(
+                display_labels[index],
+                fontsize=AXIS_LABEL_FONTSIZE,
+                loc="left",
+                pad=6,
+            )
+            if ytitle is not None:
+                panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+            if unit is not None:
+                draw_unit_label(panel_ax, unit, axis="y")
+            if not sharex or index == len(axes) - 1:
+                panel_ax.set_xlabel(x_label, fontsize=AXIS_LABEL_FONTSIZE)
+            _configure_x_axis(
+                panel_ax,
+                x_values,
+                xtick_step=xtick_step,
+                max_ticks=max_ticks,
+                freq=freq,
+            )
+            if ymin is not None:
+                panel_ax.set_ylim(bottom=ymin)
+            style_axes(panel_ax, grid=grid)
+            if show_legend:
+                panel_ax.legend(
+                    [line],
+                    [display_labels[index]],
+                    frameon=False,
+                    fontsize=LEGEND_FONTSIZE,
+                    loc=legend_loc,
+                    bbox_to_anchor=legend_bbox,
+                )
+
+        if title and title_position == "top":
+            title_positions = {
+                "left": (0.01, "left"),
+                "center": (0.5, "center"),
+                "right": (0.99, "right"),
+            }
+            if title_loc not in title_positions:
+                raise ValueError("title_loc must be 'left', 'center', or 'right'")
+            title_x, title_alignment = title_positions[title_loc]
+            fig.suptitle(
+                title,
+                fontsize=TITLE_FONTSIZE,
+                fontweight="bold",
+                x=title_x,
+                ha=title_alignment,
+            )
+        tight_rect = (0, 0, 1, 0.97) if title and title_position == "top" else None
+        fig.tight_layout(pad=1.5, rect=tight_rect)
+        if note or (title and title_position == "bottom"):
+            draw_note_and_bottom_title(
+                fig,
+                note=note,
+                title=title,
+                title_position=title_position,
+            )
+        return fig, axes
+
     _ensure_fonts()
     ctx = _FigureContext(ax=ax)
     fig, ax = ctx.fig, ctx.ax
@@ -370,52 +664,34 @@ def plot_series(
     draw_shade(ax, shade, shade_color, shade_alpha)
     draw_vlines(ax, vlines, vline_color, vline_linestyle, vline_linewidth)
 
-    for i, (label, values) in enumerate(series.items()):
-        color = (
-            colors[i]
-            if colors is not None
-            else DEFAULT_PALETTE[i % len(DEFAULT_PALETTE)]
+    secondary_labels = set()
+    if len(series) >= 2 and auto_dual_y:
+        secondary_labels = _secondary_axis_labels(
+            series,
+            scale_ratio_threshold,
         )
-        linestyle = DEFAULT_LINESTYLES[i % len(DEFAULT_LINESTYLES)]
-        marker = DEFAULT_MARKERS[i % len(DEFAULT_MARKERS)]
-        is_even = i % 2 == 0
-        ax.plot(
-            x_values,
-            values,
-            linestyle=linestyle,
-            linewidth=linewidth,
-            marker=marker,
-            markersize=markersize,
-            color=color,
-            markerfacecolor=color if is_even else "white",
-            markeredgecolor=color,
-            markeredgewidth=marker_edge_width,
-            label=label,
-        )
+    right_ax = ax.twinx() if secondary_labels else None
+    if right_ax is not None:
+        ax.right_ax = right_ax
 
-        if show_values:
-            fmt = f".{value_decimals}f"
-            n_pts = len(values)
-            for idx, (xv, yv) in enumerate(zip(x_values, values, strict=False)):
-                # Place label above a local low, below a local high so it does
-                # not collide with the adjacent line segments.
-                prev_y = float(values[idx - 1]) if idx > 0 else float(yv)
-                next_y = float(values[idx + 1]) if idx < n_pts - 1 else float(yv)
-                avg_nbr = (prev_y + next_y) / 2
-                if float(yv) >= avg_nbr:  # local high → label below
-                    y_off, va = -(markersize + 10), "top"
-                else:  # local low  → label above
-                    y_off, va = markersize + 4, "bottom"
-                ax.annotate(
-                    f"{yv:{fmt}}",
-                    xy=(xv, yv),
-                    xytext=(0, y_off),
-                    textcoords="offset points",
-                    ha="center",
-                    va=va,
-                    fontsize=11,
-                    color=color,
-                )
+    lines = []
+    for index, (label, values) in enumerate(series.items()):
+        target_ax = right_ax if label in secondary_labels else ax
+        lines.append(
+            _plot_one_series(
+                target_ax,
+                x_values,
+                values,
+                label,
+                index,
+                colors=colors,
+                linewidth=linewidth,
+                markersize=markersize,
+                marker_edge_width=marker_edge_width,
+                show_values=show_values,
+                value_decimals=value_decimals,
+            )
+        )
 
     ax.set_xlabel(
         xtitle if xtitle is not None else default_xlabel,
@@ -424,25 +700,42 @@ def plot_series(
     if ytitle is not None:
         ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
 
-    x_arr = np.asarray(x_values)
-    is_datetime_x = np.issubdtype(x_arr.dtype, np.datetime64) or (
-        pd.api.types.is_datetime64_any_dtype(x_arr)
+    _configure_x_axis(
+        ax,
+        x_values,
+        xtick_step=xtick_step,
+        max_ticks=max_ticks,
+        freq=freq,
     )
-    is_numeric_x = np.issubdtype(x_arr.dtype, np.number)
-
-    if is_datetime_x and freq is not None:
-        _apply_freq_ticks(ax, x_values, freq, max_ticks=max_ticks)
-    elif is_numeric_x:
-        if xtick_step is not None:
-            x_min, x_max = int(np.min(x_values)), int(np.max(x_values))
-            ax.set_xticks(range(x_min, x_max + 1, xtick_step))
-        else:
-            ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
     if ymin is not None:
         ax.set_ylim(bottom=ymin)
+        if right_ax is not None:
+            right_ax.set_ylim(bottom=ymin)
 
-    labels = list(series.keys())
+    if right_ax is not None:
+        right_ax.set_ylabel(
+            " / ".join(label for label in series if label in secondary_labels),
+            fontsize=AXIS_LABEL_FONTSIZE,
+        )
+        if unit is not None:
+            draw_unit_label(right_ax, unit, axis="y")
+        style_axes(right_ax, grid=False)
+        right_ax.spines["right"].set_visible(True)
+        right_ax.yaxis.set_label_position("right")
+        right_ax.yaxis.tick_right()
+
+    if show_legend and lines:
+        display_labels = legend_labels or list(series)
+        ax.legend(
+            lines,
+            display_labels,
+            frameon=False,
+            fontsize=LEGEND_FONTSIZE,
+            loc=legend_loc,
+            bbox_to_anchor=legend_bbox,
+        )
+
     ctx.finalize(
         title=title,
         title_position=title_position,
@@ -450,11 +743,8 @@ def plot_series(
         title_pad=title_pad,
         note=note,
         grid=grid,
-        show_legend=show_legend,
-        legend_labels=legend_labels,
-        legend_loc=legend_loc,
-        legend_bbox=legend_bbox,
-        labels=labels,
+        show_legend=False,
+        labels=list(series),
         unit=unit,
     )
 

@@ -109,6 +109,7 @@ Expected: all Box-Cox tests pass.
 **Files:**
 
 - Modify: `TsUtils/README.md`
+- Modify: `TsUtils/demo.ipynb`
 
 **Step 1: Document behavior and examples**
 
@@ -116,7 +117,26 @@ Document automatic and explicit lambda usage, DataFrame per-column behavior,
 the `BoxCoxResult` fields, strict positivity, missing-value preservation, and
 the rule that the utility never adds a shift automatically.
 
-**Step 2: Run regression tests**
+Rebuild the demo as an executable API tutorial for all six TsUtils capabilities.
+For every function, document the full signature, every parameter, return type,
+all public result fields/properties/methods, basic and parameter-variant calls,
+result access patterns, constraints, and common statistical pitfalls. The
+Box-Cox examples must estimate lambda on training data, reuse it on held-out
+observations, and cover DataFrame lambdas. Recheck every example while executing
+the notebook top-to-bottom.
+
+**Step 2: Execute and validate the demo notebook**
+
+Run:
+
+```powershell
+python -m jupyter nbconvert --execute --to notebook --inplace TsUtils/demo.ipynb
+```
+
+Expected: every cell executes successfully and the final check prints
+`All TsUtils parameter, return-object, and usage checks passed.`
+
+**Step 3: Run regression tests**
 
 Run:
 
@@ -127,7 +147,7 @@ python -m pytest . -p no:cacheprovider -q
 
 Expected: all tests pass.
 
-**Step 3: Run static and public-contract checks**
+**Step 4: Run static and public-contract checks**
 
 Run:
 

@@ -102,6 +102,7 @@ class BaseSimResult:
 
         if title is None:
             title = f"{type(self).__name__} Simulation"
+        kwargs.setdefault("facet", False)
         fig, ax = plot_series(
             self.data,
             title=title,

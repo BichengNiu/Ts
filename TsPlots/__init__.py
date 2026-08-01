@@ -20,7 +20,7 @@ plot_pacf
 Quick start
 -----------
 >>> from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
->>> fig, ax = plot_series(df, title="GDP Growth Rate")
+>>> fig, axes = plot_series(df, title="GDP Growth Rate")  # multi-column DataFrame
 >>> fig, ax = plot_scatter(df, x="Income", y="Consumption", fit_line=True)
 
 Advanced usage — style constants and helpers

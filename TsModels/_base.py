@@ -407,6 +407,7 @@ class BaseModelResult:
 
         fig, ax = plot_series(
             plot_data,
+            facet=False,
             title=title,
             ytitle="Value",
             xtitle="Time",

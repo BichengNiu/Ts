@@ -31,7 +31,7 @@ from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 ```python
 from Ts.TsPlots import plot_series
 
-fig, ax = plot_series(data, x=None, y=None, *, ...)
+fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 ```
 
 ### 接受的输入格式
@@ -55,7 +55,7 @@ fig, ax = plot_series(data, x=None, y=None, *, ...)
 | `xtitle` | str | `None` | x 轴标签（默认自动检测） |
 | `ytitle` | str | `"Value"` | y 轴标签 |
 | `unit` | str | `None` | y 轴单位，显示为「（单位：XX）」 |
-| `ymin` | float / None | `0` | y 轴下限；`None` 为自动 |
+| `ymin` | float / None | `None` | y 轴下限；`None` 为自动 |
 | `freq` | str | `None` | datetime 轴频率：`'day'` / `'week'` / `'month'` / `'quarter'` / `'year'` |
 | `xtick_step` | int | `None` | 数值 x 轴刻度间隔 |
 | `max_ticks` | int | `12` | 自动刻度上限 |
@@ -74,7 +74,23 @@ fig, ax = plot_series(data, x=None, y=None, *, ...)
 | `shade` | tuple / list | `None` | 阴影区间，如 `(2008, 2009)` 或 `[(2008,2009),(2020,2021)]` |
 | `note` | str | `None` | 图表左下角注释文字；当 `title_position="bottom"` 时，note 显示在 bottom title **上方** |
 | `title_position` | str | `"top"` | `"top"` 或 `"bottom"` |
-| `ax` | Axes | `None` | 传入已有坐标轴（多子图时使用） |
+| `facet` | bool | `True` | 两条及以上序列是否按序列纵向分面；单序列不受影响 |
+| `sharex` | bool | `True` | 分面子图是否统一 X 轴标度 |
+| `sharey` | bool | `False` | 分面子图是否统一 Y 轴标度 |
+| `auto_dual_y` | bool | `True` | `facet=False` 时，尺度差异达到阈值是否自动使用双 Y 轴 |
+| `scale_ratio_threshold` | float | `10.0` | 触发自动双 Y 轴的最小稳健尺度比，必须为正有限数 |
+| `ax` | Axes | `None` | 传入已有坐标轴；多序列分面不接受单个 `ax`，此时应设 `facet=False` |
+
+### 返回对象
+
+| 场景 | 返回值 | 如何查看 |
+|------|--------|----------|
+| 单序列 | `(fig, ax)` | `ax.lines`、`ax.get_xlabel()`、`ax.get_ylabel()` |
+| 多序列且 `facet=True` | `(fig, axes)` | `axes` 是一维 `numpy.ndarray`；用 `axes[0]`、`axes[1]` 访问各分面 |
+| 多序列且 `facet=False`，未触发双轴 | `(fig, ax)` | 所有线都在 `ax.lines` 中 |
+| 多序列且 `facet=False`，触发双轴 | `(fig, ax)` | 左轴为 `ax`；右轴为 `ax.right_ax`，也可用 `fig.axes[1]` 获取 |
+
+自动双轴使用稳健尺度判断：每条序列的尺度为“绝对值 95% 分位数”和“5%–95% 分位距”中的较大者。尺度比达到 `scale_ratio_threshold` 时，在最大的相邻尺度断点处分组；包含第一条序列的组保留在左轴。
 
 ### 示例
 
@@ -82,7 +98,7 @@ fig, ax = plot_series(data, x=None, y=None, *, ...)
 import numpy as np, pandas as pd
 from Ts.TsPlots import plot_series
 
-# 基础用法：DataFrame，多系列
+# 基础用法：DataFrame 多序列，默认按序列纵向分面
 t = np.arange(2000, 2026)
 df = pd.DataFrame(
     {
@@ -91,21 +107,45 @@ df = pd.DataFrame(
     },
     index=t,
 )
-fig, ax = plot_series(df, title="宏观经济指标", ytitle="增长率（%）", grid=True)
-
-# 高级用法：阴影 + 参考线 + 注释
-fig, ax = plot_series(
+fig, axes = plot_series(
     df,
-    shade=[(2008, 2009), (2020, 2021)],
-    vlines=2015,
-    note="数据来源：模拟数据",
-    ymin=None,
+    title="宏观经济指标",
+    ytitle="增长率（%）",
+    grid=True,
 )
 
-# datetime 索引 + 月度频率
+# axes 是一维数组：分别调取两个分面
+gdp_ax = axes[0]
+cpi_ax = axes[1]
+print(gdp_ax.get_title(loc="left"), cpi_ax.get_title(loc="left"))
+
+# 分面时分别控制坐标轴标度：X 轴不统一，Y 轴统一
+fig, axes = plot_series(df, sharex=False, sharey=True)
+
+# 关闭分面：量级相差很大时自动使用双 Y 轴
+scale_data = {
+    "增长率（%）": [2.1, 2.8, 3.0, 2.6],
+    "GDP（亿元）": [12000, 13500, 15100, 16800],
+}
+fig, ax = plot_series(scale_data, facet=False, title="不同量级序列")
+left_ax = ax
+right_ax = ax.right_ax  # 等价于 fig.axes[1]
+print(left_ax.get_ylabel(), right_ax.get_ylabel())
+
+# 如需强制所有序列画在同一 Y 轴，关闭自动双轴
+fig, ax = plot_series(scale_data, facet=False, auto_dual_y=False)
+
+# 单序列仍返回一个 Axes；可叠加阴影、参考线和注释
 dates = pd.date_range("2020-01", periods=36, freq="MS")
 s = pd.Series(np.cumsum(np.random.normal(0, 1, 36)), index=dates, name="指数")
-fig, ax = plot_series(s, freq="month", title="月度指数", ymin=None)
+fig, ax = plot_series(
+    s,
+    freq="month",
+    title="月度指数",
+    shade=[(pd.Timestamp("2020-06"), pd.Timestamp("2020-09"))],
+    vlines=pd.Timestamp("2021-01"),
+    note="数据来源：模拟数据",
+)
 ```
 
 ---
