@@ -202,6 +202,34 @@ evaluation = model.oos(
 所有继承 `BaseModel` 的预测模型（SARIMAX、GARCH、VAR、VECM、SVAR 及 Auto 模型）
 共享该接口。
 
+### 多模型统一窗口 OOS 比较
+
+多个模型需要在相同估计期和验证期比较全部误差指标时，使用 `TsMetrics`
+提供的批量入口：
+
+```python
+from Ts.TsMetrics import evaluate_models_oos
+
+report = evaluate_models_oos(
+    {
+        "AR(1)": ar1_model,
+        "AR(2)": ar2_model,
+    },
+    estimation_period=(0, 79),
+    validation_period=(80, 99),
+    rank_by="rmse",
+)
+
+print(report.table)
+print(report.ranking)
+print(report.best_model)
+```
+
+`report.table` 包含 MAE、MSE、RMSE、MAPE、sMAPE、Theil U1、有效配对数
+`n` 和排名；`report.evaluations` 保留每个模型的完整 `OOSResult`。批量比较
+强制检查预测目标、估计期、验证期和实际观测一致，并拒绝验证期内的非有限
+实际值或预测值，避免模型使用不同有效样本获得不公平排名。
+
 ```python
 model.oos(estimation_period, validation_period, alpha=0.05)
 
@@ -431,7 +459,7 @@ IGARCH 通过参数变换 beta_q = 1 - sum(alpha) - sum(beta_{1..q-1}) 在约束
 - 不支持 `garch_m=True`（抛出 ValueError）
 - `q` 必须 >= 1（GARCH 成分）
 
-### compare_models — 多模型结果对比
+### compare_models — 参数估计结果对比
 
 ```python
 from Ts.TsModels import compare_models
@@ -447,6 +475,9 @@ print(table)
 输出 Stata 风格的回归表格：参数按 main / ARCHM / ARCH 分组，
 mu/_cons、kappa/sigma2、alpha[1]/L.arch、beta[1]/L.garch
 自动映射为 Stata 命名，显示 t 统计量和显著性星号。
+
+`compare_models()` 比较已拟合模型的参数和显著性，不衡量样本外预测性能。
+比较统一窗口下的预测误差应使用 `TsMetrics.evaluate_models_oos()`。
 
 ## 自动最优参数选择
 

@@ -222,11 +222,159 @@ class TestSARIMAXResult:
         assert isinstance(fig, Figure)
         assert len(axes) == 3
 
+    def test_plot_diagnostics_correlograms_start_at_lag_one(self, fitted_result):
+        """Residual ACF and PACF diagnostics omit the uninformative lag zero."""
+        import matplotlib.pyplot as plt
+
+        fig, axes = fitted_result.plot_diagnostics()
+
+        for ax in axes[1:]:
+            lag_centres = [bar.get_x() + bar.get_width() / 2 for bar in ax.patches]
+            assert lag_centres
+            assert min(lag_centres) == pytest.approx(1.0)
+
+        plt.close(fig)
+
+    def test_diagnostics_exclude_state_initialization_residuals(self):
+        """Invalid diffuse-initialization residuals must not affect diagnostics."""
+        import matplotlib.pyplot as plt
+        from statsmodels.tsa.stattools import acf as sm_acf
+
+        from Ts.TsModels import SARIMAX
+        from Ts.TsTests import LjungBoxTest
+
+        rng = np.random.default_rng(2410)
+        data = 10.0 + np.cumsum(rng.normal(0.01, 0.08, 100))
+        result = SARIMAX(
+            data,
+            order=(0, 1, 1),
+            seasonal_order=(0, 1, 0, 12),
+            trend="n",
+        ).fit()
+        burn = result._statsmodels_result.loglikelihood_burn
+        valid_residuals = result.residuals[burn:]
+
+        assert burn == 13
+        assert result.residuals[0] == pytest.approx(data[0])
+
+        fig, axes = result.plot_diagnostics()
+        displayed = np.asarray(axes[0].lines[0].get_ydata(), dtype=float)
+        assert np.all(np.isnan(displayed[:burn]))
+        assert np.all(np.isfinite(displayed[burn:]))
+
+        expected_acf = sm_acf(valid_residuals, nlags=40, fft=True)
+        assert axes[1].patches[0].get_height() == pytest.approx(expected_acf[1])
+
+        diagnostics = result.test_residuals(lags=5)
+        expected_wn = LjungBoxTest(
+            valid_residuals,
+            lags=5,
+            apply_squared=False,
+        ).fit()
+        assert diagnostics.white_noise.statistic == pytest.approx(
+            expected_wn.statistic
+        )
+        assert diagnostics.white_noise.pvalue == pytest.approx(expected_wn.pvalue)
+        plt.close(fig)
+
     def test_params_format(self, fitted_result):
         """Parameter dict keys match expected pattern."""
         params = fitted_result.params
         assert "ar.L1" in params
         assert "sigma2" in params
+
+
+class TestSARIMAXLogScale:
+    """Log-response forecasts return bias-adjusted original-scale values."""
+
+    @staticmethod
+    def _positive_data():
+        rng = np.random.default_rng(2510)
+        log_values = np.empty(80)
+        log_values[0] = 2.0
+        for index in range(1, len(log_values)):
+            log_values[index] = (
+                0.6 + 0.7 * log_values[index - 1] + rng.normal(scale=0.12)
+            )
+        return np.exp(log_values)
+
+    def test_log_requires_boolean_and_strictly_positive_data(self):
+        from Ts.TsModels import SARIMAX
+
+        with pytest.raises(TypeError, match="log must be a boolean"):
+            SARIMAX(np.arange(1.0, 21.0), log=1)
+        with pytest.raises(ValueError, match="strictly positive"):
+            SARIMAX(np.arange(20.0), log=True)
+
+    def test_log_model_preserves_original_data_and_clone_contract(self):
+        from Ts.TsModels import SARIMAX
+
+        data = self._positive_data()
+        model = SARIMAX(data, order=(1, 0, 0), log=True)
+        clone = model._clone_for_evaluation(data[:40])
+
+        np.testing.assert_allclose(model.data, data)
+        np.testing.assert_allclose(model._model_data, np.log(data))
+        assert clone.log is True
+        np.testing.assert_allclose(clone.data, data[:40])
+        np.testing.assert_allclose(clone._model_data, np.log(data[:40]))
+
+    def test_forecast_uses_horizon_specific_lognormal_bias_correction(self):
+        from Ts.TsModels import SARIMAX
+
+        data = self._positive_data()
+        result = SARIMAX(data, order=(1, 0, 0), log=True).fit()
+        alpha = 0.10
+        steps = 4
+        raw = result._statsmodels_result.get_forecast(steps=steps)
+        raw_frame = raw.summary_frame(alpha=alpha)
+        raw_mean = np.asarray(raw_frame["mean"], dtype=float)
+        raw_variance = np.asarray(raw.var_pred_mean, dtype=float)
+        prediction = result.predict(
+            start=result.nobs,
+            end=result.nobs + steps - 1,
+            alpha=alpha,
+        )
+
+        expected_mean = np.exp(raw_mean + 0.5 * raw_variance)
+        np.testing.assert_allclose(prediction.mean, expected_mean)
+        np.testing.assert_allclose(
+            prediction.lower,
+            np.exp(np.asarray(raw_frame["mean_ci_lower"], dtype=float)),
+        )
+        np.testing.assert_allclose(
+            prediction.upper,
+            np.exp(np.asarray(raw_frame["mean_ci_upper"], dtype=float)),
+        )
+        assert np.all(prediction.mean > np.exp(raw_mean))
+        assert result.log is True
+        assert "bias-adjusted mean" in result.summary()
+
+    def test_fitted_values_are_bias_adjusted_on_original_scale(self):
+        from Ts.TsModels import SARIMAX
+
+        data = self._positive_data()
+        result = SARIMAX(data, order=(1, 0, 0), log=True).fit()
+        raw = result._statsmodels_result.get_prediction(start=0, end=len(data) - 1)
+        raw_frame = raw.summary_frame(alpha=0.05)
+        expected = np.exp(
+            np.asarray(raw_frame["mean"], dtype=float)
+            + 0.5 * np.asarray(raw.var_pred_mean, dtype=float)
+        )
+        burn = result._statsmodels_result.loglikelihood_burn
+
+        np.testing.assert_allclose(result.data, data)
+        np.testing.assert_allclose(result.fitted_values[burn:], expected[burn:])
+
+    def test_undefined_log_scale_effect_summaries_are_rejected(self):
+        from Ts.TsModels import SARIMAX
+
+        result = SARIMAX(self._positive_data(), log=True).fit()
+
+        with pytest.raises(NotImplementedError, match="policy_effect"):
+            result.policy_effect(events=[])
+        with pytest.raises(NotImplementedError, match="unconditional log variance"):
+            result.long_run_equilibrium()
 
 
 @pytest.fixture

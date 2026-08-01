@@ -385,6 +385,14 @@ class BaseModelResult:
         """Return fitted values with any model-specific display masking."""
         return self.fitted_values
 
+    def _residuals_for_plot(self):
+        """Return residuals with any model-specific display masking."""
+        return self.residuals
+
+    def _residuals_for_diagnostics(self):
+        """Return statistically valid residuals for tests and correlograms."""
+        return self.residuals
+
     def plot_fit(self, title=None):
         """Plot actual vs fitted values.
 
@@ -442,9 +450,10 @@ class BaseModelResult:
             title = f"{self.model_type}: Diagnostic Plots"
 
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 10))
+        diagnostic_residuals = self._residuals_for_diagnostics()
 
         plot_series(
-            self.residuals,
+            self._residuals_for_plot(),
             ax=ax1,
             title="Residuals",
             ytitle="Residual",
@@ -454,10 +463,14 @@ class BaseModelResult:
         # Run white noise and normality tests for annotation
         from Ts.TsTests import LjungBoxTest, NormalityTest
 
-        wn_lags = min(10, max(1, len(self.residuals) // 5))
-        wn = LjungBoxTest(self.residuals, lags=wn_lags, apply_squared=False)
+        wn_lags = min(10, max(1, len(diagnostic_residuals) // 5))
+        wn = LjungBoxTest(
+            diagnostic_residuals,
+            lags=wn_lags,
+            apply_squared=False,
+        )
         wn_result = wn.fit()
-        nm = NormalityTest(self.residuals)
+        nm = NormalityTest(diagnostic_residuals)
         nm_result = nm.fit()
 
         anno_lines = [
@@ -481,9 +494,14 @@ class BaseModelResult:
             },
         )
 
-        plot_acf(self.residuals, ax=ax2, title="Residual ACF")
+        plot_acf(
+            diagnostic_residuals,
+            ax=ax2,
+            title="Residual ACF",
+            zero_lag=False,
+        )
 
-        plot_pacf(self.residuals, ax=ax3, title="Residual PACF")
+        plot_pacf(diagnostic_residuals, ax=ax3, title="Residual PACF")
 
         fig.suptitle(title, fontsize=14, fontweight="bold")
         fig.tight_layout()
@@ -512,16 +530,22 @@ class BaseModelResult:
         """
         from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
 
-        wn = LjungBoxTest(self.residuals, lags=lags, apply_squared=False)
+        diagnostic_residuals = self._residuals_for_diagnostics()
+
+        wn = LjungBoxTest(
+            diagnostic_residuals,
+            lags=lags,
+            apply_squared=False,
+        )
         wn_result = wn.fit()
 
-        norm = NormalityTest(self.residuals)
+        norm = NormalityTest(diagnostic_residuals)
         norm_result = norm.fit()
 
-        lb = LjungBoxTest(self.residuals, lags=lags)
+        lb = LjungBoxTest(diagnostic_residuals, lags=lags)
         lb_result = lb.fit()
 
-        lm = EngleLMTest(self.residuals, lags=lags)
+        lm = EngleLMTest(diagnostic_residuals, lags=lags)
         lm_result = lm.fit()
 
         return ResidualTestResults(

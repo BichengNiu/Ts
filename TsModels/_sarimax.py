@@ -110,6 +110,31 @@ def _normalise_seasonal_order(seasonal_order):
     )
 
 
+def _normalise_log(log):
+    """Return an explicit boolean log-transform flag."""
+    if not isinstance(log, (bool, np.bool_)):
+        raise TypeError("log must be a boolean")
+    return bool(log)
+
+
+def _prediction_arrays(prediction, alpha, *, log):
+    """Return prediction arrays, optionally on the original response scale."""
+    frame = prediction.summary_frame(alpha=alpha)
+    mean = np.asarray(frame["mean"], dtype=float)
+    lower = np.asarray(frame["mean_ci_lower"], dtype=float)
+    upper = np.asarray(frame["mean_ci_upper"], dtype=float)
+    if not log:
+        return mean, lower, upper
+
+    variance = np.asarray(prediction.var_pred_mean, dtype=float)
+    variance = np.maximum(variance, 0.0)
+    with np.errstate(over="ignore", invalid="ignore"):
+        mean = np.exp(mean + 0.5 * variance)
+        lower = np.exp(lower)
+        upper = np.exp(upper)
+    return mean, lower, upper
+
+
 def _active_lags(order_component):
     if isinstance(order_component, (int, np.integer)):
         return tuple(range(1, int(order_component) + 1))
@@ -538,6 +563,12 @@ class SARIMAXResult(BaseModelResult):
     _seasonal_order: tuple | None = None
     _statsmodels_result: object = None
     _trend: str = "c"
+    _log_transform: bool = False
+
+    @property
+    def log(self):
+        """Whether the response was fitted on the natural-log scale."""
+        return bool(self._log_transform)
 
     def _mask_state_initialization(self, values):
         """Mask state-space burn-in values that are not valid fitted data."""
@@ -558,6 +589,18 @@ class SARIMAXResult(BaseModelResult):
     def _fitted_values_for_plot(self):
         """Return fitted values after the state-space initialization period."""
         return self._mask_state_initialization(self.fitted_values)
+
+    def _residuals_for_plot(self):
+        """Mask state-space initialization residuals without shifting time."""
+        return self._mask_state_initialization(self.residuals)
+
+    def _residuals_for_diagnostics(self):
+        """Exclude state-space initialization residuals from diagnostics."""
+        masked = self._mask_state_initialization(self.residuals)
+        if self._statsmodels_result is None:
+            return masked
+        burn = int(self._statsmodels_result.loglikelihood_burn)
+        return masked[burn:]
 
     _dates: pd.DatetimeIndex | None = None
     _ordinary_exog: np.ndarray | None = None
@@ -681,6 +724,10 @@ class SARIMAXResult(BaseModelResult):
         if self.ma_lags:
             header_lines.append(
                 "Active MA Lags     : " + ", ".join(str(lag) for lag in self.ma_lags)
+            )
+        if self.log:
+            header_lines.append(
+                "Response Scale     : original (log fit; bias-adjusted mean)"
             )
         if self.fixed_params:
             header_lines.append("Fixed at Zero      : " + ", ".join(self.fixed_params))
@@ -852,10 +899,14 @@ class SARIMAXResult(BaseModelResult):
                 pred_in = self._statsmodels_result.get_prediction(
                     start=start, end=self.nobs - 1, dynamic=dynamic
                 )
-                summary_in = pred_in.summary_frame(alpha=alpha)
-                mean[:n_in] = np.asarray(summary_in["mean"])
-                lower[:n_in] = np.asarray(summary_in["mean_ci_lower"])
-                upper[:n_in] = np.asarray(summary_in["mean_ci_upper"])
+                in_mean, in_lower, in_upper = _prediction_arrays(
+                    pred_in,
+                    alpha,
+                    log=self.log,
+                )
+                mean[:n_in] = in_mean
+                lower[:n_in] = in_lower
+                upper[:n_in] = in_upper
 
             forecast_kwargs = {}
             if future_design is not None:
@@ -864,21 +915,26 @@ class SARIMAXResult(BaseModelResult):
                 steps=window.forecast_steps,
                 **forecast_kwargs,
             )
-            fc_frame = fc.summary_frame(alpha=alpha)
+            fc_mean, fc_lower, fc_upper = _prediction_arrays(
+                fc,
+                alpha,
+                log=self.log,
+            )
             forecast_slice = slice(window.forecast_skip, None)
-            mean[n_in:] = np.asarray(fc_frame["mean"])[forecast_slice]
-            lower[n_in:] = np.asarray(fc_frame["mean_ci_lower"])[forecast_slice]
-            upper[n_in:] = np.asarray(fc_frame["mean_ci_upper"])[forecast_slice]
+            mean[n_in:] = fc_mean[forecast_slice]
+            lower[n_in:] = fc_lower[forecast_slice]
+            upper[n_in:] = fc_upper[forecast_slice]
             is_oos[n_in:] = True
 
         else:
             pred = self._statsmodels_result.get_prediction(
                 start=start, end=end, dynamic=dynamic
             )
-            summary = pred.summary_frame(alpha=alpha)
-            mean = np.asarray(summary["mean"])
-            lower = np.asarray(summary["mean_ci_lower"])
-            upper = np.asarray(summary["mean_ci_upper"])
+            mean, lower, upper = _prediction_arrays(
+                pred,
+                alpha,
+                log=self.log,
+            )
 
         _full_lower = None
         _full_upper = None
@@ -886,9 +942,13 @@ class SARIMAXResult(BaseModelResult):
             full_pred = self._statsmodels_result.get_prediction(
                 start=0, end=self.nobs - 1
             )
-            full_frame = full_pred.summary_frame(alpha=alpha)
-            _full_lower = self._mask_state_initialization(full_frame["mean_ci_lower"])
-            _full_upper = self._mask_state_initialization(full_frame["mean_ci_upper"])
+            _, full_lower, full_upper = _prediction_arrays(
+                full_pred,
+                alpha,
+                log=self.log,
+            )
+            _full_lower = self._mask_state_initialization(full_lower)
+            _full_upper = self._mask_state_initialization(full_upper)
 
         return PredictResult(
             mean=mean,
@@ -912,7 +972,13 @@ class SARIMAXResult(BaseModelResult):
         future_exog=None,
         future_dates=None,
     ):
-        """Return predictions under one or more exogenous scenarios."""
+        """Return predictions under one or more exogenous scenarios.
+
+        When the model was created with ``log=True``, all returned prediction
+        arrays are on the original response scale. Point predictions are
+        lognormal means using each prediction's own variance; interval bounds
+        are the exponentiated Gaussian bounds from the log scale.
+        """
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
 
@@ -990,6 +1056,12 @@ class SARIMAXResult(BaseModelResult):
         seed=None,
     ):
         """Estimate conditional effects for selected fitted events."""
+        if self.log:
+            raise NotImplementedError(
+                "policy_effect is not available for log=True because log-scale "
+                "event coefficients require an explicit multiplicative effect "
+                "definition"
+            )
         from Ts.TsModels._intervention import estimate_policy_effect
 
         return estimate_policy_effect(
@@ -1263,6 +1335,11 @@ class SARIMAXResult(BaseModelResult):
         """
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
+        if self.log:
+            raise NotImplementedError(
+                "long_run_equilibrium is not available for log=True because "
+                "an original-scale mean requires the unconditional log variance"
+            )
 
         _p, d, _q = self._order
         _P, D, _Q, _s = self._seasonal_order
@@ -1323,6 +1400,11 @@ class SARIMAX(BaseModel):
     missing : {"raise", "drop"}
         Non-finite input policy. ``"drop"`` records removed zero-based rows
         in :attr:`dropped_positions`. Default ``"raise"``.
+    log : bool
+        Fit the model to the natural logarithm of the response. The input must
+        be on its original positive scale. Fitted values, predictions, and
+        intervals are returned on the original scale; prediction means use
+        the horizon-specific lognormal bias correction. Default ``False``.
     """
 
     def __init__(
@@ -1339,6 +1421,7 @@ class SARIMAX(BaseModel):
         exog_names=None,
         events=None,
         missing="raise",
+        log=False,
     ):
         inputs = _normalise_sarimax_inputs(
             data,
@@ -1350,8 +1433,11 @@ class SARIMAX(BaseModel):
 
         order = _normalise_order(order)
         seasonal_order = _normalise_seasonal_order(seasonal_order)
+        log = _normalise_log(log)
         if len(inputs.endog) < 10:
             raise ValueError(f"Need at least 10 observations, got {len(inputs.endog)}")
+        if log and np.any(inputs.endog <= 0.0):
+            raise ValueError("log transformation requires strictly positive data")
         event_specs = _validate_events(events, inputs.dates)
         design, event_frame, event_metadata = _combined_design(
             inputs,
@@ -1360,6 +1446,8 @@ class SARIMAX(BaseModel):
         )
 
         self.data = inputs.endog
+        self._model_data = np.log(inputs.endog) if log else inputs.endog.copy()
+        self.log = log
         self.dates = inputs.dates
         self.exog = inputs.exog
         self.exog_names = inputs.exog_names
@@ -1394,6 +1482,7 @@ class SARIMAX(BaseModel):
             exog_names=self.exog_names if exog is not None else None,
             events=self.events,
             missing="raise",
+            log=self.log,
         )
 
     def _evaluation_predict_kwargs(self, start, stop):
@@ -1444,7 +1533,7 @@ class SARIMAX(BaseModel):
             model_exog = model_exog.reset_index(drop=True)
 
         model = StatsmodelsSARIMAX(
-            self.data,
+            self._model_data,
             exog=model_exog,
             dates=model_dates,
             order=(p, d, q),
@@ -1466,7 +1555,16 @@ class SARIMAX(BaseModel):
             p_values[name] = float(pval)
 
         resid = np.asarray(fitted.resid)
-        fitted_vals = np.asarray(fitted.fittedvalues)
+        if self.log:
+            fitted_prediction = fitted.get_prediction(start=0, end=len(self.data) - 1)
+            fitted_vals, _, _ = _prediction_arrays(
+                fitted_prediction,
+                0.05,
+                log=True,
+            )
+            fitted_vals[: int(fitted.loglikelihood_burn)] = np.nan
+        else:
+            fitted_vals = np.asarray(fitted.fittedvalues)
 
         result = SARIMAXResult(
             model_type="SARIMAX",
@@ -1484,6 +1582,7 @@ class SARIMAX(BaseModel):
             _seasonal_order=self.seasonal_order,
             _statsmodels_result=fitted,
             _trend=self.trend,
+            _log_transform=self.log,
             _dates=None if self.dates is None else self.dates.copy(),
             _ordinary_exog=(None if self.exog is None else self.exog.copy()),
             _ordinary_exog_names=self.exog_names,

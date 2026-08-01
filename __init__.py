@@ -16,7 +16,9 @@ Quick start
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
 >>> from Ts.TsUtils import STL, interpolate_missing, eacf
 >>> from Ts.TsModels import SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
->>> from Ts.TsMetrics import rmse, oos, backtest, compare_forecasts
+>>> from Ts.TsMetrics import (
+...     rmse, oos, backtest, compare_forecasts, evaluate_models_oos
+... )
 >>> from Ts.TsTests import ADFTest, KPSSTest, LjungBoxTest
 """
 
