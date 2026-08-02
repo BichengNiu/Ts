@@ -70,12 +70,26 @@ class TestBaseModelResult:
         assert isinstance(ax, Axes)
 
     def test_plot_diagnostics_returns_fig_axes(self, result):
-        """plot_diagnostics() returns (fig, axes) with 3 panels."""
+        """plot_diagnostics() returns four row-major axes for a 2x2 grid."""
         from matplotlib.figure import Figure
 
         fig, axes = result.plot_diagnostics()
         assert isinstance(fig, Figure)
-        assert len(axes) == 3
+        assert len(axes) == 4
+        assert [ax.get_title() for ax in axes] == [
+            "Residuals",
+            "Residual Histogram",
+            "Residual ACF",
+            "Residual PACF",
+        ]
+
+    def test_plot_diagnostics_histogram_contains_all_residuals(self, result):
+        """Residual histogram counts every diagnostic residual exactly once."""
+        _fig, axes = result.plot_diagnostics()
+
+        histogram_count = sum(patch.get_height() for patch in axes[1].patches)
+
+        assert histogram_count == pytest.approx(len(result.residuals))
 
     def test_test_residuals_returns_residual_test_results(self, result):
         """test_residuals() returns ResidualTestResults with LjungBoxTest and EngleLMTest results."""

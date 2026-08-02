@@ -395,12 +395,12 @@ class TestSARIMAXResult:
         plt.close(fig)
 
     def test_plot_diagnostics_inherited(self, fitted_result):
-        """plot_diagnostics() returns (fig, axes) with 3 panels."""
+        """plot_diagnostics() returns four row-major axes for a 2x2 grid."""
         from matplotlib.figure import Figure
 
         fig, axes = fitted_result.plot_diagnostics()
         assert isinstance(fig, Figure)
-        assert len(axes) == 3
+        assert len(axes) == 4
 
     def test_plot_diagnostics_correlograms_start_at_lag_one(self, fitted_result):
         """Residual ACF and PACF diagnostics omit the uninformative lag zero."""
@@ -408,7 +408,7 @@ class TestSARIMAXResult:
 
         fig, axes = fitted_result.plot_diagnostics()
 
-        for ax in axes[1:]:
+        for ax in axes[2:]:
             lag_centres = [bar.get_x() + bar.get_width() / 2 for bar in ax.patches]
             assert lag_centres
             assert min(lag_centres) == pytest.approx(1.0)
@@ -445,7 +445,7 @@ class TestSARIMAXResult:
         np.testing.assert_allclose(displayed, result.residuals)
 
         expected_acf = sm_acf(result.residuals, nlags=40, fft=True)
-        assert axes[1].patches[0].get_height() == pytest.approx(expected_acf[1])
+        assert axes[2].patches[0].get_height() == pytest.approx(expected_acf[1])
 
         diagnostics = result.test_residuals(lags=5)
         expected_wn = LjungBoxTest(

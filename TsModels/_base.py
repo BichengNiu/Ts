@@ -420,10 +420,11 @@ class BaseModelResult:
         return fig, ax
 
     def plot_diagnostics(self, title=None):
-        """Plot diagnostic charts: residuals, ACF, PACF.
+        """Plot residual diagnostics in a 2-by-2 figure.
 
-        Three-panel figure: residuals over time, residual ACF, residual PACF.
-        The residuals panel includes white noise and normality test results.
+        The first row contains residuals over time and a residual histogram;
+        the second row contains residual ACF and residual PACF. The residuals
+        panel includes white noise and normality test results.
 
         Parameters
         ----------
@@ -433,23 +434,31 @@ class BaseModelResult:
         Returns
         -------
         fig : matplotlib.figure.Figure
-        axes : numpy.ndarray of matplotlib.axes.Axes
+        axes : tuple of matplotlib.axes.Axes
+            Flat row-major tuple containing residuals, histogram, ACF, and
+            PACF axes.
         """
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots import plot_acf, plot_pacf, plot_series
-        from Ts.TsPlots.style import _ensure_fonts, _title_font_family
+        from Ts.TsPlots.style import (
+            DEFAULT_PALETTE,
+            _ensure_fonts,
+            _title_font_family,
+            style_axes,
+        )
 
         if title is None:
             title = f"{self.model_type}: Diagnostic Plots"
 
         _ensure_fonts()
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 10))
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        ax_residuals, ax_histogram, ax_acf, ax_pacf = axes.flat
         diagnostic_residuals = self.residuals
 
         plot_series(
             diagnostic_residuals,
-            ax=ax1,
+            ax=ax_residuals,
             title="Residuals",
             ytitle="Residual",
             show_legend=False,
@@ -473,11 +482,11 @@ class BaseModelResult:
             f"Normality: JB={nm_result.statistic:.2f}, p={nm_result.pvalue:.3f}",
         ]
         anno_text = "\n".join(anno_lines)
-        ax1.text(
+        ax_residuals.text(
             0.98,
             0.95,
             anno_text,
-            transform=ax1.transAxes,
+            transform=ax_residuals.transAxes,
             fontsize=8,
             ha="right",
             va="top",
@@ -489,14 +498,26 @@ class BaseModelResult:
             },
         )
 
+        ax_histogram.hist(
+            diagnostic_residuals,
+            bins="auto",
+            color=DEFAULT_PALETTE[0],
+            edgecolor="white",
+            alpha=0.85,
+        )
+        ax_histogram.set_title("Residual Histogram")
+        ax_histogram.set_xlabel("Residual")
+        ax_histogram.set_ylabel("Frequency")
+        style_axes(ax_histogram)
+
         plot_acf(
             diagnostic_residuals,
-            ax=ax2,
+            ax=ax_acf,
             title="Residual ACF",
             zero_lag=False,
         )
 
-        plot_pacf(diagnostic_residuals, ax=ax3, title="Residual PACF")
+        plot_pacf(diagnostic_residuals, ax=ax_pacf, title="Residual PACF")
 
         fig.suptitle(
             title,
@@ -505,7 +526,7 @@ class BaseModelResult:
             fontfamily=_title_font_family(),
         )
         fig.tight_layout()
-        return fig, (ax1, ax2, ax3)
+        return fig, (ax_residuals, ax_histogram, ax_acf, ax_pacf)
 
     def test_residuals(self, lags=10):
         """Run residual diagnostic tests.

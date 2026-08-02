@@ -203,12 +203,12 @@ class TestAutoModelResult:
         assert isinstance(ax, Axes)
 
     def test_plot_diagnostics_inherited(self, auto_result):
-        """plot_diagnostics() returns 3-panel figure."""
+        """plot_diagnostics() returns the shared four-panel layout."""
         from matplotlib.figure import Figure
 
         fig, axes = auto_result.plot_diagnostics()
         assert isinstance(fig, Figure)
-        assert len(axes) == 3
+        assert len(axes) == 4
 
     def test_test_residuals_inherited(self, auto_result):
         """test_residuals() returns ResidualTestResults."""
