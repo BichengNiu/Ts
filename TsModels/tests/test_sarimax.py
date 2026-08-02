@@ -42,6 +42,14 @@ class TestSARIMAX:
         assert model.order == (1, 0, 0)
         assert model.result_ is None
 
+    def test_default_order_is_zero_zero_zero(self, ar1_data):
+        """Omitting order creates a regression/white-noise specification."""
+        from Ts.TsModels._sarimax import SARIMAX
+
+        model = SARIMAX(ar1_data)
+
+        assert model.order == (0, 0, 0)
+
     def test_fit_returns_sarima_result(self, ar1_data):
         """fit() returns SARIMAXResult with expected fields.
 

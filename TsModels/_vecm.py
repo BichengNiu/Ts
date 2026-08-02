@@ -801,7 +801,8 @@ class VECM(BaseModel):
         Array inputs may provide dates explicitly.
     missing : {"raise", "drop"}
         Non-finite row policy. ``"drop"`` records removed zero-based rows in
-        :attr:`dropped_positions`. Default ``"raise"``.
+        :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"`` to
+        reject any sample change.
     """
 
     def __init__(
@@ -812,7 +813,7 @@ class VECM(BaseModel):
         trend="c",
         cols=None,
         dates=None,
-        missing="raise",
+        missing="drop",
     ):
         model_dates = _normalise_model_dates(data, dates, len(data))
         if hasattr(data, "columns"):
@@ -882,7 +883,7 @@ class VECM(BaseModel):
         coint_rank=1,
         criterion="aic",
         cols=None,
-        missing="raise",
+        missing="drop",
     ):
         """Select optimal lag length using information criteria.
 
@@ -898,6 +899,9 @@ class VECM(BaseModel):
             Selection criterion: ``"aic"`` or ``"bic"``.
         cols : list of str, optional
             Variable names.
+        missing : {"raise", "drop"}
+            Non-finite row policy. Default ``"drop"``; use ``"raise"`` to
+            reject any sample change.
 
         Returns
         -------
@@ -934,7 +938,13 @@ class VECM(BaseModel):
 
         for lag in range(1, max_lags + 1):
             try:
-                model = VECM(y, lags=lag, coint_rank=coint_rank, trend="c")
+                model = VECM(
+                    y,
+                    lags=lag,
+                    coint_rank=coint_rank,
+                    trend="c",
+                    missing="raise",
+                )
                 result = model.fit()
                 value = float(getattr(result, criterion))
                 if not np.isfinite(value):

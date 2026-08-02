@@ -35,29 +35,29 @@ def _multivariate_data():
 
 UNIVARIATE_FACTORIES = [
     pytest.param(
-        lambda data, missing: SARIMAX(data, missing=missing),
-        id="sarima",
+        lambda data, **kwargs: SARIMAX(data, **kwargs),
+        id="sarimax",
     ),
     pytest.param(
-        lambda data, missing: AutoSARIMAX(
+        lambda data, **kwargs: AutoSARIMAX(
             data,
             p=(0, 0),
             d=(0, 0),
             q=(0, 0),
-            missing=missing,
+            **kwargs,
         ),
-        id="auto-sarima",
+        id="auto-sarimax",
     ),
     pytest.param(
-        lambda data, missing: GARCH(data, p=1, q=1, missing=missing),
+        lambda data, **kwargs: GARCH(data, p=1, q=1, **kwargs),
         id="garch",
     ),
     pytest.param(
-        lambda data, missing: AutoGARCH(
+        lambda data, **kwargs: AutoGARCH(
             data,
             p=(1, 1),
             q=(1, 1),
-            missing=missing,
+            **kwargs,
         ),
         id="auto-garch",
     ),
@@ -65,16 +65,9 @@ UNIVARIATE_FACTORIES = [
 
 
 @pytest.mark.parametrize("factory", UNIVARIATE_FACTORIES)
-def test_univariate_models_raise_by_default(factory):
-    """Every univariate model rejects NaN and Inf unless drop is explicit."""
-    with pytest.raises(ValueError, match="row positions: 4, 17"):
-        factory(_univariate_data(), "raise")
-
-
-@pytest.mark.parametrize("factory", UNIVARIATE_FACTORIES)
-def test_univariate_models_drop_explicitly_and_record_positions(factory):
-    """Explicit drop removes non-finite rows and records original positions."""
-    model = factory(_univariate_data(), "drop")
+def test_univariate_models_drop_by_default_and_record_positions(factory):
+    """Every univariate model drops NaN and Inf rows by default."""
+    model = factory(_univariate_data())
 
     assert model.missing == "drop"
     assert model.dropped_positions == (4, 17)
@@ -82,26 +75,33 @@ def test_univariate_models_drop_explicitly_and_record_positions(factory):
     assert np.all(np.isfinite(model.data))
 
 
+@pytest.mark.parametrize("factory", UNIVARIATE_FACTORIES)
+def test_univariate_models_raise_explicitly(factory):
+    """Explicit strict mode rejects NaN and Inf instead of changing the sample."""
+    with pytest.raises(ValueError, match="row positions: 4, 17"):
+        factory(_univariate_data(), missing="raise")
+
+
 MULTIVARIATE_FACTORIES = [
     pytest.param(
-        lambda data, missing: VAR(data, lags=1, missing=missing),
+        lambda data, **kwargs: VAR(data, lags=1, **kwargs),
         id="var",
     ),
     pytest.param(
-        lambda data, missing: VECM(
+        lambda data, **kwargs: VECM(
             data,
             lags=2,
             coint_rank=1,
-            missing=missing,
+            **kwargs,
         ),
         id="vecm",
     ),
     pytest.param(
-        lambda data, missing: SVAR(
+        lambda data, **kwargs: SVAR(
             data,
             lags=1,
             A=np.array([[1.0, np.nan], [0.0, 1.0]]),
-            missing=missing,
+            **kwargs,
         ),
         id="svar",
     ),
@@ -109,21 +109,21 @@ MULTIVARIATE_FACTORIES = [
 
 
 @pytest.mark.parametrize("factory", MULTIVARIATE_FACTORIES)
-def test_multivariate_models_raise_by_default(factory):
-    """Multivariate models default to raise instead of silent row deletion."""
-    with pytest.raises(ValueError, match="row positions: 4, 17"):
-        factory(_multivariate_data(), "raise")
-
-
-@pytest.mark.parametrize("factory", MULTIVARIATE_FACTORIES)
-def test_multivariate_models_drop_complete_rows_and_record_positions(factory):
-    """Explicit drop applies complete-row deletion and records positions."""
-    model = factory(_multivariate_data(), "drop")
+def test_multivariate_models_drop_by_default_and_record_positions(factory):
+    """Multivariate models drop complete non-finite rows by default."""
+    model = factory(_multivariate_data())
 
     assert model.missing == "drop"
     assert model.dropped_positions == (4, 17)
     assert model.data.shape == (28, 2)
     assert np.all(np.isfinite(model.data))
+
+
+@pytest.mark.parametrize("factory", MULTIVARIATE_FACTORIES)
+def test_multivariate_models_raise_explicitly(factory):
+    """Explicit strict mode rejects non-finite multivariate rows."""
+    with pytest.raises(ValueError, match="row positions: 4, 17"):
+        factory(_multivariate_data(), missing="raise")
 
 
 @pytest.mark.parametrize("model_class", [SARIMAX, GARCH, VAR, VECM])
@@ -162,9 +162,24 @@ def test_var_select_order_uses_same_missing_policy():
     data = rng.normal(size=(60, 2))
     data[11, 0] = np.nan
 
-    with pytest.raises(ValueError, match="row positions: 11"):
-        VAR.select_order(data, max_lags=2)
-
-    result = VAR.select_order(data, max_lags=2, missing="drop")
+    result = VAR.select_order(data, max_lags=2)
     assert result.dropped_positions == (11,)
     assert result.nobs == 59
+
+    with pytest.raises(ValueError, match="row positions: 11"):
+        VAR.select_order(data, max_lags=2, missing="raise")
+
+
+def test_vecm_select_order_uses_same_missing_policy():
+    """VECM lag selection defaults to drop and retains explicit strict mode."""
+    rng = np.random.default_rng(43)
+    innovations = rng.normal(size=(80, 2))
+    data = np.cumsum(innovations, axis=0)
+    data[11, 0] = np.nan
+
+    result = VECM.select_order(data, max_lags=2)
+    assert result.dropped_positions == (11,)
+    assert result.nobs == 79
+
+    with pytest.raises(ValueError, match="row positions: 11"):
+        VECM.select_order(data, max_lags=2, missing="raise")

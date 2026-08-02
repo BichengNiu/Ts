@@ -1621,7 +1621,8 @@ class VAR(BaseModel):
         Array inputs may provide dates explicitly.
     missing : {"raise", "drop"}
         Non-finite row policy. ``"drop"`` records removed zero-based rows in
-        :attr:`dropped_positions`. Default ``"raise"``.
+        :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"`` to
+        reject any sample change.
     """
 
     def __init__(
@@ -1631,7 +1632,7 @@ class VAR(BaseModel):
         trend="c",
         cols=None,
         dates=None,
-        missing="raise",
+        missing="drop",
     ):
         model_dates = _normalise_model_dates(data, dates, len(data))
         # Column selection for DataFrame inputs
@@ -1692,7 +1693,7 @@ class VAR(BaseModel):
         max_lags,
         criterion="aic",
         cols=None,
-        missing="raise",
+        missing="drop",
     ):
         """Select optimal lag length using information criteria.
 
@@ -1709,6 +1710,9 @@ class VAR(BaseModel):
             named columns are extracted; when *data* is an ndarray, *cols*
             provides display names. If None with a DataFrame, all numeric
             columns are used.
+        missing : {"raise", "drop"}
+            Non-finite row policy. Default ``"drop"``; use ``"raise"`` to
+            reject any sample change.
 
         Returns
         -------

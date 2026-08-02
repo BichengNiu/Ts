@@ -306,7 +306,7 @@ def _normalise_sarimax_inputs(
     dates=None,
     exog=None,
     exog_names=None,
-    missing="raise",
+    missing="drop",
 ):
 
     endog, data_dates = _normalise_data_and_dates(data, dates)
@@ -1454,7 +1454,7 @@ class SARIMAX(BaseModel):
         ``(p, d, q)`` non-seasonal order. ``p`` and ``q`` may be
         non-negative integers or iterables containing the exact positive
         lags to estimate. For example, ``([1, 3], 0, 0)`` estimates AR
-        lags 1 and 3 while fixing lag 2 at zero.
+        lags 1 and 3 while fixing lag 2 at zero. Default ``(0, 0, 0)``.
     seasonal_order : tuple
         ``(P, D, Q, s)`` seasonal order. ``P`` and ``Q`` accept the same
         integer-or-active-lags form. Default ``(0, 0, 0, 0)``.
@@ -1470,7 +1470,8 @@ class SARIMAX(BaseModel):
         Array inputs may provide dates explicitly.
     missing : {"raise", "drop"}
         Non-finite input policy. ``"drop"`` records removed zero-based rows
-        in :attr:`dropped_positions`. Default ``"raise"``.
+        in :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"``
+        to reject any sample change.
     log : bool
         Fit the model to the natural logarithm of the response. The input must
         be on its original positive scale. Fitted values, predictions, and
@@ -1481,7 +1482,7 @@ class SARIMAX(BaseModel):
     def __init__(
         self,
         data,
-        order=(1, 0, 0),
+        order=(0, 0, 0),
         seasonal_order=(0, 0, 0, 0),
         trend="c",
         enforce_stationarity=True,
@@ -1491,7 +1492,7 @@ class SARIMAX(BaseModel):
         exog=None,
         exog_names=None,
         events=None,
-        missing="raise",
+        missing="drop",
         log=False,
     ):
         inputs = _normalise_sarimax_inputs(

@@ -59,15 +59,16 @@ def test_ndarray_exog_must_be_two_dimensional():
         )
 
 
-def test_missing_drop_removes_y_exog_and_dates_jointly():
+def test_missing_default_drops_y_exog_and_dates_jointly():
     dates = pd.date_range("2025-01-01", periods=12, freq="D")
     y = pd.Series(np.arange(12.0), index=dates)
     x = pd.DataFrame({"x": np.arange(12.0)}, index=dates)
     y.iloc[2] = np.nan
     x.iloc[4, 0] = np.nan
 
-    model = SARIMAX(y, exog=x, missing="drop")
+    model = SARIMAX(y, exog=x)
 
+    assert model.missing == "drop"
     assert len(model.data) == 10
     assert dates[2] not in model.dates
     assert dates[4] not in model.dates
@@ -75,19 +76,19 @@ def test_missing_drop_removes_y_exog_and_dates_jointly():
     assert model.dropped_positions == (2, 4)
 
 
-def test_missing_raise_is_default_and_rejects_infinite_values():
+def test_missing_raise_explicitly_rejects_non_finite_values():
     dates = pd.date_range("2025-01-01", periods=12, freq="D")
     y = pd.Series(np.arange(12.0), index=dates)
     x = pd.DataFrame({"x": np.arange(12.0)}, index=dates)
     y.iloc[1] = np.nan
 
     with pytest.raises(ValueError, match="non-finite"):
-        SARIMAX(y, exog=x)
+        SARIMAX(y, exog=x, missing="raise")
 
     y.iloc[1] = 1.0
     x.iloc[3, 0] = np.inf
     with pytest.raises(ValueError, match="non-finite"):
-        SARIMAX(y, exog=x)
+        SARIMAX(y, exog=x, missing="raise")
 
 
 def test_unknown_missing_policy_fails():

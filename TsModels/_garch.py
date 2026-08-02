@@ -57,7 +57,8 @@ class GARCH(_BaseVolModel):
         Array inputs may provide dates explicitly.
     missing : {"raise", "drop"}
         Joint non-finite policy for data and exog. ``"drop"`` records removed
-        zero-based rows in :attr:`dropped_positions`. Default ``"raise"``.
+        zero-based rows in :attr:`dropped_positions`. Default ``"drop"``;
+        use ``"raise"`` to reject any sample change.
     """
 
     def __init__(
@@ -76,7 +77,7 @@ class GARCH(_BaseVolModel):
         dates=None,
         igarch=False,
         compare_lags=True,
-        missing="raise",
+        missing="drop",
     ):
         super().__init__(
             data=data,

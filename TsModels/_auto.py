@@ -418,7 +418,8 @@ class AutoSARIMAX(_BaseAutoModel):
         Search strategy. Currently only ``"grid"``.
     missing : {"raise", "drop"}
         Non-finite input policy. ``"drop"`` records removed zero-based rows
-        in :attr:`dropped_positions`. Default ``"raise"``.
+        in :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"``
+        to reject any sample change.
     dates : datetime-like sequence, optional
         Strict sample dates. A Series DatetimeIndex is inferred automatically.
         Array inputs may provide dates explicitly.
@@ -457,7 +458,7 @@ class AutoSARIMAX(_BaseAutoModel):
         events=None,
         enforce_stationarity=True,
         enforce_invertibility=True,
-        missing="raise",
+        missing="drop",
     ):
         from Ts.TsModels._sarimax import SARIMAX
 
@@ -707,7 +708,8 @@ class AutoGARCH(_BaseAutoModel):
         Array inputs may provide dates explicitly.
     missing : {"raise", "drop"}
         Joint non-finite policy for data and exog. ``"drop"`` records removed
-        zero-based rows in :attr:`dropped_positions`. Default ``"raise"``.
+        zero-based rows in :attr:`dropped_positions`. Default ``"drop"``;
+        use ``"raise"`` to reject any sample change.
     """
 
     _evaluation_target_name = "absolute_demeaned_return_proxy"
@@ -742,7 +744,7 @@ class AutoGARCH(_BaseAutoModel):
         ar_lags=None,
         exog=None,
         dates=None,
-        missing="raise",
+        missing="drop",
     ):
         raw_data = np.asarray(data, dtype=float).ravel()
         model_dates = _normalise_model_dates(data, dates, len(raw_data))
@@ -858,6 +860,7 @@ class AutoGARCH(_BaseAutoModel):
                 exog=self.exog,
                 dates=self.dates,
                 compare_lags=False,
+                missing="raise",
             )
 
         (

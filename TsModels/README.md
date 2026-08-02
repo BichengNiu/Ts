@@ -4,11 +4,13 @@
 
 ## Missing-data contract
 
-All public model constructors accept `missing="raise"` or `missing="drop"`.
-The default is `"raise"`, which rejects both `NaN` and infinite values.
-Explicit `"drop"` removes affected observations and records their original
-zero-based row positions in `dropped_positions`. Multivariate models remove
-complete rows. No model imputes raw observations.
+All public model constructors and the VAR/VECM order-selection helpers accept
+`missing="raise"` or `missing="drop"`. The default is `"drop"`, which removes
+rows containing either `NaN` or infinite values and records their original
+zero-based positions in `dropped_positions`. Endogenous variables, historical
+exogenous regressors, multivariate columns, and dates are filtered jointly.
+Use `missing="raise"` when any automatic sample change must fail immediately.
+No model imputes raw observations.
 
 ## Date-index contract
 
@@ -311,7 +313,7 @@ print(backcast.mean)
 ```python
 SARIMAX(
     data,
-    order=(1, 0, 0),
+    order=(0, 0, 0),
     seasonal_order=(0, 0, 0, 0),
     trend="c",
     enforce_stationarity=True,
@@ -321,14 +323,14 @@ SARIMAX(
     exog=None,
     exog_names=None,
     events=None,
-    missing="raise",
+    missing="drop",
 )
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `data` | array-like | — | 时间序列 |
-| `order` | tuple | `(1,0,0)` | 非季节阶数 `(p,d,q)`；`p`、`q` 可为整数或实际参与估计的滞后列表 |
+| `order` | tuple | `(0,0,0)` | 非季节阶数 `(p,d,q)`；`p`、`q` 可为整数或实际参与估计的滞后列表 |
 | `seasonal_order` | tuple | `(0,0,0,0)` | 季节阶数 `(P,D,Q,s)` |
 | `trend` | str | `"c"` | 趋势设定：`"n"`, `"c"`, `"t"`, `"ct"` |
 | `enforce_stationarity` | bool | `True` | 强制 AR 多项式平稳性 |
@@ -337,7 +339,7 @@ SARIMAX(
 | `exog` | array-like/DataFrame | `None` | 普通外生变量；DataFrame 可同时包含历史和未来日期 |
 | `exog_names` | sequence[str] | `None` | 数组外生变量的必填列名；DataFrame 使用自身列名 |
 | `events` | sequence[EventSpec] | `None` | 脉冲、阶跃或事件窗口设计 |
-| `missing` | `"raise"`/`"drop"` | `"raise"` | 内生和历史外生变量的联合缺失行策略 |
+| `missing` | `"raise"`/`"drop"` | `"drop"` | 内生和历史外生变量的联合缺失行策略；严格模式显式传入 `"raise"` |
 
 稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
 
@@ -370,7 +372,7 @@ GARCH(
     ar_lags=None,
     exog=None,
     dates=None,
-    missing="raise",
+    missing="drop",
 )
 ```
 
@@ -525,7 +527,7 @@ AutoSARIMAX(
     events=None,
     enforce_stationarity=True,
     enforce_invertibility=True,
-    missing="raise",
+    missing="drop",
 )
 ```
 
@@ -541,7 +543,7 @@ AutoSARIMAX(
 | `events` | sequence[EventSpec] | `None` | 每个候选模型共享的事件设计 |
 | `enforce_stationarity` | bool | `True` | 所有候选模型是否强制平稳性 |
 | `enforce_invertibility` | bool | `True` | 所有候选模型是否强制可逆性 |
-| `missing` | `"raise"`/`"drop"` | `"raise"` | 搜索前统一处理内生与外生缺失行 |
+| `missing` | `"raise"`/`"drop"` | `"drop"` | 搜索前统一处理内生与外生缺失行；严格模式显式传入 `"raise"` |
 
 ### AutoGARCH
 
@@ -562,7 +564,7 @@ AutoGARCH(
     ar_lags=None,
     exog=None,
     dates=None,
-    missing="raise",
+    missing="drop",
 )
 ```
 
@@ -620,7 +622,7 @@ result = auto.fit()
 ### VAR
 
 ```python
-VAR(data, lags=1, trend="c", cols=None, dates=None, missing="raise")
+VAR(data, lags=1, trend="c", cols=None, dates=None, missing="drop")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -696,7 +698,7 @@ SVAR(
     trend="c",
     cols=None,
     dates=None,
-    missing="raise",
+    missing="drop",
 )
 ```
 
@@ -762,7 +764,7 @@ SVAR 不支持直接通过 ``svar A B`` 进行**过度识别检验** (LR test) �
 ### VECM
 
 ```python
-VECM(data, lags=2, coint_rank=1, trend="c", cols=None, dates=None, missing="raise")
+VECM(data, lags=2, coint_rank=1, trend="c", cols=None, dates=None, missing="drop")
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |

@@ -67,7 +67,7 @@ class _BaseVolModel(BaseModel):
         dates=None,
         igarch=False,
         compare_lags=True,
-        missing="raise",
+        missing="drop",
     ):
         raw_data = np.asarray(data, dtype=float).ravel()
         model_dates = _normalise_model_dates(data, dates, len(raw_data))

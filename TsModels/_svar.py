@@ -582,7 +582,8 @@ class SVAR(BaseModel):
         Array inputs may provide dates explicitly.
     missing : {"raise", "drop"}
         Non-finite row policy. ``"drop"`` records removed zero-based rows in
-        :attr:`dropped_positions`. Default ``"raise"``.
+        :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"`` to
+        reject any sample change.
 
     Notes
     -----
@@ -601,7 +602,7 @@ class SVAR(BaseModel):
         trend="c",
         cols=None,
         dates=None,
-        missing="raise",
+        missing="drop",
     ):
         model_dates = _normalise_model_dates(data, dates, len(data))
         # Column selection must precede np.asarray to get correct shape
