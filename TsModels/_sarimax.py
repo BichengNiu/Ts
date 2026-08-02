@@ -5,6 +5,7 @@ Provides :class:`SARIMAX` and :class:`SARIMAXResult`.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -28,6 +29,20 @@ from Ts.TsModels._intervention import (
     EventSpec,
     _validate_datetime_index,
     build_event_matrix,
+)
+
+
+_SARIMAX_OPTIMIZERS = frozenset(
+    {
+        "basinhopping",
+        "bfgs",
+        "cg",
+        "lbfgs",
+        "ncg",
+        "newton",
+        "nm",
+        "powell",
+    }
 )
 
 
@@ -115,6 +130,51 @@ def _normalise_log(log):
     if not isinstance(log, (bool, np.bool_)):
         raise TypeError("log must be a boolean")
     return bool(log)
+
+
+def _normalise_fit_method(method):
+    """Return a supported statsmodels optimizer name."""
+    if not isinstance(method, str):
+        raise TypeError("method must be a string")
+    method = method.strip().lower()
+    if not method:
+        raise ValueError("method must be a non-empty string")
+    if method not in _SARIMAX_OPTIMIZERS:
+        supported = ", ".join(sorted(_SARIMAX_OPTIMIZERS))
+        raise ValueError(f"method must be one of: {supported}")
+    return method
+
+
+def _normalise_maxiter(maxiter):
+    """Return a strictly positive optimizer iteration limit."""
+    if isinstance(maxiter, (bool, np.bool_)) or not isinstance(
+        maxiter,
+        (int, np.integer),
+    ):
+        raise TypeError("maxiter must be a positive integer")
+    maxiter = int(maxiter)
+    if maxiter <= 0:
+        raise ValueError("maxiter must be a positive integer")
+    return maxiter
+
+
+def _normalise_start_params(start_params):
+    """Return a finite copied one-dimensional starting vector."""
+    if start_params is None:
+        return None
+    values = _numeric_array(start_params, "start_params")
+    if values.ndim != 1:
+        raise ValueError("start_params must be one-dimensional")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("start_params must contain only finite values")
+    return values.copy()
+
+
+def _normalise_require_convergence(require_convergence):
+    """Return an explicit boolean convergence requirement."""
+    if not isinstance(require_convergence, (bool, np.bool_)):
+        raise TypeError("require_convergence must be a boolean")
+    return bool(require_convergence)
 
 
 def _prediction_arrays(prediction, alpha, *, log):
@@ -570,6 +630,27 @@ class SARIMAXResult(BaseModelResult):
         """Whether the response was fitted on the natural-log scale."""
         return bool(self._log_transform)
 
+    @property
+    def converged(self):
+        """Whether the maximum-likelihood optimizer reported convergence."""
+        details = getattr(self._statsmodels_result, "mle_retvals", None)
+        return bool(details and details.get("converged", False))
+
+    @property
+    def optimizer(self):
+        """Return the optimizer used by statsmodels, if recorded."""
+        settings = getattr(self._statsmodels_result, "mle_settings", None)
+        if not settings:
+            return None
+        optimizer = settings.get("optimizer")
+        return None if optimizer is None else str(optimizer)
+
+    @property
+    def optimization_details(self):
+        """Return a defensive copy of statsmodels optimizer diagnostics."""
+        details = getattr(self._statsmodels_result, "mle_retvals", None)
+        return {} if details is None else copy.deepcopy(dict(details))
+
     def _mask_state_initialization(self, values):
         """Mask state-space burn-in values that are not valid fitted data."""
         if values is None:
@@ -737,6 +818,8 @@ class SARIMAXResult(BaseModelResult):
                 + ("Yes" if self.stationarity_enforced else "No"),
                 "Invertibility Enforced : "
                 + ("Yes" if self.invertibility_enforced else "No"),
+                "Optimizer              : " + (self.optimizer or "Unknown"),
+                "Converged              : " + ("Yes" if self.converged else "No"),
             ]
         )
         return "\n".join(header_lines + lines[1:])
@@ -1501,24 +1584,58 @@ class SARIMAX(BaseModel):
             kwargs["future_dates"] = future_dates.copy()
         return kwargs
 
-    def fit(self):
+    def fit(
+        self,
+        *,
+        start_params=None,
+        method="lbfgs",
+        maxiter=50,
+        require_convergence=False,
+    ):
         """Estimate the SARIMAX model via maximum likelihood.
+
+        Parameters
+        ----------
+        start_params : array-like, optional
+            Finite initial parameter vector in statsmodels parameter order.
+            It must contain exactly one value per fitted parameter.
+        method : str, default ``"lbfgs"``
+            Optimizer passed to statsmodels. Supported values are ``"newton"``,
+            ``"nm"``, ``"bfgs"``, ``"lbfgs"``, ``"powell"``, ``"cg"``,
+            ``"ncg"``, and ``"basinhopping"``.
+        maxiter : int, default 50
+            Strictly positive maximum number of optimizer iterations.
+        require_convergence : bool, default False
+            Raise :class:`RuntimeError` instead of returning a result when the
+            optimizer does not report convergence.
 
         Returns
         -------
         SARIMAXResult
         """
+        method = _normalise_fit_method(method)
+        maxiter = _normalise_maxiter(maxiter)
+        start_params = _normalise_start_params(start_params)
+        require_convergence = _normalise_require_convergence(require_convergence)
+
         p, d, q = self.order
         P, D, Q, s = self.seasonal_order
 
         model_dates = self.dates
-        if model_dates is not None and (
-            model_dates.freq is None and pd.infer_freq(model_dates) is None
-        ):
-            model_dates = None
+        if model_dates is not None and model_dates.freq is None:
+            inferred_frequency = pd.infer_freq(model_dates)
+            model_dates = (
+                None
+                if inferred_frequency is None
+                else pd.DatetimeIndex(model_dates, freq=inferred_frequency)
+            )
         model_exog = self._design_frame
-        if model_exog is not None and model_dates is None:
-            model_exog = model_exog.reset_index(drop=True)
+        if model_exog is not None:
+            if model_dates is None:
+                model_exog = model_exog.reset_index(drop=True)
+            else:
+                model_exog = model_exog.copy()
+                model_exog.index = model_dates
 
         model = StatsmodelsSARIMAX(
             self._model_data,
@@ -1530,7 +1647,24 @@ class SARIMAX(BaseModel):
             enforce_stationarity=self.enforce_stationarity,
             enforce_invertibility=self.enforce_invertibility,
         )
-        fitted = model.fit(disp=False)
+        if start_params is not None and len(start_params) != model.k_params:
+            raise ValueError(
+                "start_params must contain exactly "
+                f"{model.k_params} parameters, got {len(start_params)}"
+            )
+        fitted = model.fit(
+            start_params=start_params,
+            method=method,
+            maxiter=maxiter,
+            disp=False,
+        )
+        converged = bool(fitted.mle_retvals.get("converged", False))
+        if require_convergence and not converged:
+            raise RuntimeError(
+                "SARIMAX optimization failed to converge with "
+                f"method={method!r} within maxiter={maxiter}; "
+                f"optimizer details: {fitted.mle_retvals}"
+            )
 
         params = {}
         std_errors = {}

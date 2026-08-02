@@ -7,6 +7,7 @@ matplotlib.use("Agg")
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 from Ts.TsSims import simulate_sarima
 
@@ -104,6 +105,156 @@ class TestSARIMAX:
         with pytest.raises(ValueError):
             SARIMAX(short_data, order=(1, 0, 0))
 
+    def test_fit_forwards_optimizer_controls_and_copies_start_params(
+        self,
+        ar1_data,
+        monkeypatch,
+    ):
+        """Public fit controls are validated and forwarded to statsmodels."""
+        import Ts.TsModels._sarimax as sarimax_module
+
+        captured = {}
+
+        class StopAfterCapture(RuntimeError):
+            pass
+
+        class CapturingSARIMAX:
+            def __init__(self, *args, **kwargs):
+                self.k_params = 3
+
+            def fit(self, **kwargs):
+                captured.update(kwargs)
+                raise StopAfterCapture
+
+        monkeypatch.setattr(
+            sarimax_module,
+            "StatsmodelsSARIMAX",
+            CapturingSARIMAX,
+        )
+        start_params = np.array([1.0, 0.4, 0.5])
+        model = sarimax_module.SARIMAX(ar1_data, order=(1, 0, 0))
+
+        with pytest.raises(StopAfterCapture):
+            model.fit(
+                start_params=start_params,
+                method="powell",
+                maxiter=250,
+            )
+
+        start_params[:] = -1.0
+        assert captured["method"] == "powell"
+        assert captured["maxiter"] == 250
+        assert captured["disp"] is False
+        np.testing.assert_array_equal(
+            captured["start_params"],
+            np.array([1.0, 0.4, 0.5]),
+        )
+
+    @pytest.mark.parametrize(
+        ("kwargs", "error", "message"),
+        [
+            ({"method": ""}, ValueError, "method"),
+            ({"method": 1}, TypeError, "method"),
+            ({"method": "unknown"}, ValueError, "method"),
+            ({"maxiter": 0}, ValueError, "maxiter"),
+            ({"maxiter": True}, TypeError, "maxiter"),
+            ({"start_params": [1.0, np.nan, 2.0]}, ValueError, "finite"),
+            ({"start_params": [[1.0, 2.0, 3.0]]}, ValueError, "one-dimensional"),
+            ({"start_params": [1.0, 2.0]}, ValueError, "3 parameters"),
+            ({"require_convergence": 1}, TypeError, "require_convergence"),
+        ],
+    )
+    def test_fit_rejects_invalid_optimizer_controls(
+        self,
+        ar1_data,
+        kwargs,
+        error,
+        message,
+    ):
+        """Invalid optimizer controls fail before estimation starts."""
+        from Ts.TsModels._sarimax import SARIMAX
+
+        model = SARIMAX(ar1_data, order=(1, 0, 0))
+        with pytest.raises(error, match=message):
+            model.fit(**kwargs)
+
+    def test_require_convergence_rejects_optimizer_failure(
+        self,
+        ar1_data,
+        monkeypatch,
+    ):
+        """The opt-in convergence gate prevents invalid results escaping."""
+        import Ts.TsModels._sarimax as sarimax_module
+
+        class NonconvergedSARIMAX:
+            def __init__(self, *args, **kwargs):
+                self.k_params = 3
+
+            def fit(self, **kwargs):
+                return SimpleNamespace(
+                    mle_retvals={
+                        "converged": False,
+                        "warnflag": 1,
+                        "iterations": kwargs["maxiter"],
+                    }
+                )
+
+        monkeypatch.setattr(
+            sarimax_module,
+            "StatsmodelsSARIMAX",
+            NonconvergedSARIMAX,
+        )
+        model = sarimax_module.SARIMAX(ar1_data, order=(1, 0, 0))
+
+        with pytest.raises(RuntimeError, match=r"failed to converge.*powell.*7"):
+            model.fit(
+                method="powell",
+                maxiter=7,
+                require_convergence=True,
+            )
+
+    def test_fit_attaches_inferred_frequency_before_statsmodels(
+        self,
+        monkeypatch,
+    ):
+        """Regular dated data reaches statsmodels with an explicit frequency."""
+        import Ts.TsModels._sarimax as sarimax_module
+
+        captured = {}
+
+        class StopAfterCapture(RuntimeError):
+            pass
+
+        class CapturingSARIMAX:
+            def __init__(self, *args, dates=None, exog=None, **kwargs):
+                captured["dates"] = dates
+                captured["exog"] = exog
+                raise StopAfterCapture
+
+        monkeypatch.setattr(
+            sarimax_module,
+            "StatsmodelsSARIMAX",
+            CapturingSARIMAX,
+        )
+        regular_dates_without_freq = pd.DatetimeIndex(
+            pd.date_range("2020-03-31", periods=20, freq="QE-DEC").values
+        )
+        data = pd.Series(np.arange(20.0), index=regular_dates_without_freq)
+        exog = pd.DataFrame(
+            {"x": np.linspace(0.0, 1.0, 20)},
+            index=regular_dates_without_freq,
+        )
+
+        with pytest.raises(StopAfterCapture):
+            sarimax_module.SARIMAX(
+                data,
+                exog=exog,
+                order=(0, 0, 0),
+            ).fit()
+
+        assert captured["dates"].freqstr == "QE-DEC"
+        assert captured["exog"].index.freqstr == "QE-DEC"
+
 
 class TestSARIMAXResult:
     """Test SARIMAXResult methods."""
@@ -126,6 +277,27 @@ class TestSARIMAXResult:
         assert "AIC" in text
         assert "BIC" in text
         assert "ar.L1" in text
+        assert "Optimizer" in text
+        assert "Converged" in text
+
+    def test_optimization_diagnostics_are_public_and_defensively_copied(
+        self,
+        fitted_result,
+    ):
+        """Callers can inspect convergence without mutating raw fit state."""
+        assert fitted_result.converged
+        assert fitted_result.optimizer == "lbfgs"
+
+        details = fitted_result.optimization_details
+        original_gradient = np.asarray(
+            fitted_result._statsmodels_result.mle_retvals["gopt"]
+        ).copy()
+        details["gopt"][:] = np.nan
+
+        np.testing.assert_array_equal(
+            fitted_result._statsmodels_result.mle_retvals["gopt"],
+            original_gradient,
+        )
 
     def test_predict_in_sample(self, fitted_result):
         """predict() within sample range returns PredictResult with correct length.
@@ -273,9 +445,7 @@ class TestSARIMAXResult:
             lags=5,
             apply_squared=False,
         ).fit()
-        assert diagnostics.white_noise.statistic == pytest.approx(
-            expected_wn.statistic
-        )
+        assert diagnostics.white_noise.statistic == pytest.approx(expected_wn.statistic)
         assert diagnostics.white_noise.pvalue == pytest.approx(expected_wn.pvalue)
         plt.close(fig)
 

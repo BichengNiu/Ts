@@ -43,6 +43,7 @@ from .style import (
     DEFAULT_PALETTE,
     FIGSIZE,
     TITLE_FONTSIZE,
+    _ensure_fonts,
     draw_note_and_bottom_title,
     style_axes,
 )
@@ -274,6 +275,7 @@ def plot_acf(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
     """
+    _ensure_fonts()
     x = _to_1d(data)
     color = bar_color if bar_color is not None else DEFAULT_PALETTE[0]
 
@@ -386,6 +388,7 @@ def plot_pacf(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
     """
+    _ensure_fonts()
     x = _to_1d(data)
     color = bar_color if bar_color is not None else DEFAULT_PALETTE[0]
 

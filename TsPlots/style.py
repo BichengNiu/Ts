@@ -33,8 +33,11 @@ LATIN_FONT = "Times New Roman"
 # The genuine "仿宋_GB2312" (FSGB2312) is often not installed; we list it first
 # and fall back to the standard Windows FangSong (simfang.ttf) if absent.
 CHINESE_FONT_CANDIDATES = ["FangSong_GB2312", "FZFangSong-Z02", "FangSong"]
-# For captions and titles, use SimHei (黑体) instead of FangSong
-HEITI_FONT_CANDIDATES = ["SimHei", "Microsoft YaHei"]
+# For captions and titles, prefer a CJK family with a real bold face.  SimHei
+# is visually bold but is commonly installed only at weight 400, which makes
+# matplotlib emit a font-weight fallback warning whenever a title requests
+# ``fontweight="bold"``.
+HEITI_FONT_CANDIDATES = ["Microsoft YaHei", "SimHei"]
 
 
 def apply_fonts(latin=LATIN_FONT, chinese_candidates=CHINESE_FONT_CANDIDATES):
@@ -73,6 +76,7 @@ def apply_fonts(latin=LATIN_FONT, chinese_candidates=CHINESE_FONT_CANDIDATES):
 # (scanning ~1800 TTF files on Windows) when all the user wants is a constant.
 _fonts_initialized = False
 SELECTED_CHINESE_FONT = "FangSong"  # placeholder; replaced after first _ensure_fonts()
+SELECTED_HEITI_FONT = "Microsoft YaHei"
 
 
 def _ensure_fonts():
@@ -81,10 +85,27 @@ def _ensure_fonts():
     Call this at the top of every public plotting function that creates or
     styles a figure (plot_series, plot_scatter, plot_acf, plot_pacf).
     """
-    global _fonts_initialized, SELECTED_CHINESE_FONT
+    global _fonts_initialized, SELECTED_CHINESE_FONT, SELECTED_HEITI_FONT
     if not _fonts_initialized:
         SELECTED_CHINESE_FONT = apply_fonts(LATIN_FONT, CHINESE_FONT_CANDIDATES)
+        available = {font.name for font in font_manager.fontManager.ttflist}
+        SELECTED_HEITI_FONT = next(
+            (name for name in HEITI_FONT_CANDIDATES if name in available),
+            HEITI_FONT_CANDIDATES[-1],
+        )
         _fonts_initialized = True
+
+
+def _body_font_family():
+    """Return the resolved Latin/CJK font fallback used for body text."""
+    _ensure_fonts()
+    return [LATIN_FONT, SELECTED_CHINESE_FONT]
+
+
+def _title_font_family():
+    """Return the resolved Latin/CJK font fallback used for bold titles."""
+    _ensure_fonts()
+    return [LATIN_FONT, SELECTED_HEITI_FONT]
 
 
 # --- Palette and cycles ----------------------------------------------------
@@ -169,6 +190,25 @@ def style_axes(ax, *, grid=False, tick_labelsize=TICK_LABELSIZE):
     tick_labelsize : float
         Font size of the tick labels. Defaults to ``14``.
     """
+    body_family = _body_font_family()
+    title_family = _title_font_family()
+
+    # Axes may have been created before TsPlots initialised its fonts (for
+    # example, the three-panel model diagnostics figure).  Updating rcParams
+    # alone does not retrofit those existing Text artists, so apply the
+    # resolved families explicitly.
+    ax.xaxis.label.set_fontfamily(body_family)
+    ax.yaxis.label.set_fontfamily(body_family)
+    for label in (*ax.get_xticklabels(), *ax.get_yticklabels()):
+        label.set_fontfamily(body_family)
+    for title in (
+        ax.title,
+        getattr(ax, "_left_title", None),
+        getattr(ax, "_right_title", None),
+    ):
+        if title is not None:
+            title.set_fontfamily(title_family)
+
     if grid:
         ax.grid(axis="both", alpha=0.4, linestyle="--")
     ax.spines["top"].set_visible(False)
@@ -377,7 +417,7 @@ def draw_note_and_bottom_title(
             color="#000000",
             ha="center",
             va="top",
-            family=HEITI_FONT_CANDIDATES,
+            family=_title_font_family(),
         )
 
     if note is not None:
@@ -392,7 +432,7 @@ def draw_note_and_bottom_title(
             color="#000000",
             ha="left",
             va="top",
-            family=HEITI_FONT_CANDIDATES,
+            family=_title_font_family(),
         )
 
 

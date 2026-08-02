@@ -438,10 +438,12 @@ class BaseModelResult:
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots import plot_acf, plot_pacf, plot_series
+        from Ts.TsPlots.style import _ensure_fonts, _title_font_family
 
         if title is None:
             title = f"{self.model_type}: Diagnostic Plots"
 
+        _ensure_fonts()
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 10))
         diagnostic_residuals = self.residuals
 
@@ -496,7 +498,12 @@ class BaseModelResult:
 
         plot_pacf(diagnostic_residuals, ax=ax3, title="Residual PACF")
 
-        fig.suptitle(title, fontsize=14, fontweight="bold")
+        fig.suptitle(
+            title,
+            fontsize=14,
+            fontweight="bold",
+            fontfamily=_title_font_family(),
+        )
         fig.tight_layout()
         return fig, (ax1, ax2, ax3)
 

@@ -6,7 +6,13 @@ import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend
 import matplotlib.pyplot as plt
 from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
-from Ts.TsPlots.style import DEFAULT_PALETTE, DEFAULT_LINESTYLES, DEFAULT_MARKERS
+from Ts.TsPlots.style import (
+    DEFAULT_LINESTYLES,
+    DEFAULT_MARKERS,
+    DEFAULT_PALETTE,
+    _body_font_family,
+    _title_font_family,
+)
 
 
 class TestPlotSeries:
@@ -294,6 +300,18 @@ class TestPlotACF:
         data = np.random.randn(100)
         fig, _ax = plot_acf(data, nlags=10)
         assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_existing_axes_receive_resolved_fonts(self):
+        fig, ax = plt.subplots()
+        ax.xaxis.label.set_fontfamily(["DejaVu Sans"])
+        ax.yaxis.label.set_fontfamily(["DejaVu Sans"])
+
+        plot_acf(np.random.randn(100), nlags=10, ax=ax, title="Residual ACF")
+
+        assert ax.xaxis.label.get_fontfamily() == _body_font_family()
+        assert ax.yaxis.label.get_fontfamily() == _body_font_family()
+        assert ax.title.get_fontfamily() == _title_font_family()
         plt.close(fig)
 
 
