@@ -94,7 +94,7 @@ result.test_residuals(lags=10)
 |-----------|------|
 | `.summary()` | 参数估计表 + AIC/BIC |
 | `.plot_fit()` | 实际值与拟合值对比图 |
-| `.plot_diagnostics()` | 诊断图：第一行为残差时间序列（含检验结果）和残差直方图，第二行为残差 ACF 和残差 PACF（2×2） |
+| `.plot_diagnostics()` | 2×2 残差诊断图：第一行为残差时间序列和直方图（含 Normality/Jarque–Bera），第二行为 ACF（含 White Noise/Ljung–Box）和 PACF |
 | `.test_residuals(lags)` | 四项残差检验：白噪音 + 正态性 + Ljung-Box + Engle LM |
 | `.params` | 估计参数 dict |
 | `.aic` / `.bic` | 信息准则 |

@@ -423,8 +423,9 @@ class BaseModelResult:
         """Plot residual diagnostics in a 2-by-2 figure.
 
         The first row contains residuals over time and a residual histogram;
-        the second row contains residual ACF and residual PACF. The residuals
-        panel includes white noise and normality test results.
+        the second row contains residual ACF and residual PACF. The histogram
+        includes the normality test result, while the ACF panel includes the
+        white-noise test result.
 
         Parameters
         ----------
@@ -442,7 +443,10 @@ class BaseModelResult:
 
         from Ts.TsPlots import plot_acf, plot_pacf, plot_series
         from Ts.TsPlots.style import (
+            AXIS_LABEL_FONTSIZE,
             DEFAULT_PALETTE,
+            NOTE_FONTSIZE,
+            TITLE_FONTSIZE,
             _ensure_fonts,
             _title_font_family,
             style_axes,
@@ -477,27 +481,6 @@ class BaseModelResult:
         nm = NormalityTest(diagnostic_residuals)
         nm_result = nm.fit()
 
-        anno_lines = [
-            f"White Noise: Q({wn_result.lags})={wn_result.statistic:.2f}, p={wn_result.pvalue:.3f}",
-            f"Normality: JB={nm_result.statistic:.2f}, p={nm_result.pvalue:.3f}",
-        ]
-        anno_text = "\n".join(anno_lines)
-        ax_residuals.text(
-            0.98,
-            0.95,
-            anno_text,
-            transform=ax_residuals.transAxes,
-            fontsize=8,
-            ha="right",
-            va="top",
-            bbox={
-                "boxstyle": "round,pad=0.3",
-                "facecolor": "white",
-                "alpha": 0.85,
-                "edgecolor": "#cccccc",
-            },
-        )
-
         ax_histogram.hist(
             diagnostic_residuals,
             bins="auto",
@@ -505,9 +488,14 @@ class BaseModelResult:
             edgecolor="white",
             alpha=0.85,
         )
-        ax_histogram.set_title("Residual Histogram")
-        ax_histogram.set_xlabel("Residual")
-        ax_histogram.set_ylabel("Frequency")
+        ax_histogram.set_title(
+            "Residual Histogram",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
+            pad=12,
+        )
+        ax_histogram.set_xlabel("Residual", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_histogram.set_ylabel("Frequency", fontsize=AXIS_LABEL_FONTSIZE)
         style_axes(ax_histogram)
 
         plot_acf(
@@ -519,9 +507,37 @@ class BaseModelResult:
 
         plot_pacf(diagnostic_residuals, ax=ax_pacf, title="Residual PACF")
 
+        annotation_bbox = {
+            "boxstyle": "round,pad=0.3",
+            "facecolor": "white",
+            "alpha": 0.85,
+            "edgecolor": "#cccccc",
+        }
+        annotation_kwargs = {
+            "fontsize": NOTE_FONTSIZE,
+            "ha": "right",
+            "va": "top",
+            "bbox": annotation_bbox,
+        }
+        ax_acf.text(
+            0.98,
+            0.95,
+            f"White Noise: Q({wn_result.lags})={wn_result.statistic:.2f}, "
+            f"p={wn_result.pvalue:.3f}",
+            transform=ax_acf.transAxes,
+            **annotation_kwargs,
+        )
+        ax_histogram.text(
+            0.98,
+            0.95,
+            f"Normality: JB={nm_result.statistic:.2f}, p={nm_result.pvalue:.3f}",
+            transform=ax_histogram.transAxes,
+            **annotation_kwargs,
+        )
+
         fig.suptitle(
             title,
-            fontsize=14,
+            fontsize=TITLE_FONTSIZE,
             fontweight="bold",
             fontfamily=_title_font_family(),
         )

@@ -91,6 +91,25 @@ class TestBaseModelResult:
 
         assert histogram_count == pytest.approx(len(result.residuals))
 
+    def test_plot_diagnostics_histogram_uses_shared_typography(self, result):
+        """Residual histogram follows the shared TsPlots typography contract."""
+        from Ts.TsPlots.style import AXIS_LABEL_FONTSIZE, TITLE_FONTSIZE
+
+        _fig, axes = result.plot_diagnostics()
+        ax_residuals, ax_histogram, _ax_acf, _ax_pacf = axes
+
+        assert ax_histogram.title.get_fontsize() == TITLE_FONTSIZE
+        assert ax_histogram.title.get_fontweight() == "bold"
+        assert ax_histogram.xaxis.label.get_fontsize() == AXIS_LABEL_FONTSIZE
+        assert ax_histogram.yaxis.label.get_fontsize() == AXIS_LABEL_FONTSIZE
+        assert (
+            ax_histogram.title.get_fontfamily() == ax_residuals.title.get_fontfamily()
+        )
+        assert (
+            ax_histogram.xaxis.label.get_fontfamily()
+            == ax_residuals.xaxis.label.get_fontfamily()
+        )
+
     def test_test_residuals_returns_residual_test_results(self, result):
         """test_residuals() returns ResidualTestResults with LjungBoxTest and EngleLMTest results."""
         from Ts.TsTests._base import BaseTestResult
@@ -130,13 +149,21 @@ class TestBaseModelResult:
         assert "Engle LM" in text
 
     def test_plot_diagnostics_shows_test_results(self, result):
-        """plot_diagnostics() residuals panel must annotate WN + JB test results."""
+        """Diagnostic tests appear only on their semantically related panels."""
         _fig, axes = result.plot_diagnostics()
-        ax_resid = axes[0]
-        texts = [t.get_text() for t in ax_resid.texts]
-        combined = " ".join(texts)
-        assert "Q" in combined or "white" in combined.lower()
-        assert "JB" in combined or "normality" in combined.lower()
+
+        panel_text = [" ".join(text.get_text() for text in ax.texts) for ax in axes]
+
+        assert "White Noise" in panel_text[2]
+        assert "Q(" in panel_text[2]
+        assert "p=" in panel_text[2]
+        assert "Normality" in panel_text[1]
+        assert "JB=" in panel_text[1]
+        assert "p=" in panel_text[1]
+
+        for text in (panel_text[0], panel_text[3]):
+            assert "White Noise" not in text
+            assert "Normality" not in text
 
     def test_cover_remaining(self, result):
         """Aggregate covers for items exercised by TestBaseModelResult.
