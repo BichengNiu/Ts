@@ -3,7 +3,7 @@
 This package consolidates six sub-packages under a unified namespace.
 
 - :mod:`Ts.TsPlots`  — shared plotting (series, scatter, ACF/PACF)
-- :mod:`Ts.TsSims`   — synthetic data generation (SARIMA, GARCH, TS/DS)
+- :mod:`Ts.TsSims`   — synthetic data generation (SARIMA, RDL, GARCH, TS/DS)
 - :mod:`Ts.TsUtils`  — preprocessing and identification diagnostics
 - :mod:`Ts.TsModels` — model estimation (SARIMAX, GARCH)
 - :mod:`Ts.TsMetrics` — forecast metrics and leakage-free evaluation
@@ -48,10 +48,13 @@ from .TsUtils import (
 # ---------------------------------------------------------------------------
 from .TsSims import (
     BaseSimResult,
+    RDLInputSpec,
+    SimRDLResult,
     SimSARIMAResult,
     SimGARCHResult,
     SimTSDSResult,
     simulate_sarima,
+    simulate_rdl,
     simulate_garch,
     simulate_igarch,
     simulate_gjr_garch,
@@ -70,6 +73,8 @@ from .TsModels import (
     ResidualTestResults,
     SARIMAX,
     SARIMAXResult,
+    RationalLagResult,
+    RationalLagSpec,
     ScenarioForecastResult,
     EventSpec,
     PolicyEffectResult,
@@ -155,10 +160,13 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "BaseSimResult",
     # TsSims — result classes
     "SimSARIMAResult",
+    "SimRDLResult",
     "SimGARCHResult",
     "SimTSDSResult",
+    "RDLInputSpec",
     # TsSims — functions
     "simulate_sarima",
+    "simulate_rdl",
     "simulate_garch",
     "simulate_igarch",
     "simulate_gjr_garch",
@@ -173,6 +181,8 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     # TsModels — models
     "SARIMAX",
     "SARIMAXResult",
+    "RationalLagSpec",
+    "RationalLagResult",
     "ScenarioForecastResult",
     "EventSpec",
     "PolicyEffectResult",

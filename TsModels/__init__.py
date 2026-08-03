@@ -61,6 +61,7 @@ from ._auto import AutoGARCH, AutoModelResult, AutoSARIMAX
 from ._backcast import BackcastResult
 from ._base import BaseModel, BaseModelResult, PredictResult, ResidualTestResults
 from ._compare import compare_models
+from ._distributed_lag import RationalLagResult, RationalLagSpec
 from ._garch import GARCH
 from ._garch_result import GARCHResult
 from ._intervention import EventSpec, PolicyEffectResult
@@ -90,6 +91,8 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "SARIMAXResult",
     "ARCycleResult",
     "ScenarioForecastResult",
+    "RationalLagSpec",
+    "RationalLagResult",
     "EventSpec",
     "PolicyEffectResult",
     "GARCH",

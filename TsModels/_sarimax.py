@@ -24,6 +24,13 @@ from Ts.TsModels._base import (
     PredictResult,
     _resolve_prediction_window,
 )
+from Ts.TsModels._distributed_lag import (
+    RationalLagResult,
+    RationalLagSpec,
+    _make_rational_lag_results,
+    _normalise_nonnegative_integer,
+    _RationalLagSARIMAX,
+)
 from Ts.TsModels._intervention import (
     EventColumns,
     EventSpec,
@@ -61,15 +68,6 @@ def _numeric_array(values, name):
         return np.asarray(values, dtype=float)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{name} must contain numeric values") from error
-
-
-def _normalise_nonnegative_integer(value, name):
-    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-        raise TypeError(f"{name} must be a non-negative integer")
-    value = int(value)
-    if value < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
-    return value
 
 
 def _normalise_lag_order(value, name):
@@ -246,18 +244,21 @@ def _normalise_data_and_dates(data, dates):
     return values.copy(), data_dates
 
 
-def _normalise_dataframe_exog(exog, dates, exog_names):
+def _normalise_dataframe_exog(exog, dates, exog_names, endog_length):
     if exog_names is not None:
         raise ValueError("exog_names must not be provided when exog is a DataFrame")
+    names = _normalise_exog_names(tuple(exog.columns), exog.shape[1])
     if dates is None:
-        raise ValueError(
-            "DataFrame exog requires dated data or an explicit dates argument"
-        )
+        if len(exog) != endog_length:
+            raise ValueError(
+                f"exog has {len(exog)} observations; expected "
+                f"{endog_length} observations"
+            )
+        historical = _numeric_array(exog.loc[:, list(names)], "exog")
+        return historical.copy(), names, None
     index = _validate_datetime_index(exog.index, "exog dates")
     if str(index.tz) != str(dates.tz):
         raise ValueError("exog dates timezone must match data dates timezone")
-    names = _normalise_exog_names(tuple(exog.columns), exog.shape[1])
-
     missing_dates = dates.difference(index)
     if len(missing_dates):
         raise ValueError(
@@ -322,6 +323,7 @@ def _normalise_sarimax_inputs(
             exog,
             data_dates,
             exog_names,
+            len(endog),
         )
     else:
         historical_exog, names = _normalise_array_exog(
@@ -368,6 +370,43 @@ def _validate_events(events, dates):
     return event_specs
 
 
+def _normalise_distributed_lags(distributed_lags, inputs):
+    if distributed_lags is None:
+        return {}
+    if not isinstance(distributed_lags, Mapping):
+        raise TypeError(
+            "distributed_lags must be a mapping from input name to RationalLagSpec"
+        )
+    if not distributed_lags:
+        return {}
+    if inputs.exog is None:
+        raise ValueError("distributed_lags requires exog input data")
+
+    unknown = [name for name in distributed_lags if name not in inputs.exog_names]
+    if unknown:
+        raise ValueError(f"distributed_lags contains unknown exog input {unknown[0]!r}")
+    for name, spec in distributed_lags.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("distributed_lags names must be non-empty strings")
+        if not isinstance(spec, RationalLagSpec):
+            raise TypeError(f"distributed_lags[{name!r}] must be a RationalLagSpec")
+    if inputs.dropped_positions:
+        raise ValueError(
+            "rational distributed lags require consecutive observations; "
+            "missing='drop' removed rows"
+        )
+    if inputs.dates is not None and len(inputs.dates) >= 3:
+        frequency = inputs.dates.freq or pd.infer_freq(inputs.dates)
+        if frequency is None:
+            raise ValueError("rational distributed lags require regularly spaced dates")
+
+    return {
+        name: distributed_lags[name]
+        for name in inputs.exog_names
+        if name in distributed_lags
+    }
+
+
 def _validate_design_matrix(frame, trend):
     if frame is None:
         return
@@ -388,19 +427,22 @@ def _validate_design_matrix(frame, trend):
         )
 
 
-def _combined_design(inputs, events, trend):
+def _combined_design(inputs, events, trend, *, distributed_lag_names=()):
     index = (
         inputs.dates if inputs.dates is not None else pd.RangeIndex(len(inputs.endog))
     )
     frames = []
     if inputs.exog is not None:
-        frames.append(
-            pd.DataFrame(
-                inputs.exog,
-                index=index,
-                columns=inputs.exog_names,
-            )
+        exog_frame = pd.DataFrame(
+            inputs.exog,
+            index=index,
+            columns=inputs.exog_names,
         )
+        ordinary_names = [
+            name for name in inputs.exog_names if name not in distributed_lag_names
+        ]
+        if ordinary_names:
+            frames.append(exog_frame.loc[:, ordinary_names])
     event_metadata: dict[str, EventColumns] = {}
     event_frame = None
     if events:
@@ -489,10 +531,13 @@ def _coerce_future_frame(
                 f"scenario {name!r} columns must be exactly {exog_names}, "
                 f"got {actual_columns}"
             )
-        index = _validate_datetime_index(
-            values.index,
-            f"scenario {name!r} dates",
-        )
+        if isinstance(expected_dates, pd.DatetimeIndex):
+            index = _validate_datetime_index(
+                values.index,
+                f"scenario {name!r} dates",
+            )
+        else:
+            index = values.index
         if len(index) != len(expected_dates) or not index.equals(expected_dates):
             raise ValueError(
                 f"scenario {name!r} dates/rows must exactly match "
@@ -537,9 +582,12 @@ def _normalise_future_scenarios(
     if default_future_exog is not None:
         missing = expected_dates.difference(default_future_exog.index)
         if len(missing):
-            raise ValueError(
-                f"default future exog is missing date {missing[0].isoformat()}"
+            missing_label = (
+                missing[0].isoformat()
+                if hasattr(missing[0], "isoformat")
+                else str(missing[0])
             )
+            raise ValueError(f"default future exog is missing date {missing_label}")
         scenarios["default"] = _coerce_future_frame(
             default_future_exog.loc[expected_dates],
             name="default",
@@ -551,7 +599,11 @@ def _normalise_future_scenarios(
 
     if future_exog is None:
         if not scenarios:
-            missing_date = expected_dates[0].isoformat()
+            missing_date = (
+                expected_dates[0].isoformat()
+                if hasattr(expected_dates[0], "isoformat")
+                else str(expected_dates[0])
+            )
             raise ValueError(f"future exog is required starting at {missing_date}")
         return scenarios, default_name
 
@@ -572,7 +624,10 @@ def _normalise_future_scenarios(
             name=name,
             expected_dates=expected_dates,
             exog_names=exog_names,
-            array_dates_provided=future_dates is not None,
+            array_dates_provided=(
+                future_dates is not None
+                or not isinstance(expected_dates, pd.DatetimeIndex)
+            ),
         )
     return scenarios, default_name
 
@@ -674,12 +729,75 @@ class SARIMAXResult(BaseModelResult):
     _dates: pd.DatetimeIndex | None = None
     _ordinary_exog: np.ndarray | None = None
     _ordinary_exog_names: tuple[str, ...] = ()
+    _static_exog_names: tuple[str, ...] = ()
     _event_specs: tuple[EventSpec, ...] = ()
     _event_metadata: dict[str, EventColumns] | None = None
     _design_columns: tuple[str, ...] = ()
     _design_matrix: np.ndarray | None = None
     _default_future_exog: pd.DataFrame | None = None
     _model_kwargs: dict | None = None
+    _distributed_lag_results: dict[str, RationalLagResult] | None = None
+    _enforce_distributed_lag_stability: bool = True
+
+    @property
+    def distributed_lags(self):
+        """Return structured rational distributed-lag results by input."""
+        return dict(self._distributed_lag_results or {})
+
+    @property
+    def distributed_lag_names(self):
+        """Return distributed-lag input names in fitted parameter order."""
+        return tuple((self._distributed_lag_results or {}).keys())
+
+    @property
+    def distributed_lag_coefficients(self):
+        """Return estimated and fixed transfer-polynomial coefficients."""
+        results = self._distributed_lag_results or {}
+        if not results:
+            return pd.DataFrame(
+                columns=[
+                    "input",
+                    "component",
+                    "lag",
+                    "parameter",
+                    "estimate",
+                    "standard_error",
+                    "p_value",
+                    "fixed",
+                ]
+            )
+        return pd.concat(
+            [result.coefficients for result in results.values()],
+            ignore_index=True,
+        )
+
+    @property
+    def steady_state_gains(self):
+        """Return per-input steady-state gains with delta-method intervals."""
+        rows = [
+            result.gain() for result in (self._distributed_lag_results or {}).values()
+        ]
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "input",
+                "estimate",
+                "standard_error",
+                "lower",
+                "upper",
+                "stable",
+            ],
+        )
+
+    def weights(self, steps):
+        """Return one impulse-weight column per distributed-lag input."""
+        results = self._distributed_lag_results or {}
+        if not results:
+            raise ValueError("model has no rational distributed-lag inputs")
+        return pd.concat(
+            [result.weights(steps) for result in results.values()],
+            axis=1,
+        )
 
     @property
     def dates(self):
@@ -717,7 +835,7 @@ class SARIMAXResult(BaseModelResult):
 
     @property
     def fixed_params(self):
-        """Non-seasonal AR/MA coefficients excluded and fixed at zero."""
+        """Sparse AR/MA and transfer coefficients excluded and fixed at zero."""
         fixed = {}
         if self.ar_lags:
             for lag in range(1, max(self.ar_lags) + 1):
@@ -727,6 +845,8 @@ class SARIMAXResult(BaseModelResult):
             for lag in range(1, max(self.ma_lags) + 1):
                 if lag not in self.ma_lags:
                     fixed[f"ma.L{lag}"] = 0.0
+        for result in (self._distributed_lag_results or {}).values():
+            fixed.update(result.fixed_params)
         return fixed
 
     @property
@@ -786,6 +906,23 @@ class SARIMAXResult(BaseModelResult):
             header_lines.append(f"Order: SARIMAX{_display_order(self._order)}")
         if self._seasonal_order and self._seasonal_order != (0, 0, 0, 0):
             header_lines.append(f"Seasonal Order: {self._seasonal_order}")
+        for name, result in (self._distributed_lag_results or {}).items():
+            numerator = ", ".join(str(lag) for lag in result.spec.numerator_lags)
+            denominator = (
+                ", ".join(str(lag) for lag in result.spec.denominator_lags) or "none"
+            )
+            header_lines.append(
+                f"RDL {name}          : numerator [{numerator}]; "
+                f"denominator [{denominator}]; delay {result.spec.delay}; "
+                f"initialization {result.spec.initialization}"
+            )
+            gain = result.steady_state_gain
+            gain_text = "undefined" if not np.isfinite(gain) else f"{gain:.4f}"
+            scale = " (log-response scale)" if self.log else ""
+            header_lines.append(
+                f"RDL {name} gain     : {gain_text}{scale}; "
+                f"stable={'Yes' if result.is_stable else 'No'}"
+            )
         if self.ar_lags:
             header_lines.append(
                 "Active AR Lags     : " + ", ".join(str(lag) for lag in self.ar_lags)
@@ -930,8 +1067,8 @@ class SARIMAXResult(BaseModelResult):
 
     def _future_design(self, ordinary_exog, future_dates):
         frames = []
-        if ordinary_exog is not None:
-            frames.append(ordinary_exog)
+        if ordinary_exog is not None and self._static_exog_names:
+            frames.append(ordinary_exog.loc[:, list(self._static_exog_names)])
         if self._event_specs:
             if future_dates is None or self._dates is None:
                 raise ValueError("future event generation requires future_dates")
@@ -950,6 +1087,34 @@ class SARIMAXResult(BaseModelResult):
             raise RuntimeError("future design columns do not match the fitted design")
         return design
 
+    def _future_observation_intercept(self, future_inputs, future_design):
+        if future_inputs is None:
+            raise ValueError(
+                "future exog is required for rational distributed-lag forecasting"
+            )
+        steps = len(future_inputs)
+        intercept = np.zeros(steps)
+        if future_design is not None:
+            coefficients = np.array(
+                [self.params[name] for name in future_design.columns],
+                dtype=float,
+            )
+            intercept += future_design.to_numpy(dtype=float) @ coefficients
+
+        if self._ordinary_exog is None:
+            raise RuntimeError("fitted distributed-lag inputs are unavailable")
+        history = pd.DataFrame(
+            self._ordinary_exog,
+            columns=self._ordinary_exog_names,
+        )
+        combined = pd.concat(
+            [history, future_inputs.reset_index(drop=True)],
+            ignore_index=True,
+        )
+        for name, result in (self._distributed_lag_results or {}).items():
+            intercept += result.filter(combined[name].to_numpy())[-steps:]
+        return intercept[None, :]
+
     def _predict_one(
         self,
         window,
@@ -957,6 +1122,7 @@ class SARIMAXResult(BaseModelResult):
         dynamic,
         alpha,
         future_design,
+        future_inputs=None,
     ):
         start, end = window.start, window.end
         mean = np.full(window.size, np.nan)
@@ -982,6 +1148,11 @@ class SARIMAXResult(BaseModelResult):
             forecast_kwargs = {}
             if future_design is not None:
                 forecast_kwargs["exog"] = future_design
+            if self._distributed_lag_results:
+                forecast_kwargs["obs_intercept"] = self._future_observation_intercept(
+                    future_inputs,
+                    future_design,
+                )
             fc = self._statsmodels_result.get_forecast(
                 steps=window.forecast_steps,
                 **forecast_kwargs,
@@ -1076,13 +1247,16 @@ class SARIMAXResult(BaseModelResult):
             window.forecast_steps,
             future_dates,
         )
+        expected_future_index = (
+            resolved_dates
+            if resolved_dates is not None
+            else pd.RangeIndex(window.forecast_steps)
+        )
         if self._ordinary_exog_names:
-            if resolved_dates is None:
-                raise ValueError("future_dates is required for exogenous forecasting")
             ordinary_scenarios, default_name = _normalise_future_scenarios(
                 future_exog,
                 future_dates=future_dates,
-                expected_dates=resolved_dates,
+                expected_dates=expected_future_index,
                 exog_names=self._ordinary_exog_names,
                 default_future_exog=self._default_future_exog,
             )
@@ -1103,8 +1277,9 @@ class SARIMAXResult(BaseModelResult):
                 alpha=alpha,
                 future_design=self._future_design(
                     ordinary_exog,
-                    resolved_dates,
+                    expected_future_index,
                 ),
+                future_inputs=ordinary_exog,
             )
         if len(predictions) == 1:
             return next(iter(predictions.values()))
@@ -1477,6 +1652,12 @@ class SARIMAX(BaseModel):
         be on its original positive scale. Fitted values, predictions, and
         intervals are returned on the original scale; prediction means use
         the horizon-specific lognormal bias correction. Default ``False``.
+    distributed_lags : mapping[str, RationalLagSpec], optional
+        Rational transfer-function specifications keyed by exogenous input
+        name. Selected columns are excluded from the ordinary static design.
+    enforce_distributed_lag_stability : bool
+        Whether denominator parameters are transformed toward stable values
+        and the complete fitted denominator polynomial must be stable.
     """
 
     def __init__(
@@ -1494,6 +1675,8 @@ class SARIMAX(BaseModel):
         events=None,
         missing="drop",
         log=False,
+        distributed_lags=None,
+        enforce_distributed_lag_stability=True,
     ):
         inputs = _normalise_sarimax_inputs(
             data,
@@ -1511,10 +1694,17 @@ class SARIMAX(BaseModel):
         if log and np.any(inputs.endog <= 0.0):
             raise ValueError("log transformation requires strictly positive data")
         event_specs = _validate_events(events, inputs.dates)
+        distributed_lags = _normalise_distributed_lags(distributed_lags, inputs)
+        if not isinstance(
+            enforce_distributed_lag_stability,
+            (bool, np.bool_),
+        ):
+            raise TypeError("enforce_distributed_lag_stability must be boolean")
         design, event_frame, event_metadata = _combined_design(
             inputs,
             event_specs,
             trend,
+            distributed_lag_names=tuple(distributed_lags),
         )
 
         self.data = inputs.endog
@@ -1523,6 +1713,22 @@ class SARIMAX(BaseModel):
         self.dates = inputs.dates
         self.exog = inputs.exog
         self.exog_names = inputs.exog_names
+        self.distributed_lags = distributed_lags
+        self.distributed_lag_names = tuple(distributed_lags)
+        self.ordinary_exog_names = tuple(
+            name for name in inputs.exog_names if name not in distributed_lags
+        )
+        if inputs.exog is None:
+            self.distributed_inputs = None
+        else:
+            positions = [
+                inputs.exog_names.index(name) for name in self.distributed_lag_names
+            ]
+            self.distributed_inputs = (
+                None
+                if not positions
+                else np.array(inputs.exog[:, positions], dtype=float, copy=True)
+            )
         self.future_exog = inputs.future_exog
         self.events = event_specs
         self._event_frame = event_frame
@@ -1539,6 +1745,7 @@ class SARIMAX(BaseModel):
         self.trend = trend
         self.enforce_stationarity = enforce_stationarity
         self.enforce_invertibility = enforce_invertibility
+        self.enforce_distributed_lag_stability = bool(enforce_distributed_lag_stability)
 
     def _clone_for_evaluation(self, data, exog=None, *, dates=None):
         """Rebuild all derived design state for an evaluation window."""
@@ -1555,6 +1762,8 @@ class SARIMAX(BaseModel):
             events=self.events,
             missing="raise",
             log=self.log,
+            distributed_lags=self.distributed_lags,
+            enforce_distributed_lag_stability=(self.enforce_distributed_lag_stability),
         )
 
     def _evaluation_predict_kwargs(self, start, stop):
@@ -1638,16 +1847,27 @@ class SARIMAX(BaseModel):
                 model_exog = model_exog.copy()
                 model_exog.index = model_dates
 
-        model = StatsmodelsSARIMAX(
-            self._model_data,
-            exog=model_exog,
-            dates=model_dates,
-            order=(p, d, q),
-            seasonal_order=(P, D, Q, s),
-            trend=self.trend,
-            enforce_stationarity=self.enforce_stationarity,
-            enforce_invertibility=self.enforce_invertibility,
-        )
+        model_kwargs = {
+            "exog": model_exog,
+            "dates": model_dates,
+            "order": (p, d, q),
+            "seasonal_order": (P, D, Q, s),
+            "trend": self.trend,
+            "enforce_stationarity": self.enforce_stationarity,
+            "enforce_invertibility": self.enforce_invertibility,
+        }
+        if self.distributed_lags:
+            model = _RationalLagSARIMAX(
+                self._model_data,
+                distributed_inputs=self.distributed_inputs,
+                distributed_lags=self.distributed_lags,
+                enforce_distributed_lag_stability=(
+                    self.enforce_distributed_lag_stability
+                ),
+                **model_kwargs,
+            )
+        else:
+            model = StatsmodelsSARIMAX(self._model_data, **model_kwargs)
         if start_params is not None and len(start_params) != model.k_params:
             raise ValueError(
                 "start_params must contain exactly "
@@ -1666,6 +1886,22 @@ class SARIMAX(BaseModel):
                 f"method={method!r} within maxiter={maxiter}; "
                 f"optimizer details: {fitted.mle_retvals}"
             )
+
+        distributed_lag_results = _make_rational_lag_results(
+            fitted,
+            self.distributed_lags,
+        )
+        if self.enforce_distributed_lag_stability:
+            unstable = [
+                name
+                for name, result in distributed_lag_results.items()
+                if not result.is_stable
+            ]
+            if unstable:
+                raise RuntimeError(
+                    "rational distributed-lag denominator is unstable for "
+                    + ", ".join(unstable)
+                )
 
         params = {}
         std_errors = {}
@@ -1710,6 +1946,7 @@ class SARIMAX(BaseModel):
             _dates=None if self.dates is None else self.dates.copy(),
             _ordinary_exog=(None if self.exog is None else self.exog.copy()),
             _ordinary_exog_names=self.exog_names,
+            _static_exog_names=self.ordinary_exog_names,
             _event_specs=self.events,
             _event_metadata=dict(self._event_metadata),
             _design_columns=self.design_columns,
@@ -1726,6 +1963,8 @@ class SARIMAX(BaseModel):
                 "enforce_stationarity": self.enforce_stationarity,
                 "enforce_invertibility": self.enforce_invertibility,
             },
+            _distributed_lag_results=distributed_lag_results,
+            _enforce_distributed_lag_stability=(self.enforce_distributed_lag_stability),
         )
 
         self.result_ = result

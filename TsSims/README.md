@@ -1,6 +1,6 @@
 # Ts/TsSims
 
-时间序列模拟工具包。提供 SARIMA、GARCH、协整系统和 TS/DS 过程的合成数据生成，结果以结构化对象封装。
+时间序列模拟工具包。提供 SARIMA、RDL、GARCH、协整系统和 TS/DS 过程的合成数据生成，结果以结构化对象封装。
 
 ## 模块结构
 
@@ -9,6 +9,7 @@ TsSims/
 ├── __init__.py         # 统一导出接口
 ├── _base.py            # BaseSimResult — 所有结果的公共基类
 ├── _sarima.py          # SARIMA 模拟 + SimSARIMAResult
+├── _rdl.py             # Rational distributed lag 模拟 + SimRDLResult
 ├── _garch.py           # GARCH / IGARCH 模拟
 ├── _garch_result.py    # SimGARCHResult — GARCH 族结果容器
 ├── _garch_core.py      # 共享模拟引擎和辅助函数
@@ -23,6 +24,8 @@ TsSims/
 
 ```python
 from Ts.TsSims import (
+    RDLInputSpec,
+    simulate_rdl,
     simulate_sarima,
     simulate_garch,
     simulate_gjr_garch,
@@ -35,6 +38,23 @@ from Ts.TsSims import simulate_cointegrated
 r = simulate_sarima(n=100, order=(1, 0, 0), ar=[0.5], seed=42)
 r.plot()
 print(r.summary())
+
+# 双输入 rational distributed lag 过程
+rdl = simulate_rdl(
+    n=500,
+    distributed_lags={
+        "price": RDLInputSpec(
+            numerator={0: 1.2},
+            denominator={1: 0.45},
+        ),
+        "income": RDLInputSpec(
+            numerator={0: -0.7, 2: 0.2},  # L1 严格固定为 0
+            denominator={1: 0.2},
+        ),
+    },
+    sigma2=0.09,
+    seed=42,
+)
 
 # ARCH(1) 过程 (GARCH with q=0)
 r = simulate_garch(n=200, p=1, q=0, omega=0.4, alpha=[0.5], seed=42)
@@ -63,7 +83,7 @@ r = simulate_garch_m(
 
 ## 结果对象
 
-三个结果类 (`SimSARIMAResult`, `SimGARCHResult`, `SimTSDSResult`) 均继承
+所有结果类（包括 `SimRDLResult`）均继承
 `BaseSimResult`，提供统一接口：
 
 | 方法 | 返回 | 说明 |
@@ -71,6 +91,14 @@ r = simulate_garch_m(
 | `.get_data()` | `pd.Series` | 生成的时间序列 |
 | `.get_params()` | `dict` | 所有模拟参数（深拷贝） |
 | `.plot()` | `(fig, ax)` | 时间序列图，调用 TsPlots.style 统一风格 |
+
+`SimRDLResult` 额外提供：
+
+| 方法/属性 | 返回 | 说明 |
+|-----------|------|------|
+| `.get_exog()` | `pd.DataFrame` | 模拟或传入的完整输入路径副本 |
+| `.get_components()` | `pd.DataFrame` | 各输入的传递效应与 SARIMA 扰动 |
+| `.distributed_lags` | `dict[str, RationalLagSpec]` | 可直接传给 `SARIMAX` 估计器的规格 |
 
 `SimGARCHResult` 额外提供：
 
@@ -111,6 +139,50 @@ simulate_sarima(
 | `sigma2` | float | `1.0` | 新息方差 |
 | `seed` | int | None | 随机种子 |
 | `burn` | int | `100` | 预热期数 |
+
+## `simulate_rdl` — Rational distributed lag 过程
+
+`RDLInputSpec` 的映射键就是活动多项式滞后。例如
+`numerator={0: 1.0, 2: -0.3}` 表示估计规格包含 L0 和 L2，同时将 L1
+严格固定为 0；`denominator={1: 0.5, 3: -0.1}` 同理将分母 L2 固定为 0。
+这些限制作用于多项式系数，不会把递归产生的最终 impulse weights 设为 0。
+
+```python
+simulate_rdl(
+    n=200,
+    distributed_lags=None,  # dict[str, RDLInputSpec]；None 使用一个 Koyck 输入
+    exog=None,              # None 自动生成独立 N(0,1) 输入；也可传 DataFrame/数组
+    order=(0, 0, 0),
+    seasonal_order=(0, 0, 0, 0),
+    ar=None, ma=None,
+    seasonal_ar=None, seasonal_ma=None,
+    const=0.0, sigma2=1.0,
+    seed=None, burn=100,
+    enforce_stability=True,
+) -> SimRDLResult
+```
+
+模拟器复用 `TsModels.RationalLagSpec` 与相同的递归滤波定义。`burn` 只作用于
+SARIMA 扰动；RDL 输入滤波从返回样本边界开始，并严格遵循每个输入的
+`initialization="zero"` 或 `"steady_state"`。默认检查完整分母多项式稳定性。
+
+生成结果可直接用于估计器恢复检验：
+
+```python
+from Ts.TsModels import SARIMAX
+
+fitted = SARIMAX(
+    rdl.data,
+    exog=rdl.get_exog(),
+    order=(0, 0, 0),
+    trend="n",
+    distributed_lags=rdl.distributed_lags,
+).fit(method="bfgs", maxiter=300, require_convergence=True)
+
+print(fitted.distributed_lag_coefficients)
+print(fitted.steady_state_gains)
+print(fitted.weights(12))
+```
 
 ## `simulate_garch` — GARCH(p,q) 过程
 

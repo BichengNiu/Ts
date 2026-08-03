@@ -1,13 +1,15 @@
 """TsSims — Time series simulation toolkit.
 
 This package provides functions for generating synthetic time series from
-SARIMA, GARCH models, cointegrated systems, and TS/DS processes, with
+SARIMA, rational distributed-lag, GARCH, cointegrated, and TS/DS processes, with
 structured result objects.
 
 Main interfaces
 ---------------
 simulate_sarima
     Generate SARIMA(p,d,q)(P,D,Q,s) data.
+simulate_rdl
+    Generate rational distributed-lag data with one or more inputs.
 simulate_garch
     Generate GARCH(p,q) data with time-varying volatility.  Handles both
     pure ARCH (q = 0) and GARCH (q >= 1) processes.
@@ -31,6 +33,8 @@ Result classes
 SimSARIMAResult
     Container for SARIMA simulation output. Provides ``.get_data()``,
     ``.get_params()``, ``.summary()``, ``.plot()``.
+SimRDLResult
+    Container for an RDL response, input paths, and component effects.
 SimGARCHResult
     Container for GARCH simulation output. Provides ``.get_data()``,
     ``.get_params()``, ``.summary()``, ``.plot()``, ``.to_dataframe()``.
@@ -76,6 +80,7 @@ Quick start
 from ._base import BaseSimResult
 from ._cointegration import SimCointegratedResult, simulate_cointegrated
 from ._garch_result import SimGARCHResult
+from ._rdl import RDLInputSpec, SimRDLResult, simulate_rdl
 from ._sarima import SimSARIMAResult, simulate_sarima
 from ._garch import simulate_garch, simulate_igarch
 from ._garch_ext import (
@@ -89,14 +94,16 @@ from ._ts_ds import (
     simulate_difference_stationary,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - public API is grouped by result and function
     # Base
     "BaseSimResult",
     "SimCointegratedResult",
     "SimGARCHResult",
+    "SimRDLResult",
     # Result classes
     "SimSARIMAResult",
     "SimTSDSResult",
+    "RDLInputSpec",
     "simulate_cointegrated",
     "simulate_difference_stationary",
     "simulate_egarch",
@@ -106,5 +113,6 @@ __all__ = [
     "simulate_igarch",
     # Functions
     "simulate_sarima",
+    "simulate_rdl",
     "simulate_trend_stationary",
 ]

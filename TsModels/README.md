@@ -26,6 +26,7 @@ TsModels/
 ├── __init__.py         # 统一导出接口
 ├── _base.py            # BaseModel (ABC) + BaseModelResult + ResidualTestResults (dataclass)
 ├── _sarimax.py          # SARIMAX + SARIMAXResult
+├── _distributed_lag.py # RDL 规格、联合 MLE 后端与派生结果
 ├── _garch_result.py    # GARCHResult (dataclass) + 参数缩放辅助函数
 ├── _garch_base.py      # _BaseVolModel — 参数验证 + fit 调度 + IGARCH MLE
 ├── _garch.py           # GARCH — 公开 API 入口
@@ -111,6 +112,9 @@ result.test_residuals(lags=10)
 | | `.is_invertible` | MA 多项式的全部根是否位于单位圆外 |
 | | `.ar_lags` / `.ma_lags` | 实际参与估计的非季节 AR/MA 滞后 |
 | | `.fixed_params` | 因稀疏滞后设定而固定为 0 的系数 |
+| | `.distributed_lag_coefficients` | 所有 RDL 多项式系数，包括固定为 0 的缺省阶 |
+| | `.steady_state_gains` | 各输入长期增益及 delta-method 区间 |
+| | `.weights(steps)` | 各输入的前 `steps` 个递归 impulse weights |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
 | | `.long_run_equilibrium()` | 无条件均值 (平稳 ARMA, d=0, trend="c" → float；否则 None) |
@@ -324,6 +328,8 @@ SARIMAX(
     exog_names=None,
     events=None,
     missing="drop",
+    distributed_lags=None,
+    enforce_distributed_lag_stability=True,
 )
 ```
 
@@ -340,6 +346,8 @@ SARIMAX(
 | `exog_names` | sequence[str] | `None` | 数组外生变量的必填列名；DataFrame 使用自身列名 |
 | `events` | sequence[EventSpec] | `None` | 脉冲、阶跃或事件窗口设计 |
 | `missing` | `"raise"`/`"drop"` | `"drop"` | 内生和历史外生变量的联合缺失行策略；严格模式显式传入 `"raise"` |
+| `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 以外生列名为键的 RDL/transfer-function 规格；支持多个输入 |
+| `enforce_distributed_lag_stability` | bool | `True` | 约束并复核完整分母多项式稳定性 |
 
 稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
 
@@ -355,6 +363,39 @@ arma_result = SARIMAX(data, order=(1, 0, [1, 3])).fit()
 AR 多项式平稳性、MA 多项式可逆性，以及估计时是否强制这些条件。
 对于 `d > 0` 或 `D > 0` 的模型，平稳性结论针对差分后的 AR 多项式，
 不表示原始水平序列平稳。
+
+### Rational distributed lags
+
+```python
+from Ts.TsModels import RationalLagSpec, SARIMAX
+
+model = SARIMAX(
+    y,
+    exog=X,  # DataFrame columns: price, income, control
+    order=(1, 0, 0),
+    distributed_lags={
+        "price": RationalLagSpec(
+            numerator=(0, 2),      # omega.L1 = 0
+            denominator=(1, 3),    # delta.L2 = 0
+            delay=1,
+            initialization="zero",
+        ),
+        "income": RationalLagSpec(numerator=1, denominator=1),
+    },
+)
+result = model.fit(method="bfgs", maxiter=300, require_convergence=True)
+```
+
+整数阶数表示连续活动滞后：`numerator=2` 为 L0–L2，`denominator=2`
+为 L1–L2。序列表示稀疏活动滞后，遗漏的中间阶严格固定为 0；这些是
+传递多项式约束，不是最终 impulse weights 约束。未列入 `distributed_lags`
+的 `control` 仍作为普通静态外生变量联合估计。
+
+`result.distributed_lags["price"]` 提供结构化单输入结果；
+`distributed_lag_coefficients` 自动列出估计值、标准误、p 值和 fixed 标记；
+`steady_state_gains` 自动计算 `sum(omega) / (1 - sum(delta))` 及区间；
+`weights(steps)` 返回递归权重。未来预测必须为每个原始外生列提供连续路径，
+日期模型可传带相同未来日期的 DataFrame，无日期模型可按位置传二维数组。
 
 ### GARCH
 
@@ -373,6 +414,8 @@ GARCH(
     exog=None,
     dates=None,
     missing="drop",
+    distributed_lags=None,
+    enforce_distributed_lag_stability=True,
 )
 ```
 
@@ -544,6 +587,8 @@ AutoSARIMAX(
 | `enforce_stationarity` | bool | `True` | 所有候选模型是否强制平稳性 |
 | `enforce_invertibility` | bool | `True` | 所有候选模型是否强制可逆性 |
 | `missing` | `"raise"`/`"drop"` | `"drop"` | 搜索前统一处理内生与外生缺失行；严格模式显式传入 `"raise"` |
+| `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 所有候选共享的固定 RDL 规格；不自动搜索其阶数 |
+| `enforce_distributed_lag_stability` | bool | `True` | 所有候选统一使用的分母稳定性规则 |
 
 ### AutoGARCH
 

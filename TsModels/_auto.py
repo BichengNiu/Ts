@@ -257,6 +257,40 @@ class AutoModelResult(BaseModelResult):
             raise RuntimeError("No best_result available")
         return self.best_result.predict(**kwargs)
 
+    @property
+    def distributed_lags(self):
+        """Delegate structured rational distributed-lag results."""
+        if self.best_result is None:
+            return {}
+        return getattr(self.best_result, "distributed_lags", {})
+
+    @property
+    def distributed_lag_coefficients(self):
+        """Delegate the complete transfer-polynomial coefficient table."""
+        if self.best_result is None:
+            return pd.DataFrame()
+        return getattr(
+            self.best_result,
+            "distributed_lag_coefficients",
+            pd.DataFrame(),
+        )
+
+    @property
+    def steady_state_gains(self):
+        """Delegate per-input steady-state gains."""
+        if self.best_result is None:
+            return pd.DataFrame()
+        return getattr(self.best_result, "steady_state_gains", pd.DataFrame())
+
+    def weights(self, steps):
+        """Delegate rational distributed-lag impulse weights."""
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        method = getattr(self.best_result, "weights", None)
+        if method is None:
+            raise TypeError("weights is only available for AutoSARIMAX RDL results")
+        return method(steps)
+
     def long_run_equilibrium(self):
         """Return the long-run equilibrium of the best model.
 
@@ -436,6 +470,12 @@ class AutoSARIMAX(_BaseAutoModel):
         Whether every candidate enforces AR stationarity. Default ``True``.
     enforce_invertibility : bool
         Whether every candidate enforces MA invertibility. Default ``True``.
+    distributed_lags : mapping[str, RationalLagSpec], optional
+        Fixed rational distributed-lag specifications shared by every
+        candidate. Their orders are not included in the automatic search.
+    enforce_distributed_lag_stability : bool
+        Whether all candidates enforce and diagnose complete transfer
+        denominator stability. Default ``True``.
     """
 
     def __init__(
@@ -459,6 +499,8 @@ class AutoSARIMAX(_BaseAutoModel):
         enforce_stationarity=True,
         enforce_invertibility=True,
         missing="drop",
+        distributed_lags=None,
+        enforce_distributed_lag_stability=True,
     ):
         from Ts.TsModels._sarimax import SARIMAX
 
@@ -474,6 +516,8 @@ class AutoSARIMAX(_BaseAutoModel):
             exog_names=exog_names,
             events=events,
             missing=missing,
+            distributed_lags=distributed_lags,
+            enforce_distributed_lag_stability=(enforce_distributed_lag_stability),
         )
 
         self.data = self._validate_params(prototype.data, criterion, method)
@@ -488,6 +532,10 @@ class AutoSARIMAX(_BaseAutoModel):
             None if prototype.future_exog is None else prototype.future_exog.copy()
         )
         self.events = prototype.events
+        self.distributed_lags = prototype.distributed_lags
+        self.enforce_distributed_lag_stability = (
+            prototype.enforce_distributed_lag_stability
+        )
 
         self.p_range = self._validate_range(p, "p")
         self.d_range = self._validate_range(d, "d")
@@ -549,6 +597,8 @@ class AutoSARIMAX(_BaseAutoModel):
             enforce_stationarity=self.enforce_stationarity,
             enforce_invertibility=self.enforce_invertibility,
             missing="raise",
+            distributed_lags=self.distributed_lags,
+            enforce_distributed_lag_stability=(self.enforce_distributed_lag_stability),
         )
 
     def _evaluation_predict_kwargs(self, start, stop):
@@ -614,6 +664,10 @@ class AutoSARIMAX(_BaseAutoModel):
                 ),
                 events=self.events,
                 missing="raise",
+                distributed_lags=self.distributed_lags,
+                enforce_distributed_lag_stability=(
+                    self.enforce_distributed_lag_stability
+                ),
             )
 
         (

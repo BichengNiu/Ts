@@ -623,22 +623,47 @@ class _BootstrapError(RuntimeError):
 def _bootstrap_refit(result, rng):
     from statsmodels.tsa.statespace.sarimax import SARIMAX
 
+    from ._distributed_lag import _RationalLagSARIMAX
+
     fitted = result._statsmodels_result
-    design = pd.DataFrame(
-        result._design_matrix,
-        columns=result._design_columns,
+    design = (
+        None
+        if result._design_matrix is None
+        else pd.DataFrame(
+            result._design_matrix,
+            columns=result._design_columns,
+        )
     )
+    simulation_kwargs = {} if design is None else {"exog": design}
     simulated = fitted.model.simulate(
         fitted.params,
         nsimulations=result.nobs,
-        exog=design,
         random_state=rng,
+        **simulation_kwargs,
     )
-    refitted = SARIMAX(
-        np.asarray(simulated, dtype=float).reshape(-1),
-        exog=design,
-        **result._model_kwargs,
-    ).fit(disp=False)
+    model_kwargs = dict(result._model_kwargs)
+    model_kwargs["exog"] = design
+    if result._distributed_lag_results:
+        input_names = tuple(result._distributed_lag_results)
+        positions = [result._ordinary_exog_names.index(name) for name in input_names]
+        model = _RationalLagSARIMAX(
+            np.asarray(simulated, dtype=float).reshape(-1),
+            distributed_inputs=result._ordinary_exog[:, positions],
+            distributed_lags={
+                name: transfer.spec
+                for name, transfer in result._distributed_lag_results.items()
+            },
+            enforce_distributed_lag_stability=(
+                result._enforce_distributed_lag_stability
+            ),
+            **model_kwargs,
+        )
+    else:
+        model = SARIMAX(
+            np.asarray(simulated, dtype=float).reshape(-1),
+            **model_kwargs,
+        )
+    refitted = model.fit(disp=False)
     if not refitted.mle_retvals.get("converged", False):
         raise RuntimeError("bootstrap refit did not converge")
     return (
