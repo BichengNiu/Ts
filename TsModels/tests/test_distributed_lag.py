@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 import pytest
 from scipy.signal import lfilter
+import matplotlib.pyplot as plt
 
-from Ts.TsModels import AutoSARIMAX, SARIMAX
+from Ts.TsModels import AutoSARIMAX, SARIMAX, SARIMAXResult
 from Ts.TsModels._distributed_lag import (
     RationalLagResult,
     RationalLagSpec,
@@ -147,6 +148,117 @@ def test_gain_delta_method_uses_joint_transfer_parameter_covariance():
     assert gain["estimate"] == pytest.approx(4.0)
     assert gain["standard_error"] == pytest.approx(np.sqrt(expected_variance))
     assert gain["lower"] < gain["estimate"] < gain["upper"]
+
+
+def test_rational_lag_result_plots_existing_impulse_weights_as_bars():
+    result = RationalLagResult(
+        name="price",
+        spec=RationalLagSpec(numerator=0, denominator=1),
+        numerator={0: 2.0},
+        denominator={1: 0.5},
+    )
+
+    fig, ax = result.plot_impulse_response(steps=4)
+
+    assert [bar.get_height() for bar in ax.patches] == pytest.approx(
+        result.weights(4).tolist()
+    )
+    assert ax.get_title() == "price"
+    assert ax.get_xlabel() == "Time lag"
+    plt.close(fig)
+
+
+def test_rational_lag_plot_reuses_external_axis():
+    result = RationalLagResult(
+        name="x",
+        spec=RationalLagSpec(numerator=0, denominator=0),
+        numerator={0: 1.0},
+        denominator={},
+    )
+    fig, supplied = plt.subplots()
+
+    returned_fig, returned_ax = result.plot_impulse_response(3, ax=supplied)
+
+    assert returned_fig is fig
+    assert returned_ax is supplied
+    plt.close(fig)
+
+
+def _result_with_structured_lags():
+    inputs = {
+        "price": RationalLagResult(
+            "price",
+            RationalLagSpec(0, 1),
+            {0: 1.0},
+            {1: 0.5},
+        ),
+        "income": RationalLagResult(
+            "income",
+            RationalLagSpec(0, 0),
+            {0: -0.4},
+            {},
+        ),
+    }
+    return SARIMAXResult(
+        model_type="SARIMAX",
+        params={},
+        std_errors={},
+        p_values={},
+        aic=0.0,
+        bic=0.0,
+        log_likelihood=0.0,
+        residuals=np.zeros(20),
+        fitted_values=np.zeros(20),
+        nobs=20,
+        data=np.zeros(20),
+        _distributed_lag_results=inputs,
+    )
+
+
+def test_sarimax_result_facets_all_rdl_impulse_responses():
+    result = _result_with_structured_lags()
+
+    fig, axes = result.plot_impulse_response(steps=4)
+
+    assert [axis.get_title() for axis in axes] == ["price", "income"]
+    np.testing.assert_allclose(
+        [bar.get_height() for bar in axes[0].patches],
+        result.weights(4)["price"],
+    )
+    plt.close(fig)
+
+
+def test_sarimax_result_can_select_one_rdl_impulse_response():
+    result = _result_with_structured_lags()
+
+    fig, ax = result.plot_impulse_response(3, inputs="income")
+
+    assert ax.get_title() == "income"
+    assert [bar.get_height() for bar in ax.patches] == pytest.approx(
+        result.weights(3)["income"].tolist()
+    )
+    plt.close(fig)
+
+
+def test_sarimax_impulse_plot_rejects_missing_or_unknown_rdl_inputs():
+    empty = SARIMAXResult(
+        model_type="SARIMAX",
+        params={},
+        std_errors={},
+        p_values={},
+        aic=0.0,
+        bic=0.0,
+        log_likelihood=0.0,
+        residuals=np.zeros(20),
+        fitted_values=np.zeros(20),
+        nobs=20,
+        data=np.zeros(20),
+    )
+    with pytest.raises(ValueError, match="no rational"):
+        empty.plot_impulse_response(3)
+
+    with pytest.raises(ValueError, match="unknown"):
+        _result_with_structured_lags().plot_impulse_response(3, inputs="missing")
 
 
 def test_filter_initialization_is_explicit():

@@ -31,6 +31,8 @@ This package implements statistical tests for time series analysis:
 
 - :class:`TodaYamamotoTest` — Toda-Yamamoto (1995) Granger causality test
   for possibly integrated or cointegrated VAR systems.
+- :class:`FeedbackTest` — conditional predictive-feedback F tests for
+  stochastic distributed-lag inputs.
 
 Quick start
 -----------
@@ -47,6 +49,7 @@ from ._base import BaseMultiTestResult, BaseTest, BaseTestResult
 from ._chow import ChowTest, ChowTestResult
 from ._cusum import CUSUMTest, CUSUMTestResult
 from ._engle_lm import EngleLMTest, EngleLMTestResult
+from ._feedback import FeedbackEquationResult, FeedbackTest, FeedbackTestResult
 from ._johansen import JohansenTest, JohansenTestResult
 from ._kpss import KPSSTest, KPSSTestResult
 from ._lee_strazicich import (
@@ -74,6 +77,9 @@ __all__ = [
     "ChowTestResult",
     "EngleLMTest",
     "EngleLMTestResult",
+    "FeedbackEquationResult",
+    "FeedbackTest",
+    "FeedbackTestResult",
     "JohansenTest",
     "JohansenTestResult",
     "KPSSTest",

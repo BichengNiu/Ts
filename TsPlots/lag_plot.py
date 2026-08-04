@@ -1,0 +1,214 @@
+"""Lag-indexed bar charts for impulse responses and dynamic multipliers."""
+
+from __future__ import annotations
+
+import math
+
+import matplotlib.pyplot as plt
+from matplotlib.colors import is_color_like
+from matplotlib.ticker import MaxNLocator
+import numpy as np
+import pandas as pd
+
+from .style import (
+    AXIS_LABEL_FONTSIZE,
+    DEFAULT_PALETTE,
+    FIGSIZE,
+    TITLE_FONTSIZE,
+    _ensure_fonts,
+    draw_note_and_bottom_title,
+    style_axes,
+)
+
+
+def _normalise_lag_response(data):
+    if isinstance(data, pd.DataFrame):
+        frame = data.copy()
+    elif isinstance(data, pd.Series):
+        name = data.name if data.name is not None else "response"
+        frame = data.rename(name).to_frame()
+    else:
+        values = np.asarray(data, dtype=float)
+        if values.ndim == 1:
+            frame = pd.DataFrame({"response": values})
+        elif values.ndim == 2:
+            frame = pd.DataFrame(
+                values,
+                columns=[f"response_{index + 1}" for index in range(values.shape[1])],
+            )
+        else:
+            raise ValueError("data must be one- or two-dimensional")
+
+    if frame.empty or frame.shape[1] == 0:
+        raise ValueError("data must contain at least one non-empty response")
+    if not frame.columns.is_unique:
+        raise ValueError("response names must be unique")
+    try:
+        frame = frame.astype(float)
+    except (TypeError, ValueError) as error:
+        raise ValueError("lag responses must be numeric") from error
+    if not np.all(np.isfinite(frame.to_numpy())):
+        raise ValueError("lag responses must contain only finite values")
+    if not frame.index.is_unique:
+        raise ValueError("time lags must be unique")
+
+    lag_values = np.asarray(frame.index)
+    try:
+        numeric_lags = lag_values.astype(float)
+    except (TypeError, ValueError) as error:
+        raise ValueError("time lags must be non-negative integers") from error
+    if not np.all(np.isfinite(numeric_lags)):
+        raise ValueError("time lags must be finite integers")
+    if np.any(numeric_lags < 0):
+        raise ValueError("time lags must be non-negative")
+    if not np.all(numeric_lags == np.floor(numeric_lags)):
+        raise ValueError("time lags must be integers")
+    integer_lags = numeric_lags.astype(int)
+    if len(integer_lags) > 1 and np.any(np.diff(integer_lags) <= 0):
+        raise ValueError("time lags must be strictly increasing")
+    frame.index = pd.Index(integer_lags, name=frame.index.name or "lag")
+    return frame
+
+
+def _resolve_colors(color, count):
+    if color is None:
+        return [DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)] for index in range(count)]
+    if is_color_like(color):
+        return [color] * count
+    colors = list(color)
+    if len(colors) != count:
+        raise ValueError("color must contain one value per response")
+    return colors
+
+
+def plot_lag_response(
+    data,
+    *,
+    ax=None,
+    title=None,
+    xtitle="Time lag",
+    ytitle="Impulse response",
+    color=None,
+    zero_line=True,
+    grid=True,
+    max_ticks=15,
+    note=None,
+    figsize=None,
+):
+    """Plot lag-indexed response weights as bars.
+
+    A Series or one-dimensional input produces one axis. A multi-column
+    DataFrame or two-dimensional array produces one facet per response in
+    column order. The lag index must contain unique, increasing,
+    non-negative integers.
+
+    Parameters
+    ----------
+    data : Series, DataFrame, or array-like
+        Response weights indexed by time lag.
+    ax : matplotlib.axes.Axes, optional
+        Existing axis for a single response. Multi-response inputs create
+        their own facets.
+    title : str, optional
+        Axis title for one response or figure title for multiple responses.
+    xtitle, ytitle : str
+        Axis labels.
+    color : color or sequence of colors, optional
+        Bar color shared by all responses or one color per response.
+    zero_line : bool, default True
+        Whether to draw the zero-response reference line.
+    grid : bool, default True
+        Whether to draw the shared dashed grid.
+    max_ticks : int, default 15
+        Maximum number of labeled lag ticks before integer tick thinning.
+    note : str, optional
+        Figure-level note below the plot.
+    figsize : tuple, optional
+        Figure size. Multi-response height expands with facet rows.
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` for one response or ``(fig, axes)`` for multiple
+        responses, where ``axes`` is a one-dimensional ndarray.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsPlots import plot_lag_response
+    >>> weights = pd.Series([1.0, 0.5, 0.25], name="price")
+    >>> fig, ax = plot_lag_response(weights)
+    >>> len(ax.patches)
+    3
+    """
+    _ensure_fonts()
+    if (
+        isinstance(max_ticks, (bool, np.bool_))
+        or not isinstance(max_ticks, (int, np.integer))
+        or int(max_ticks) < 1
+    ):
+        raise ValueError("max_ticks must be a positive integer")
+    max_ticks = int(max_ticks)
+    frame = _normalise_lag_response(data)
+    count = frame.shape[1]
+    colors = _resolve_colors(color, count)
+
+    if count > 1 and ax is not None:
+        raise ValueError("ax cannot be supplied for multiple lag responses")
+
+    if count == 1:
+        if ax is None:
+            fig, axis = plt.subplots(figsize=figsize or FIGSIZE)
+        else:
+            axis = ax
+            fig = ax.figure
+        axes = [axis]
+    else:
+        ncols = min(2, count)
+        nrows = math.ceil(count / ncols)
+        if figsize is None:
+            figsize = (FIGSIZE[0], FIGSIZE[1] * nrows)
+        fig, grid_axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+        flattened = list(grid_axes.ravel())
+        axes = flattened[:count]
+        for unused in flattened[count:]:
+            unused.set_visible(False)
+
+    lags = frame.index.to_numpy(dtype=int)
+    for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
+        if zero_line:
+            axis.axhline(0.0, color="black", linewidth=0.8, zorder=1)
+        axis.bar(
+            lags,
+            frame[name].to_numpy(),
+            width=0.65,
+            color=colors[position],
+            zorder=2,
+        )
+        axis.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)
+        axis.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+        if len(lags) <= max_ticks:
+            axis.set_xticks(lags)
+        else:
+            axis.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks, integer=True))
+        panel_title = title if count == 1 and title is not None else str(name)
+        if panel_title != "response" or title is not None:
+            axis.set_title(
+                panel_title,
+                fontsize=TITLE_FONTSIZE,
+                fontweight="bold",
+                pad=12,
+            )
+        style_axes(axis, grid=grid)
+
+    if count > 1 and title is not None:
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96), pad=1.5)
+    else:
+        fig.tight_layout(pad=1.5)
+    if note is not None:
+        draw_note_and_bottom_title(fig, note=note)
+
+    if count == 1:
+        return fig, axes[0]
+    return fig, np.asarray(axes, dtype=object)

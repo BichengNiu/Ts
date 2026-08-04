@@ -378,6 +378,74 @@ class AutoModelResult(BaseModelResult):
             raise TypeError("weights is only available for AutoSARIMAX RDL results")
         return method(steps)
 
+    def feedback_test(self, lags, inputs=None, **kwargs):
+        """Delegate conditional feedback testing to the selected model.
+
+        Parameters
+        ----------
+        lags : int
+            Positive common lag order.
+        inputs : str or sequence of str, optional
+            Original exogenous inputs to test.
+        **kwargs
+            Additional options forwarded to the selected model's
+            :meth:`feedback_test` method.
+
+        Returns
+        -------
+        FeedbackTestResult
+            Full OLS regressions and joint feedback F tests.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> rng = np.random.default_rng(42)
+        >>> result = AutoSARIMAX(rng.normal(size=60), exog=rng.normal(size=(60, 1)), exog_names=["x"], p=(0, 0), d=(0, 0), q=(0, 0)).fit()
+        >>> result.feedback_test(1).input_names
+        ('x',)
+        """
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        method = getattr(self.best_result, "feedback_test", None)
+        if method is None:
+            raise TypeError("selected model does not support feedback testing")
+        return method(lags, inputs=inputs, **kwargs)
+
+    def plot_impulse_response(self, steps=20, inputs=None, **kwargs):
+        """Delegate RDL impulse-response plotting to the selected model.
+
+        Parameters
+        ----------
+        steps : int, default 20
+            Strictly positive response horizon.
+        inputs : str or sequence of str, optional
+            RDL inputs to plot.
+        **kwargs
+            Additional options forwarded to the selected model's
+            :meth:`plot_impulse_response` method.
+
+        Returns
+        -------
+        tuple
+            Matplotlib figure and axis or axes.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoModelResult, RationalLagSpec, SARIMAX
+        >>> from Ts.TsSims import RDLInputSpec, simulate_rdl
+        >>> simulated = simulate_rdl(n=60, distributed_lags={"x": RDLInputSpec({0: 1.0}, {})}, seed=42)
+        >>> best = SARIMAX(simulated.data, exog=simulated.exog, distributed_lags={"x": RationalLagSpec()}).fit()
+        >>> result = AutoModelResult.from_search(best, (0, 0, 0), [best], [(0, 0, 0)], [best.aic], "aic", "grid")
+        >>> fig, ax = result.plot_impulse_response(3)
+        """
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        method = getattr(self.best_result, "plot_impulse_response", None)
+        if method is None:
+            raise TypeError("selected model does not support RDL impulse responses")
+        return method(steps, inputs=inputs, **kwargs)
+
     def long_run_equilibrium(self):
         """Return the long-run equilibrium of the best model.
 

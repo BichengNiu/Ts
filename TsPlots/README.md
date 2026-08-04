@@ -17,7 +17,8 @@ TsPlots/
 ├── style.py      # 共享样式：字体、调色板、辅助函数
 ├── ts_plot.py    # 时间序列绘图：plot_series
 ├── sc_plot.py    # 散点图绘图：plot_scatter
-└── acf_plot.py   # 自相关函数绘图：plot_acf, plot_pacf
+├── acf_plot.py   # 自相关函数绘图：plot_acf, plot_pacf
+└── lag_plot.py   # 滞后响应柱状图：plot_lag_response
 ```
 
 ## 安装 / 导入
@@ -25,7 +26,9 @@ TsPlots/
 将 `TsPlots/` 目录放在工作目录下，随后直接导入：
 
 ```python
-from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
+from Ts.TsPlots import (
+    plot_series, plot_scatter, plot_acf, plot_pacf, plot_lag_response
+)
 ```
 
 依赖：`matplotlib`、`numpy`、`pandas`、`statsmodels`（均为标准数据分析环境）。
@@ -329,6 +332,32 @@ fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 plot_acf(series, ax=ax1)
 plot_pacf(series, ax=ax2)
 ```
+
+---
+
+## `plot_lag_response` — 滞后响应柱状图
+
+```python
+from Ts.TsPlots import plot_lag_response
+
+fig, ax = plot_lag_response(rdl_result.weights(20))
+fig, axes = plot_lag_response(sarimax_result.weights(20))
+```
+
+横轴为非负整数 time lag，纵轴为 impulse-response weight。Series 或一维数组
+返回单轴；多列 DataFrame 或二维数组按列生成分面，并保持输入顺序。函数统一
+使用 TsPlots 的字体、色板、零参考线、网格和注释样式，也支持单响应外部 `ax`。
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `data` | — | lag-indexed Series/DataFrame 或一/二维数组 |
+| `title` | `None` | 单图标题或多图总标题 |
+| `xtitle` | `"Time lag"` | 横轴标题 |
+| `ytitle` | `"Impulse response"` | 纵轴标题 |
+| `color` | TsPlots 色板 | 单色或每响应一种颜色 |
+| `zero_line` | `True` | 绘制零响应参考线 |
+| `grid` | `True` | 显示共享虚线网格 |
+| `max_ticks` | `15` | 刻度过密时的最大整数刻度数 |
 
 ---
 

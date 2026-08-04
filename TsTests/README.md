@@ -34,6 +34,7 @@ TsTests/
 ├── _normality.py         # NormalityTest + NormalityTestResult
 ├── _johansen.py          # JohansenTest + JohansenTestResult
 ├── _toda_yamamoto.py     # TodaYamamotoTest + TodaYamamotoTestResult
+├── _feedback.py          # FeedbackTest + per-input OLS/F-test results
 ├── tests/                # 单元测试
 │   ├── test_adf.py
 │   ├── test_phillips_perron.py
@@ -69,6 +70,7 @@ from Ts.TsTests import (
     LjungBoxTest,
     EngleLMTest,
     NormalityTest,
+    FeedbackTest,
 )
 
 # ADF 检验
@@ -134,6 +136,11 @@ print(jb.summary())
 # Toda-Yamamoto 格兰杰因果检验（无需单位根/协整预检验）
 ty = TodaYamamotoTest(data2d, p=2)
 print(ty.summary())
+
+# 分布滞后输入的条件反馈检验
+feedback = FeedbackTest(y, X, lags=4).fit()
+print(feedback.summary())       # 每个输入的完整 OLS + 联合 F 检验
+print(feedback.tests)           # 紧凑的逐输入检验表
 ```
 
 ## 统一接口
@@ -176,6 +183,7 @@ print(ty.summary())
 | Johansen 迹检验 | `JohansenTest` | 协整秩 <= r | 协整 | Osterwald-Lenum (1992) — 支持 `summary(alpha_idx=N)` |
 | Johansen 最大特征根 | `JohansenTest` | 协整秩 = r | 协整 | Osterwald-Lenum (1992) |
 | Toda-Yamamoto | `TodaYamamotoTest` | 无格兰杰因果 | 因果检验 | chi-squared（Wald 检验） |
+| Conditional feedback | `FeedbackTest` | 因变量的 K 阶滞后系数联合为 0 | 输入外生性诊断 | 经典 OLS F 检验 |
 
 ## 结构突变方法选择
 
@@ -435,6 +443,32 @@ Toda-Yamamoto 方法通过估计 VAR(p + d_max) 并仅对前 p 阶滞后做 Wald
 使得即使变量为 I(1) 或存在协整关系也能进行有效的格兰杰因果推断。
 输出为 `TodaYamamotoTestResult`，包含每对变量的 chi2 统计量、自由度和 p 值，
 以及每方程的联合 ALL 检验。格式与 `TsModels.GrangerCausalityResult` 一致。
+
+### FeedbackTest
+
+```python
+FeedbackTest(
+    y,
+    exog,
+    lags=K,
+    exog_names=None,
+    tested_inputs=None,
+    trend="c",
+    missing="raise",
+    alpha=0.05,
+)
+```
+
+对每个受检输入 `x_i`，估计当前 `x_i` 对所有输入的 1–K 阶滞后及
+`y` 的 1–K 阶滞后的 OLS 回归，并检验 `H0: y.L1 = ... = y.LK = 0`。
+`tested_inputs` 只选择左侧受检方程；其他输入仍作为滞后控制变量保留。
+
+`result.regressions` 保存完整 statsmodels OLS 结果，`result.tests` 汇总 F 值、
+自由度、p 值和拒绝结论，`result.summary()` 同时报告完整回归和联合检验。
+该检验衡量条件预测反馈，不把统计预测关系表述为结构性因果。
+
+`missing="drop"` 在构造滞后矩阵之后删除不完整行，不会先压缩原序列并把
+缺口两侧错误地当作相邻观测。
 
 ## 与 TsPlots 的衔接
 

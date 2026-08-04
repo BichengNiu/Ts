@@ -398,6 +398,40 @@ class RationalLagResult:
         values = lfilter(numerator, denominator, impulse)
         return pd.Series(values, index=pd.RangeIndex(steps, name="lag"), name=self.name)
 
+    def plot_impulse_response(self, steps=20, ax=None, **kwargs):
+        """Plot fitted impulse weights against time lag as bars.
+
+        The plotted values are exactly those returned by :meth:`weights`;
+        no second transfer-function calculation or implicit confidence
+        interval is introduced.
+
+        Parameters
+        ----------
+        steps : int, default 20
+            Strictly positive response horizon.
+        ax : matplotlib.axes.Axes, optional
+            Existing axis to reuse.
+        **kwargs
+            Additional options forwarded to
+            :func:`Ts.TsPlots.plot_lag_response`.
+
+        Returns
+        -------
+        tuple
+            Matplotlib ``(fig, ax)`` pair.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagResult, RationalLagSpec
+        >>> result = RationalLagResult("x", RationalLagSpec(0, 1), {0: 1.0}, {1: 0.5})
+        >>> fig, ax = result.plot_impulse_response(4)
+        >>> len(ax.patches)
+        4
+        """
+        from Ts.TsPlots import plot_lag_response
+
+        return plot_lag_response(self.weights(steps), ax=ax, **kwargs)
+
     def filter(self, values):
         """Apply the fitted rational filter to one complete input path.
 

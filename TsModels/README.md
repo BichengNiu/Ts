@@ -121,6 +121,8 @@ result.test_residuals(lags=10)
 | | `.distributed_lag_coefficients` | 所有 RDL 多项式系数，包括固定为 0 的缺省阶 |
 | | `.steady_state_gains` | 各输入长期增益及 delta-method 区间 |
 | | `.weights(steps)` | 各输入的前 `steps` 个递归 impulse weights |
+| | `.plot_impulse_response(steps, inputs)` | 将 RDL weights 按 time lag 绘制为单图或多输入分面柱状图 |
+| | `.feedback_test(lags, inputs)` | 对原始外生输入运行条件反馈 OLS 与因变量滞后联合 F 检验 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
 | | `.long_run_equilibrium()` | 无条件均值 (平稳 ARMA, d=0, trend="c" → float；否则 None) |
@@ -312,8 +314,8 @@ print(backcast.mean)
 
 | 方向 | 衔接方式 |
 |------|----------|
-| TsModels -> TsPlots | 估计模型 `.plot_fit()` 调用 `plot_series()`；`.plot_diagnostics()` 调用 `plot_series()`, `plot_acf()`, `plot_pacf()` |
-| TsModels -> TsTests | `test_residuals()` 自动运行 4 项检验：白噪音 (Ljung-Box raw) + 正态性 (Jarque-Bera) + ARCH (Ljung-Box squared) + ARCH (Engle LM) |
+| TsModels -> TsPlots | `.plot_fit()`/`.plot_diagnostics()` 复用序列与 ACF/PACF 图；RDL `.plot_impulse_response()` 复用 `plot_lag_response()` |
+| TsModels -> TsTests | `test_residuals()` 运行残差诊断；SARIMAX `.feedback_test()` 组合独立的 `FeedbackTest` |
 | TsSims -> TsModels | 验证脚本：TsSims 生成数据 -> TsModels 估计 -> 比较真实参数 |
 
 ## 模型参数
@@ -402,6 +404,28 @@ result = model.fit(method="bfgs", maxiter=300, require_convergence=True)
 `steady_state_gains` 自动计算 `sum(omega) / (1 - sum(delta))` 及区间；
 `weights(steps)` 返回递归权重。未来预测必须为每个原始外生列提供连续路径，
 日期模型可传带相同未来日期的 DataFrame，无日期模型可按位置传二维数组。
+
+RDL 的 impulse response 就是 `weights(steps)`：传递函数对单位脉冲在各个
+time lag 上的响应。绘图不重新计算权重：
+
+```python
+# 所有 RDL 输入按拟合顺序分面
+fig, axes = result.plot_impulse_response(steps=20)
+
+# 仅绘制 price；等价于绘制 result.distributed_lags["price"].weights(20)
+fig, ax = result.plot_impulse_response(20, inputs="price")
+```
+
+对随机性输入，还可检查过去的模型输出是否反馈到当前输入：
+
+```python
+feedback = result.feedback_test(lags=4)
+print(feedback.summary())
+print(feedback.tests)
+```
+
+每个输入方程控制自身及其他全部输入的 1–K 阶滞后，并对 `y.L1`–`y.LK`
+执行联合 F 检验。显著结果是条件预测反馈证据，不等同于结构性因果证明。
 
 ### GARCH
 

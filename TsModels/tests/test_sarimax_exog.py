@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from Ts.TsModels import SARIMAX
+from Ts.TsTests import FeedbackTestResult
 
 
 def test_new_arimax_types_are_public():
@@ -812,3 +813,51 @@ def test_date_bound_must_exist_in_prediction_calendar():
 
     with pytest.raises(ValueError, match="prediction date"):
         fitted.predict(start="2022-12-15", end="2023-02-01")
+
+
+def test_sarimax_result_runs_feedback_test_on_original_inputs():
+    rng = np.random.default_rng(914)
+    n = 140
+    y = rng.normal(size=n)
+    exog = pd.DataFrame(
+        {"price": rng.normal(size=n), "income": rng.normal(size=n)}
+    )
+    fitted = SARIMAX(y, exog=exog, order=(0, 0, 0), trend="n").fit()
+
+    feedback = fitted.feedback_test(lags=2)
+
+    assert isinstance(feedback, FeedbackTestResult)
+    assert feedback.input_names == ("price", "income")
+    assert feedback.get("price").regression.params.index.tolist() == [
+        "const",
+        "price.L1",
+        "price.L2",
+        "income.L1",
+        "income.L2",
+        "y.L1",
+        "y.L2",
+    ]
+
+
+def test_sarimax_feedback_subset_keeps_all_inputs_as_controls_and_dates():
+    rng = np.random.default_rng(915)
+    dates = pd.date_range("2010-01-01", periods=100, freq="MS")
+    y = pd.Series(rng.normal(size=100), index=dates, name="sales")
+    exog = pd.DataFrame(
+        {"price": rng.normal(size=100), "income": rng.normal(size=100)},
+        index=dates,
+    )
+    fitted = SARIMAX(y, exog=exog, order=(0, 0, 0), trend="n").fit()
+
+    feedback = fitted.feedback_test(lags=1, inputs="price")
+
+    assert feedback.input_names == ("price",)
+    assert "income.L1" in feedback.get("price").regression.params.index
+    assert feedback.get("price").observation_index.equals(dates[1:])
+
+
+def test_sarimax_feedback_requires_exogenous_inputs():
+    fitted = SARIMAX(np.arange(30.0), order=(0, 1, 0), trend="n").fit()
+
+    with pytest.raises(ValueError, match="exogenous inputs"):
+        fitted.feedback_test(lags=1)

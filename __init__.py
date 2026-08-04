@@ -2,12 +2,12 @@
 
 This package consolidates six sub-packages under a unified namespace.
 
-- :mod:`Ts.TsPlots`  — shared plotting (series, scatter, ACF/PACF)
+- :mod:`Ts.TsPlots`  — shared plotting (series, scatter, ACF/PACF, lag response)
 - :mod:`Ts.TsSims`   — synthetic data generation (SARIMA, RDL, GARCH, TS/DS)
 - :mod:`Ts.TsUtils`  — preprocessing and identification diagnostics
 - :mod:`Ts.TsModels` — model estimation (SARIMAX, GARCH)
 - :mod:`Ts.TsMetrics` — forecast metrics and leakage-free evaluation
-- :mod:`Ts.TsTests`  — statistical tests (unit root, structural break, ARCH)
+- :mod:`Ts.TsTests`  — statistical tests (unit root, breaks, ARCH, feedback)
 
 Quick start
 -----------
@@ -25,7 +25,7 @@ Quick start
 # ---------------------------------------------------------------------------
 # TsPlots — plotting
 # ---------------------------------------------------------------------------
-from .TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
+from .TsPlots import plot_acf, plot_lag_response, plot_pacf, plot_scatter, plot_series
 
 # ---------------------------------------------------------------------------
 # TsUtils — preprocessing and identification diagnostics
@@ -134,6 +134,9 @@ from .TsTests import (
     LjungBoxTestResult,
     EngleLMTest,
     EngleLMTestResult,
+    FeedbackEquationResult,
+    FeedbackTest,
+    FeedbackTestResult,
     # Normality test
     NormalityTest,
     NormalityTestResult,
@@ -145,6 +148,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "plot_scatter",
     "plot_acf",
     "plot_pacf",
+    "plot_lag_response",
     # TsUtils
     "BoxCoxResult",
     "STL",
@@ -236,6 +240,9 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "LjungBoxTestResult",
     "EngleLMTest",
     "EngleLMTestResult",
+    "FeedbackEquationResult",
+    "FeedbackTest",
+    "FeedbackTestResult",
     # TsTests — normality
     "NormalityTest",
     "NormalityTestResult",

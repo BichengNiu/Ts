@@ -997,6 +997,138 @@ class SARIMAXResult(BaseModelResult):
             axis=1,
         )
 
+    def feedback_test(
+        self,
+        lags,
+        inputs=None,
+        *,
+        trend="c",
+        missing="raise",
+        alpha=0.05,
+    ):
+        """Test whether past model output predicts current exogenous inputs.
+
+        The method composes :class:`Ts.TsTests.FeedbackTest` using the
+        original historical exogenous columns retained by this fitted model.
+        Every exogenous input remains in the lagged control set even when
+        ``inputs`` selects only a subset of current-input equations.
+
+        Parameters
+        ----------
+        lags : int
+            Positive common lag order.
+        inputs : str or sequence of str, optional
+            Inputs to test. The default tests every original exogenous input.
+        trend : {"n", "c", "t", "ct"}, default "c"
+            Deterministic terms in each feedback regression.
+        missing : {"raise", "drop"}, default "raise"
+            Missing-data policy applied by the feedback test.
+        alpha : float, default 0.05
+            Significance level for feedback decisions.
+
+        Returns
+        -------
+        FeedbackTestResult
+            Full OLS regressions and joint feedback F tests.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import SARIMAX
+        >>> rng = np.random.default_rng(42)
+        >>> result = SARIMAX(rng.normal(size=80), exog=rng.normal(size=(80, 1)), exog_names=["x"]).fit()
+        >>> result.feedback_test(lags=1).input_names
+        ('x',)
+        """
+        if self._ordinary_exog is None or not self._ordinary_exog_names:
+            raise ValueError("feedback_test requires fitted exogenous inputs")
+
+        from Ts.TsTests import FeedbackTest
+
+        if self._dates is None:
+            response = np.asarray(self.data, dtype=float)
+            exog = pd.DataFrame(
+                self._ordinary_exog,
+                columns=self._ordinary_exog_names,
+            )
+        else:
+            response = pd.Series(
+                np.asarray(self.data, dtype=float),
+                index=self._dates,
+                name="y",
+            )
+            exog = pd.DataFrame(
+                self._ordinary_exog,
+                index=self._dates,
+                columns=self._ordinary_exog_names,
+            )
+        return FeedbackTest(
+            response,
+            exog,
+            lags,
+            tested_inputs=inputs,
+            trend=trend,
+            missing=missing,
+            alpha=alpha,
+        ).fit()
+
+    def plot_impulse_response(self, steps=20, inputs=None, **kwargs):
+        """Plot RDL impulse weights against time lag as bars.
+
+        Multiple selected inputs are shown as facets in fitted input order.
+        The bars reuse :meth:`weights` and therefore represent the fitted
+        transfer function's response to a one-unit impulse.
+
+        Parameters
+        ----------
+        steps : int, default 20
+            Strictly positive response horizon.
+        inputs : str or sequence of str, optional
+            RDL inputs to plot. The default plots every fitted RDL input.
+        **kwargs
+            Additional options forwarded to
+            :func:`Ts.TsPlots.plot_lag_response`.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` for one input or ``(fig, axes)`` for facets.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagSpec, SARIMAX
+        >>> from Ts.TsSims import RDLInputSpec, simulate_rdl
+        >>> simulated = simulate_rdl(n=80, distributed_lags={"x": RDLInputSpec({0: 1.0}, {1: 0.4})}, seed=42)
+        >>> result = SARIMAX(simulated.data, exog=simulated.exog, distributed_lags={"x": RationalLagSpec(0, 1)}).fit()
+        >>> fig, ax = result.plot_impulse_response(5)
+        >>> len(ax.patches)
+        5
+        """
+        results = self._distributed_lag_results or {}
+        if not results:
+            raise ValueError("model has no rational distributed-lag inputs")
+        if inputs is None:
+            selected = tuple(results)
+        elif isinstance(inputs, str):
+            selected = (inputs,)
+        else:
+            try:
+                selected = tuple(inputs)
+            except TypeError as error:
+                raise TypeError("inputs must be a name or an iterable of names") from error
+        if not selected:
+            raise ValueError("inputs must contain at least one RDL input")
+        if len(set(selected)) != len(selected):
+            raise ValueError("inputs must be unique")
+        unknown = [name for name in selected if name not in results]
+        if unknown:
+            raise ValueError(f"inputs contains unknown RDL input {unknown[0]!r}")
+
+        from Ts.TsPlots import plot_lag_response
+
+        weights = pd.concat([results[name].weights(steps) for name in selected], axis=1)
+        return plot_lag_response(weights, **kwargs)
+
     @property
     def dates(self):
         """Return a copy of the fitted observation dates."""

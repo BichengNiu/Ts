@@ -229,6 +229,40 @@ class TestAutoModelResult:
         assert auto_result.cycle_period(seasonal=True) is expected
         assert calls == [True]
 
+    def test_feedback_test_delegates_to_best_result(self, auto_result, base_result):
+        expected = object()
+        calls = []
+
+        def feedback_test(lags, inputs=None, **kwargs):
+            calls.append((lags, inputs, kwargs))
+            return expected
+
+        base_result.feedback_test = feedback_test
+
+        assert (
+            auto_result.feedback_test(2, inputs="price", trend="ct", alpha=0.1)
+            is expected
+        )
+        assert calls == [(2, "price", {"trend": "ct", "alpha": 0.1})]
+
+    def test_plot_impulse_response_delegates_to_best_result(
+        self, auto_result, base_result
+    ):
+        expected = object()
+        calls = []
+
+        def plot_impulse_response(steps=20, inputs=None, **kwargs):
+            calls.append((steps, inputs, kwargs))
+            return expected
+
+        base_result.plot_impulse_response = plot_impulse_response
+
+        assert (
+            auto_result.plot_impulse_response(12, inputs="price", grid=False)
+            is expected
+        )
+        assert calls == [(12, "price", {"grid": False})]
+
 
 # ============================================================
 # Test Group 3: AutoSARIMAX
