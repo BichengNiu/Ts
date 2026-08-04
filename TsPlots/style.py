@@ -56,6 +56,13 @@ def apply_fonts(latin=LATIN_FONT, chinese_candidates=CHINESE_FONT_CANDIDATES):
     -------
     str
         The Chinese font family name that was actually selected.
+
+    Examples
+    --------
+    >>> from Ts.TsPlots.style import apply_fonts
+    >>> selected_font = apply_fonts()
+    >>> isinstance(selected_font, str)
+    True
     """
     available = {f.name for f in font_manager.fontManager.ttflist}
     chinese = next(
@@ -189,6 +196,19 @@ def style_axes(ax, *, grid=False, tick_labelsize=TICK_LABELSIZE):
         Whether to show a dashed grid on both axes. Defaults to ``False``.
     tick_labelsize : float
         Font size of the tick labels. Defaults to ``14``.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> import matplotlib.pyplot as plt
+    >>> from Ts.TsPlots.style import style_axes
+    >>> fig, ax = plt.subplots()
+    >>> style_axes(ax, grid=True)
+    >>> ax.spines["top"].get_visible()
+    False
     """
     body_family = _body_font_family()
     title_family = _title_font_family()

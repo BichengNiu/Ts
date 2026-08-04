@@ -30,6 +30,15 @@ class SimCointegratedResult(BaseSimResult):
         Structural innovations of shape ``(n, k)``.
     params : dict
         All parameters used for simulation.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_cointegrated
+    >>> result = simulate_cointegrated(n=50, k=3, coint_rank=1, seed=42)
+    >>> result.data.shape
+    (50, 3)
+    >>> result.get_params()["coint_rank"]
+    1
     """
 
     # get_data() is inherited from BaseSimResult — handles 2D data correctly.
@@ -40,6 +49,13 @@ class SimCointegratedResult(BaseSimResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_cointegrated
+        >>> result = simulate_cointegrated(n=50, k=2, coint_rank=1, seed=42)
+        >>> result.summary().startswith("Cointegrated System Simulation Result")
+        True
         """
         p = self.params
         k = p["k"]
@@ -85,6 +101,14 @@ class SimCointegratedResult(BaseSimResult):
         -------
         fig : matplotlib.figure.Figure
         axes : numpy.ndarray of matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_cointegrated
+        >>> result = simulate_cointegrated(n=50, k=2, coint_rank=1, seed=42)
+        >>> fig, axes = result.plot()
+        >>> len(axes)
+        2
         """
         from Ts.TsPlots import plot_series
         import matplotlib.pyplot as plt
@@ -226,7 +250,8 @@ def simulate_cointegrated(
     >>> # Two cointegrated variables (k=2, r=1) with default parameters
     >>> r = simulate_cointegrated(n=200, k=2, coint_rank=1, seed=42)
     >>> df = r.get_data()
-    >>> print(r.summary())
+    >>> r.summary().startswith("Cointegrated System Simulation Result")
+    True
     >>>
     >>> # Custom alpha and beta
     >>> import numpy as np

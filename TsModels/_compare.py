@@ -81,6 +81,17 @@ def compare_models(models):
         If *models* is not a dict.
     ValueError
         If *models* is empty.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import SARIMAX, compare_models
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=60, seed=42).data
+    >>> constant = SARIMAX(data, order=(0, 0, 0)).fit()
+    >>> ar1 = SARIMAX(data, order=(1, 0, 0)).fit()
+    >>> table = compare_models({"constant": constant, "ar1": ar1})
+    >>> "constant" in table and "ar1" in table
+    True
     """
     if not isinstance(models, dict):
         raise TypeError(f"models must be a dict, got {type(models).__name__}")

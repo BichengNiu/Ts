@@ -59,6 +59,23 @@ class GARCH(_BaseVolModel):
         Joint non-finite policy for data and exog. ``"drop"`` records removed
         zero-based rows in :attr:`dropped_positions`. Default ``"drop"``;
         use ``"raise"`` to reject any sample change.
+
+    Examples
+    --------
+    Fit a conventional GARCH(1,1) model to simulated returns.
+
+    >>> from Ts.TsModels import GARCH
+    >>> from Ts.TsSims import simulate_garch
+    >>> data = simulate_garch(n=200, p=1, q=1, seed=42).data
+    >>> result = GARCH(data, p=1, q=1, dist="normal").fit()
+    >>> result.conditional_volatility.shape
+    (200,)
+
+    ``q=0`` estimates pure ARCH; ``o>0`` estimates an asymmetric GJR term.
+
+    >>> arch = GARCH(data, p=1, q=0).fit()
+    >>> arch.model_type.startswith("ARCH")
+    True
     """
 
     def __init__(

@@ -51,6 +51,7 @@ def _simulate_gjr_garch(
     Returns
     -------
     SimGARCHResult
+
     """
 
     def _init_sigma2_fn():
@@ -139,6 +140,7 @@ def _simulate_egarch(
     Returns
     -------
     SimGARCHResult
+
     """
     from scipy.special import gamma as gamma_func
 
@@ -269,6 +271,15 @@ def simulate_gjr_garch(
     Returns
     -------
     SimGARCHResult
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_gjr_garch
+    >>> result = simulate_gjr_garch(
+    ...     n=50, alpha=[0.1], gamma=[0.15], beta=[0.7], seed=42
+    ... )
+    >>> result.params["gamma"]
+    [0.15]
     """
     n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
@@ -367,6 +378,15 @@ def simulate_egarch(
     Returns
     -------
     SimGARCHResult
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_egarch
+    >>> result = simulate_egarch(
+    ...     n=50, alpha=[0.15], gamma=[-0.1], beta=[0.8], seed=42
+    ... )
+    >>> result.model_type
+    'EGARCH'
     """
     n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
@@ -463,6 +483,15 @@ def simulate_garch_m(
     Returns
     -------
     SimGARCHResult
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_garch_m
+    >>> result = simulate_garch_m(
+    ...     n=50, garch_m_kappa=0.3, garch_m_form="var", seed=42
+    ... )
+    >>> result.params["garch_m_form"]
+    'var'
     """
     n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)

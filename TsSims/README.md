@@ -2,6 +2,12 @@
 
 时间序列模拟工具包。提供 SARIMA、RDL、GARCH、协整系统和 TS/DS 过程的合成数据生成，结果以结构化对象封装。
 
+## 交互式帮助
+
+公共模拟函数及结果对象的参数、返回值和可执行样例均已写入 docstring。在
+IPython/Jupyter 中输入 `?simulate_sarima`（或 `simulate_sarima?`），也可在
+Python 中调用 `help(simulate_sarima)` 查看完整帮助。
+
 ## 模块结构
 
 ```

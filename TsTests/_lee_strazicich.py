@@ -229,7 +229,52 @@ def _select_lm_regression(
 
 @dataclass
 class LeeStrazicichTwoBreakTestResult(BaseTestResult):
-    """Result of the Lee-Strazicich two-unknown-break minimum LM test."""
+    """Result of the Lee-Strazicich two-unknown-break minimum LM test.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Minimum LM statistic, optional p-value, selected lag count, effective
+        sample size, and regression residuals.
+    model : {"A", "C"}
+        Level-shift or level-and-trend-shift specification.
+    break_indices : tuple of int
+        Two selected zero-based break positions.
+    break_years : tuple of float
+        Corresponding time labels.
+    break_fractions : tuple of float
+        Break locations as shares of the sample.
+    cv_01, cv_05, cv_10 : float
+        One-, five-, and ten-percent critical values.
+    critical_value_cell : tuple of float or None
+        Lookup-table cell used for interpolation.
+    lag_method : str
+        Lag-selection method used.
+    ic_by_lag : numpy.ndarray or None
+        Information-criterion path when applicable.
+    coefficients, pvalues : dict
+        Selected regression estimates and p-values.
+    fitted : numpy.ndarray or None
+        Fitted values from the selected regression.
+    regression_time_index : numpy.ndarray or None
+        Time labels aligned with the regression sample.
+    all_candidate_break_indices, all_candidate_statistics : numpy.ndarray or None
+        Candidate break pairs and their LM statistics.
+    all_candidate_lags : numpy.ndarray or None
+        Selected lag count for each candidate pair.
+    time_index, observed : numpy.ndarray or None
+        Original time labels and observations.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import LeeStrazicichTwoBreakTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=30), 2 + rng.normal(size=30), rng.normal(size=30)]
+    >>> result = LeeStrazicichTwoBreakTest(data, lags=0).fit()
+    >>> len(result.break_indices)
+    2
+    """
 
     model: str = "A"
     break_indices: tuple[int, int] = (0, 0)
@@ -280,7 +325,27 @@ class LeeStrazicichTwoBreakTestResult(BaseTestResult):
         )
 
     def plot_test(self, ax=None):
-        """Plot the series and the two minimizing break locations."""
+        """Plot the series and the two minimizing break locations.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw on; a new figure is created when omitted.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import LeeStrazicichTwoBreakTest
+        >>> rng = np.random.default_rng(7)
+        >>> data = np.r_[rng.normal(size=25), 2 + rng.normal(size=25), rng.normal(size=25)]
+        >>> result = LeeStrazicichTwoBreakTest(data, model="A", lags=0).fit()
+        >>> fig, ax = result.plot_test()
+        """
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 5))
         else:
@@ -301,6 +366,47 @@ class LeeStrazicichTwoBreakTest(BaseTest):
 
     ``model="A"`` permits two level shifts. ``model="C"`` permits two level
     and trend shifts. Breaks enter under both the null and alternative.
+
+    Parameters
+    ----------
+    data : array-like or pandas.DataFrame
+        Time series to test.
+    time_index : array-like, optional
+        Explicit ordered time labels; defaults to zero-based positions.
+    model : {"A", "C"}, default "A"
+        Two level shifts, or two level-and-trend shifts.
+    lags : int, optional
+        Fixed lagged-difference count. ``None`` enables selection.
+    max_lags : int, default 8
+        Largest candidate lag when selection is enabled.
+    lag_method : {"tstat", "aic", "bic"}, default "tstat"
+        Lag-selection rule.
+    lag_crit : float, default 1.645
+        Absolute t-statistic cutoff for general-to-specific selection.
+    trim : float, default 0.1
+        Fraction excluded at each sample boundary.
+    min_break_distance : int, optional
+        Minimum number of observations between the two breaks.
+    y_col : str or int, optional
+        Response column when ``data`` is a DataFrame.
+    time_col : str or int, optional
+        Time column when it is stored inside ``data``.
+
+    Attributes
+    ----------
+    result_ : LeeStrazicichTwoBreakTestResult or None
+        Fitted minimum-LM result.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import LeeStrazicichTwoBreakTest
+    >>> rng = np.random.default_rng(7)
+    >>> data = np.r_[rng.normal(size=30), 2 + rng.normal(size=30), rng.normal(size=30)]
+    >>> test = LeeStrazicichTwoBreakTest(data, model="A", lags=0)
+    >>> result = test.fit()
+    >>> result.model
+    'A'
     """
 
     def __init__(
@@ -364,7 +470,22 @@ class LeeStrazicichTwoBreakTest(BaseTest):
         self.result_: LeeStrazicichTwoBreakTestResult | None = None
 
     def fit(self) -> LeeStrazicichTwoBreakTestResult:
-        """Search all admissible break pairs and return the minimum LM statistic."""
+        """Search admissible break pairs and return the minimum LM statistic.
+
+        Returns
+        -------
+        LeeStrazicichTwoBreakTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import LeeStrazicichTwoBreakTest
+        >>> rng = np.random.default_rng(7)
+        >>> data = np.r_[rng.normal(size=25), 2 + rng.normal(size=25), rng.normal(size=25)]
+        >>> result = LeeStrazicichTwoBreakTest(data, model="A", lags=0).fit()
+        >>> len(result.break_indices)
+        2
+        """
         nobs = len(self.data)
         lag_bound = self.max_lags if self.lags is None else self.lags
         lower = max(int(np.round(self.trim * nobs)), lag_bound + 3)

@@ -195,6 +195,28 @@ def test_finite_sparse_rdl_matches_explicit_lagged_regression():
     assert "rdl.x.omega.L1" in rdl.summary()
 
 
+def test_named_series_exog_uses_its_name_for_rdl_mapping():
+    rng = np.random.default_rng(2311)
+    x = pd.Series(rng.normal(size=300), name="leading_indicator")
+    y = 1.3 * x.to_numpy() + rng.normal(scale=0.2, size=len(x))
+
+    result = SARIMAX(
+        y,
+        exog=x,
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={
+            "leading_indicator": RationalLagSpec(numerator=0, denominator=0)
+        },
+    ).fit(method="bfgs", maxiter=200, require_convergence=True)
+
+    assert result.distributed_lag_names == ("leading_indicator",)
+    assert result.params["rdl.leading_indicator.omega.L0"] == pytest.approx(
+        1.3,
+        abs=0.04,
+    )
+
+
 def test_koyck_model_recovers_coefficient_gain_and_weights():
     rng = np.random.default_rng(2302)
     x = rng.normal(size=500)

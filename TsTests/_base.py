@@ -35,6 +35,18 @@ class BaseTestResult:
         Effective number of observations.
     residuals : np.ndarray or None
         Residual series from the test regression, if applicable.
+
+    Examples
+    --------
+    Result subclasses expose these fields after a test is fitted.
+
+    >>> import numpy as np
+    >>> from Ts.TsTests import ADFTest, BaseTestResult
+    >>> result = ADFTest(np.random.default_rng(42).normal(size=80)).fit()
+    >>> isinstance(result, BaseTestResult)
+    True
+    >>> result.nobs > 0
+    True
     """
 
     statistic: float
@@ -85,7 +97,24 @@ class BaseTestResult:
 
 @dataclass
 class BaseMultiTestResult:
-    """Common metadata for tests that return multiple directional results."""
+    """Common metadata for tests that return multiple directional results.
+
+    Attributes
+    ----------
+    lags : int
+        Lag order used by the test.
+    nobs : int
+        Effective number of observations.
+    residuals : numpy.ndarray or None
+        Residual matrix when the test exposes one.
+
+    Examples
+    --------
+    >>> from Ts.TsTests import BaseMultiTestResult
+    >>> result = BaseMultiTestResult(lags=2, nobs=50)
+    >>> (result.lags, result.nobs, result.residuals)
+    (2, 50, None)
+    """
 
     lags: int
     nobs: int
@@ -98,6 +127,24 @@ class BaseTest(ABC):
     Every test must implement :meth:`fit` and expose a :attr:`result_`
     attribute. The :meth:`summary` method returns a formatted string
     representation (no side effects — does not print).
+
+    Attributes
+    ----------
+    result_ : BaseTestResult, BaseMultiTestResult, or None
+        Fitted result, populated by :meth:`fit`.
+
+    Examples
+    --------
+    Use a concrete subclass rather than instantiating this abstract class.
+
+    >>> import numpy as np
+    >>> from Ts.TsTests import ADFTest, BaseTest
+    >>> test = ADFTest(np.random.default_rng(42).normal(size=80))
+    >>> isinstance(test, BaseTest)
+    True
+    >>> result = test.fit()
+    >>> test.result_ is result
+    True
     """
 
     result_: BaseTestResult | BaseMultiTestResult | None = None
@@ -107,6 +154,20 @@ class BaseTest(ABC):
         """Execute the test and return a result object.
 
         The result is also stored in :attr:`result_`.
+
+        Returns
+        -------
+        BaseTestResult or BaseMultiTestResult
+            Concrete result produced by the subclass.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ADFTest
+        >>> test = ADFTest(np.random.default_rng(42).normal(size=80))
+        >>> result = test.fit()
+        >>> test.result_ is result
+        True
         """
         ...
 
@@ -114,6 +175,19 @@ class BaseTest(ABC):
         """Return a formatted summary string for the test results.
 
         Does **not** print — the caller decides how to display.
+
+        Returns
+        -------
+        str
+            Formatted result. The test is fitted automatically when needed.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ADFTest
+        >>> test = ADFTest(np.random.default_rng(42).normal(size=80))
+        >>> "ADF Test" in test.summary()
+        True
         """
         if self.result_ is None:
             self.fit()

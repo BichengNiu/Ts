@@ -647,6 +647,37 @@ def plot_series(
         secondary axes is available as ``ax.right_ax``. All
         right-side axes are available through ``ax.extra_y_axes`` and all
         axes through ``fig.axes``.
+
+    Examples
+    --------
+    Plot two columns in separate panels, using the DataFrame index as time.
+
+    >>> import pandas as pd
+    >>> from Ts.TsPlots import plot_series
+    >>> frame = pd.DataFrame(
+    ...     {"output": [100, 104, 109], "prices": [95, 99, 103]},
+    ...     index=pd.date_range("2024-01-01", periods=3, freq="YS"),
+    ... )
+    >>> fig, axes = plot_series(frame, title="Annual indicators")
+    >>> len(axes)
+    2
+
+    Overlay differently scaled series and assign axes automatically. Manual
+    ``axis_groups`` takes precedence when the grouping is substantively known.
+
+    >>> fig, ax = plot_series(
+    ...     {"rate": [1, 2, 3], "level": [1000, 2000, 3000]},
+    ...     facet=False,
+    ... )
+    >>> len(ax.extra_y_axes)
+    1
+    >>> fig, ax = plot_series(
+    ...     frame,
+    ...     facet=False,
+    ...     axis_groups={"output": "real", "prices": "real"},
+    ... )
+    >>> len(ax.extra_y_axes)
+    0
     """
     x_values, series, default_xlabel = _resolve_input(data, x, y)
     colors = _resolve_colors(colors, len(series))

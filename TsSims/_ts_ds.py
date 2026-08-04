@@ -33,6 +33,15 @@ class SimTSDSResult(BaseSimResult):
         White-noise innovations used in generation.
     params : dict
         All parameters used for simulation.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_trend_stationary
+    >>> result = simulate_trend_stationary(n=30, slope=0.2, seed=42)
+    >>> result.data.shape
+    (30,)
+    >>> result.params["process_type"]
+    'trend_stationary'
     """
 
     def summary(self) -> str:
@@ -41,6 +50,13 @@ class SimTSDSResult(BaseSimResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_trend_stationary
+        >>> result = simulate_trend_stationary(n=50, seed=42)
+        >>> "Trend-Stationary" in result.summary()
+        True
         """
         p = self.params
         process_type = p.get("process_type", "N/A")
@@ -82,6 +98,12 @@ class SimTSDSResult(BaseSimResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_difference_stationary
+        >>> result = simulate_difference_stationary(n=50, seed=42)
+        >>> fig, ax = result.plot()
         """
         if title is None:
             process_type = self.params.get("process_type", "TS/DS")
@@ -143,6 +165,15 @@ def simulate_trend_stationary(
     SimTSDSResult
         Container with ``.data``, ``.residuals``, ``.params`` and methods
         ``.get_data()``, ``.get_params()``, ``.summary()``, ``.plot()``.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_trend_stationary
+    >>> result = simulate_trend_stationary(
+    ...     n=40, intercept=2.0, slope=0.1, sigma=0.5, seed=42
+    ... )
+    >>> result.params["slope"]
+    0.1
     """
     n, _ = validate_sample(n)
     intercept = validate_real("intercept", intercept)
@@ -203,6 +234,15 @@ def simulate_difference_stationary(
     SimTSDSResult
         Container with ``.data``, ``.residuals``, ``.params`` and methods
         ``.get_data()``, ``.get_params()``, ``.summary()``, ``.plot()``.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_difference_stationary
+    >>> result = simulate_difference_stationary(
+    ...     n=40, drift=0.2, sigma=0.5, seed=42
+    ... )
+    >>> result.params["drift"]
+    0.2
     """
     n, burn = validate_sample(n, burn)
     drift = validate_real("drift", drift)

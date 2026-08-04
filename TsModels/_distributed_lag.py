@@ -70,6 +70,33 @@ class RationalLagSpec:
     Integer numerator and denominator values denote contiguous polynomial
     orders. Iterables denote active sparse lags; omitted lags through the
     maximum active lag are fixed at zero.
+
+    Parameters
+    ----------
+    numerator : int or iterable of int, default 0
+        Contiguous numerator order or exact active non-negative lags.
+    denominator : int or iterable of int, default 0
+        Contiguous denominator order or exact active positive lags.
+    delay : int, default 0
+        Pure input delay before the numerator polynomial.
+    initialization : {"zero", "steady_state"}, default "zero"
+        Pre-sample transfer-filter state.
+
+    Attributes
+    ----------
+    numerator_lags, denominator_lags : tuple of int
+        Normalized active coefficient lags.
+    fixed_numerator_lags, fixed_denominator_lags : tuple of int
+        Omitted lags fixed at zero through each maximum active lag.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import RationalLagSpec
+    >>> spec = RationalLagSpec(numerator=(0, 2), denominator=(1,), delay=1)
+    >>> spec.numerator_lags
+    (0, 2)
+    >>> spec.fixed_numerator_lags
+    (1,)
     """
 
     numerator: object = 0
@@ -115,6 +142,24 @@ class RationalLagSpec:
         return tuple(lag for lag in range(1, maximum + 1) if lag not in active)
 
     def parameter_names(self, input_name):
+        """Return fitted parameter names for one distributed-lag input.
+
+        Parameters
+        ----------
+        input_name : str
+            Public name of the exogenous input.
+
+        Returns
+        -------
+        tuple of str
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagSpec
+        >>> spec = RationalLagSpec(numerator=(0, 2), denominator=(1,))
+        >>> spec.parameter_names("price")
+        ('rdl.price.omega.L0', 'rdl.price.omega.L2', 'rdl.price.delta.L1')
+        """
         names = [
             _rdl_parameter_name(input_name, "numerator", lag)
             for lag in self.numerator_lags
@@ -169,7 +214,48 @@ def _coefficient_arrays(spec, numerator, denominator):
 
 @dataclass
 class RationalLagResult:
-    """Estimated transfer-function quantities for one named input."""
+    """Estimated transfer-function quantities for one named input.
+
+    Parameters
+    ----------
+    name : str
+        Input name.
+    spec : RationalLagSpec
+        Estimated polynomial structure and initialization contract.
+    numerator, denominator : dict of int to float
+        Estimated active coefficients keyed by lag.
+    std_errors, p_values : dict
+        Inference keyed by public parameter name.
+    covariance : numpy.ndarray or None
+        Covariance matrix for supported derived inference.
+    covariance_names : tuple of str
+        Parameter order corresponding to ``covariance``.
+
+    Attributes
+    ----------
+    coefficients : pandas.DataFrame
+        Active and fixed-zero coefficient table.
+    denominator_roots : numpy.ndarray
+        Transfer-denominator roots.
+    is_stable : bool
+        Whether all denominator roots lie outside the unit circle.
+    steady_state_gain : float
+        Long-run input multiplier, or NaN when undefined.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import RationalLagResult, RationalLagSpec
+    >>> result = RationalLagResult(
+    ...     "price",
+    ...     RationalLagSpec(numerator=1, denominator=1),
+    ...     numerator={0: 0.8, 1: 0.2},
+    ...     denominator={1: 0.5},
+    ... )
+    >>> result.is_stable
+    True
+    >>> result.steady_state_gain
+    2.0
+    """
 
     name: str
     spec: RationalLagSpec
@@ -278,6 +364,27 @@ class RationalLagResult:
         return float(sum(self.numerator.values()) / denominator_at_one)
 
     def weights(self, steps):
+        """Return dynamic response weights through a finite horizon.
+
+        Parameters
+        ----------
+        steps : int
+            Strictly positive number of lags to return.
+
+        Returns
+        -------
+        pandas.Series
+            Weights indexed by lag and named after the input.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagResult, RationalLagSpec
+        >>> result = RationalLagResult(
+        ...     "x", RationalLagSpec(0, 1), {0: 1.0}, {1: 0.5}
+        ... )
+        >>> result.weights(4).tolist()
+        [1.0, 0.5, 0.25, 0.125]
+        """
         steps = _normalise_nonnegative_integer(steps, "steps")
         if steps == 0:
             raise ValueError("steps must be strictly positive")
@@ -292,7 +399,27 @@ class RationalLagResult:
         return pd.Series(values, index=pd.RangeIndex(steps, name="lag"), name=self.name)
 
     def filter(self, values):
-        """Apply the fitted rational filter to one complete input path."""
+        """Apply the fitted rational filter to one complete input path.
+
+        Parameters
+        ----------
+        values : array-like
+            Complete finite one-dimensional input path.
+
+        Returns
+        -------
+        numpy.ndarray
+            Filtered transfer effect with the same length.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagResult, RationalLagSpec
+        >>> result = RationalLagResult(
+        ...     "x", RationalLagSpec(0, 1), {0: 1.0}, {1: 0.5}
+        ... )
+        >>> result.filter([1.0, 0.0, 0.0]).tolist()
+        [1.0, 0.5, 0.25]
+        """
         values = np.asarray(values, dtype=float)
         if values.ndim != 1 or not len(values):
             raise ValueError("values must be a non-empty one-dimensional input path")
@@ -311,6 +438,27 @@ class RationalLagResult:
         )
 
     def gain(self, alpha=0.05):
+        """Return long-run gain and an optional delta-method interval.
+
+        Parameters
+        ----------
+        alpha : float, default 0.05
+            Two-sided significance level.
+
+        Returns
+        -------
+        pandas.Series
+            Estimate, standard error, interval, and stability flag.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagResult, RationalLagSpec
+        >>> result = RationalLagResult(
+        ...     "x", RationalLagSpec(0, 1), {0: 1.0}, {1: 0.5}
+        ... )
+        >>> result.gain()["estimate"]
+        2.0
+        """
         if (
             not isinstance(alpha, (int, float, np.integer, np.floating))
             or not 0 < alpha < 1

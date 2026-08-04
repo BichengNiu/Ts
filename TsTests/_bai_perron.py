@@ -258,7 +258,64 @@ def _wild_bootstrap_sample(
 
 @dataclass
 class BaiPerronTestResult(BaseTestResult):
-    """Full output for global multiple-unknown-break regression analysis."""
+    """Full output for global multiple-unknown-break regression analysis.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Selected test statistic, p-value, unused lag field, sample size, and
+        residuals from the selected partition.
+    n_breaks : int
+        Selected number of breaks.
+    break_indices, break_years, break_fractions : tuple
+        Selected positions, labels, and fractional locations.
+    min_segment_size : int
+        Minimum admissible regime length.
+    selection_method : str
+        Fixed-break or information-criterion selection rule.
+    partitions : dict
+        Globally optimal break positions by candidate break count.
+    rss_by_breaks, bic_by_breaks, lwz_by_breaks : dict
+        Fit and information criteria by candidate break count.
+    supf_by_breaks, supf_pvalues : dict
+        Global SupF statistics and bootstrap p-values.
+    sequential_supf, sequential_pvalues : dict
+        Sequential ``l`` versus ``l+1`` break tests.
+    udmax, udmax_pvalue, wdmax, wdmax_pvalue : float
+        Double-maximum statistics and bootstrap p-values.
+    wdmax_weights : dict
+        Weights used by the weighted double-maximum statistic.
+    bootstrap_critical_values : dict
+        Bootstrap critical values for reported statistics.
+    break_confidence_intervals, break_confidence_years : tuple
+        Position- and label-scale break confidence intervals.
+    confidence_level : float
+        Confidence level used for break intervals.
+    segment_coefficients : list of dict
+        Regression coefficients for each selected regime.
+    fitted : numpy.ndarray or None
+        Fitted values under the selected partition.
+    time_index, observed : numpy.ndarray or None
+        Original time labels and response observations.
+    inference_method : str
+        Bootstrap procedure label.
+    heteroskedasticity_robust, serial_correlation_robust : bool
+        Reported inference assumptions.
+    n_bootstrap : int
+        Number of bootstrap replications.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import BaiPerronTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=30), 3 + rng.normal(size=30)]
+    >>> result = BaiPerronTest(
+    ...     data, breaks=1, max_breaks=1, n_bootstrap=19, random_state=42
+    ... ).fit()
+    >>> result.n_breaks
+    1
+    """
 
     n_breaks: int = 0
     break_indices: tuple[int, ...] = ()
@@ -308,7 +365,27 @@ class BaiPerronTestResult(BaseTestResult):
         )
 
     def plot_test(self, ax=None):
-        """Plot observed data, selected piecewise fit, breaks, and intervals."""
+        """Plot observed data, selected piecewise fit, breaks, and intervals.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw on; a new figure is created when omitted.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import BaiPerronTest
+        >>> rng = np.random.default_rng(42)
+        >>> data = np.r_[rng.normal(size=30), 3 + rng.normal(size=30)]
+        >>> result = BaiPerronTest(data, breaks=1, max_breaks=1, n_bootstrap=19).fit()
+        >>> fig, ax = result.plot_test()
+        """
         if ax is None:
             fig, ax = plt.subplots(figsize=(11, 5))
         else:
@@ -334,6 +411,61 @@ class BaiPerronTest(BaseTest):
     All regression coefficients are allowed to change across regimes. Break
     indices identify the final observation of the preceding regime, matching
     :class:`PerronTest` semantics.
+
+    Parameters
+    ----------
+    data : array-like or pandas.DataFrame
+        Response observations, or a table containing selected columns.
+    exog : array-like, optional
+        External regressors supplied separately from ``data``.
+    time_index : array-like, optional
+        Ordered labels used when reporting breaks.
+    trend : {"n", "c", "ct"}, default "c"
+        Deterministic regressors allowed to change across regimes.
+    y_col : str or int, optional
+        Response column in a DataFrame.
+    time_col : str or int, optional
+        Time-label column in a DataFrame.
+    exog_cols : sequence of str or int, optional
+        Regressor columns selected from a DataFrame.
+    trim : float, default 0.15
+        Minimum regime length as a fraction of the sample.
+    min_segment_size : int, optional
+        Explicit minimum regime length; overrides the trim-derived value.
+    max_breaks : int, default 5
+        Largest candidate break count.
+    breaks : int, optional
+        Fix the number of breaks instead of selecting it.
+    criterion : {"bic", "lwz"}, default "bic"
+        Information criterion used when ``breaks`` is omitted.
+    significance : float, default 0.05
+        Sequential-test significance level.
+    confidence_level : float, default 0.95
+        Break-interval confidence level.
+    n_bootstrap : int, default 99
+        Wild-bootstrap replication count.
+    random_state : int, optional
+        Seed for reproducible bootstrap inference.
+
+    Attributes
+    ----------
+    result_ : BaiPerronTestResult or None
+        Fitted global partition and inference results.
+
+    Examples
+    --------
+    Select one known candidate count and use a fixed seed for reproducibility.
+
+    >>> import numpy as np
+    >>> from Ts.TsTests import BaiPerronTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=30), 3 + rng.normal(size=30)]
+    >>> test = BaiPerronTest(
+    ...     data, breaks=1, max_breaks=1, n_bootstrap=19, random_state=42
+    ... )
+    >>> result = test.fit()
+    >>> len(result.break_indices)
+    1
     """
 
     def __init__(
@@ -582,7 +714,22 @@ class BaiPerronTest(BaseTest):
         )
 
     def fit(self) -> BaiPerronTestResult:
-        """Estimate global partitions, select break count, and bootstrap inference."""
+        """Estimate global partitions, select break count, and bootstrap inference.
+
+        Returns
+        -------
+        BaiPerronTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import BaiPerronTest
+        >>> rng = np.random.default_rng(42)
+        >>> data = np.r_[rng.normal(size=30), 3 + rng.normal(size=30)]
+        >>> result = BaiPerronTest(data, breaks=1, max_breaks=1, n_bootstrap=19).fit()
+        >>> result.n_breaks
+        1
+        """
         nobs, nparams = self.design.exog.shape
         partitions = _global_partitions(
             self.design.endog,

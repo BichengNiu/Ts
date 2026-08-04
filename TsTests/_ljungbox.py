@@ -27,6 +27,25 @@ class LjungBoxTestResult(BaseTestResult):
     - ``individual_stats`` — Q statistic at each lag.
     - ``individual_pvalues`` — p-value at each lag.
     - ``apply_squared`` — whether the test was applied to squared data.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Final Q statistic, p-value, maximum lag, sample size, and tested data.
+    individual_lags, individual_stats, individual_pvalues : numpy.ndarray
+        Lag-by-lag Q-test results.
+    apply_squared : bool
+        Whether squared rather than raw data were tested.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import LjungBoxTest
+    >>> result = LjungBoxTest(
+    ...     np.random.default_rng(42).normal(size=100), lags=5
+    ... ).fit()
+    >>> result.individual_lags.tolist()
+    [1, 2, 3, 4, 5]
     """
 
     individual_lags: np.ndarray | None = None
@@ -79,6 +98,17 @@ class LjungBoxTest(BaseTest):
     ----------
     result_ : LjungBoxTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    Test raw residual autocorrelation by disabling the squared-data default.
+
+    >>> import numpy as np
+    >>> from Ts.TsTests import LjungBoxTest
+    >>> residuals = np.random.default_rng(42).normal(size=100)
+    >>> result = LjungBoxTest(residuals, lags=10, apply_squared=False).fit()
+    >>> result.apply_squared
+    False
     """
 
     def __init__(
@@ -109,6 +139,14 @@ class LjungBoxTest(BaseTest):
         Returns
         -------
         LjungBoxTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import LjungBoxTest
+        >>> result = LjungBoxTest(np.random.default_rng(42).normal(size=100), lags=10).fit()
+        >>> result.lags
+        10
         """
         y = self.data
         data = y**2 if self.apply_squared else y

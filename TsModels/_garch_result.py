@@ -46,6 +46,28 @@ class GARCHResult(BaseModelResult):
     _arch_result : object
         Raw arch.univariate.ARCHResult, stored for internal forecast
         delegation.
+    model_type, params, std_errors, p_values : see BaseModelResult
+    aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
+        Shared estimation output inherited from ``BaseModelResult``.
+    dist : str
+        Fitted innovation distribution.
+    individual_lags, individual_aic, individual_bic : numpy.ndarray or None
+        Optional lower-order ARCH comparison table components.
+    garch_m : bool
+        Whether volatility enters the mean equation.
+    garch_m_form : str
+        Volatility transformation used by GARCH-M.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import GARCH, GARCHResult
+    >>> from Ts.TsSims import simulate_garch
+    >>> data = simulate_garch(n=150, seed=42).data
+    >>> result = GARCH(data).fit()
+    >>> isinstance(result, GARCHResult)
+    True
+    >>> result.conditional_variance.shape
+    (150,)
     """
 
     conditional_volatility: np.ndarray | None = None
@@ -76,6 +98,19 @@ class GARCHResult(BaseModelResult):
 
         Overrides BaseModelResult to add model-type header with order info
         and the IGARCH persistence test (Wald test for sum(alpha)+sum(beta)=1).
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> from Ts.TsModels import GARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> data = simulate_garch(n=120, omega=0.1, alpha=[0.2], beta=[0.7], seed=42).data
+        >>> result = GARCH(data, p=1, q=1).fit()
+        >>> "GARCH" in result.summary()
+        True
         """
         base = super().summary()
         model_label = self.model_type
@@ -156,6 +191,15 @@ class GARCHResult(BaseModelResult):
         Returns
         -------
         PredictResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import GARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> fitted = GARCH(simulate_garch(n=150, seed=42).data).fit()
+        >>> forecast = fitted.predict(start=150, end=154)
+        >>> forecast.mean.shape
+        (5,)
         """
         nobs = self.nobs
         window = _resolve_prediction_window(nobs, start, end)
@@ -398,6 +442,15 @@ class GARCHResult(BaseModelResult):
         ------
         RuntimeError
             If no fitted arch result is available.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import GARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> fitted = GARCH(simulate_garch(n=200, seed=42).data).fit()
+        >>> test = fitted.test_persistence()
+        >>> set(["chi2", "pvalue", "persistence_sum"]) <= set(test)
+        True
         """
         if self._arch_result is None:
             raise RuntimeError("No fitted arch result available")
@@ -497,6 +550,15 @@ class GARCHResult(BaseModelResult):
         Returns
         -------
         float or None
+
+        Examples
+        --------
+        >>> from Ts.TsModels import GARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> fitted = GARCH(simulate_garch(n=200, seed=42).data).fit()
+        >>> value = fitted.long_run_equilibrium()
+        >>> value is None or value > 0.0
+        True
         """
         # EGARCH unconditional variance requires complex formula
         if self.model_type == "EGARCH":

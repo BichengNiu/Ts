@@ -80,7 +80,46 @@ def backtest(
     alpha=0.05,
     on_error="raise",
 ):
-    """Run expanding- or rolling-window historical forecast evaluation."""
+    """Run expanding- or rolling-window historical forecast evaluation.
+
+    Parameters
+    ----------
+    model : estimator
+        Unfitted Ts model implementing the evaluation protocol.
+    initial_window : int
+        Observations in the first training sample.
+    horizon : int, default 1
+        Forecast steps scored at every origin.
+    step : int, default 1
+        Distance between consecutive forecast origins.
+    window : {"expanding", "rolling"}, default "expanding"
+        Grow the training sample or keep a fixed-length rolling sample.
+    window_size : int, optional
+        Rolling training length; required for ``window="rolling"``.
+    alpha : float, default 0.05
+        Significance level for forecast intervals.
+    on_error : {"raise", "record"}, default "raise"
+        Stop on a failed origin or retain an all-NaN row and failure metadata.
+
+    Returns
+    -------
+    BacktestResult
+        Origin-by-horizon forecasts, targets, intervals, failures, and metrics.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import backtest
+    >>> from Ts.TsModels import SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=45, order=(1, 0, 0), seed=42).data
+    >>> result = backtest(
+    ...     SARIMAX(data, order=(1, 0, 0)), initial_window=30, horizon=2, step=5
+    ... )
+    >>> result.mean.shape[1]
+    2
+    >>> result.window
+    'expanding'
+    """
     data = model_data(model)
     target = validate_model_protocol(model, "backtest")
     dates = validated_model_dates(model, data)

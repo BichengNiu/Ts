@@ -78,7 +78,49 @@ def _rank_scores(scores):
 
 @dataclass
 class OOSResult:
-    """Leakage-free evaluation over explicit estimation and validation periods."""
+    """Leakage-free evaluation over explicit estimation and validation periods.
+
+    Parameters
+    ----------
+    mean, actual : numpy.ndarray
+        Forecasts and aligned observed validation targets.
+    lower, upper : numpy.ndarray or None
+        Aligned interval bounds, both present or both absent.
+    estimation_indices, validation_indices : numpy.ndarray
+        Contiguous zero-based positions for the two closed periods.
+    estimation_dates, validation_dates : pandas.DatetimeIndex or None
+        Date labels for date-aware models, both present or both absent.
+    model_type : str
+        Model label recorded by the evaluator.
+    target : str
+        Forecast target name, such as ``"level"`` or ``"variance"``.
+
+    Attributes
+    ----------
+    metrics : dict
+        Overall canonical error metrics.
+    metrics_by_series : pandas.DataFrame
+        Per-series metrics for multivariate results.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsMetrics import OOSResult
+    >>> result = OOSResult(
+    ...     mean=np.array([2.0, 3.0]),
+    ...     actual=np.array([2.5, 2.5]),
+    ...     lower=None,
+    ...     upper=None,
+    ...     estimation_indices=np.arange(3),
+    ...     validation_indices=np.array([3, 4]),
+    ...     estimation_dates=None,
+    ...     validation_dates=None,
+    ...     model_type="Example",
+    ...     target="level",
+    ... )
+    >>> result.metrics["mae"]
+    0.5
+    """
 
     mean: np.ndarray
     actual: np.ndarray
@@ -175,7 +217,53 @@ class OOSResult:
 
 @dataclass
 class BacktestResult:
-    """Rolling-origin forecast evaluation result."""
+    """Rolling-origin forecast evaluation result.
+
+    Parameters
+    ----------
+    mean, actual : numpy.ndarray
+        Forecast and target arrays shaped by origin, horizon, and optionally
+        series.
+    lower, upper : numpy.ndarray or None
+        Aligned forecast interval bounds.
+    origins : numpy.ndarray
+        Increasing zero-based forecast-origin positions.
+    failures : list of dict
+        Retained failures with ``origin``, ``error_type``, and ``message``.
+    model_type : str
+        Model label recorded by the evaluator.
+    window : {"expanding", "rolling"}
+        Historical training-window policy.
+    target : str
+        Forecast target name.
+
+    Attributes
+    ----------
+    target_indices : numpy.ndarray
+        Origin-plus-horizon target positions.
+    metrics : dict
+        Metrics pooled across successful origins and horizons.
+    metrics_by_horizon, metrics_by_series : pandas.DataFrame
+        Horizon- and series-specific metrics.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsMetrics import BacktestResult
+    >>> result = BacktestResult(
+    ...     mean=np.array([[1.0], [2.0]]),
+    ...     actual=np.array([[1.5], [1.5]]),
+    ...     lower=None,
+    ...     upper=None,
+    ...     origins=np.array([10, 11]),
+    ...     failures=[],
+    ...     model_type="Example",
+    ...     window="expanding",
+    ...     target="level",
+    ... )
+    >>> result.target_indices.tolist()
+    [[10], [11]]
+    """
 
     mean: np.ndarray
     actual: np.ndarray
@@ -262,7 +350,29 @@ class BacktestResult:
 
 @dataclass
 class ComparisonResult:
-    """Ranking of comparable forecast evaluation results."""
+    """Ranking of comparable forecast evaluation results.
+
+    Parameters
+    ----------
+    metric : str
+        Error metric used for ranking.
+    scores : dict of str to float
+        One non-negative score per model.
+    target : str
+        Shared forecast target.
+
+    Attributes
+    ----------
+    ranking : list of str
+        Model names sorted by ascending finite score.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import ComparisonResult
+    >>> result = ComparisonResult("rmse", {"a": 2.0, "b": 1.0}, "level")
+    >>> result.ranking
+    ['b', 'a']
+    """
 
     metric: str
     scores: dict[str, float]
@@ -290,7 +400,44 @@ class ComparisonResult:
 
 @dataclass
 class OOSComparisonResult:
-    """Multi-model OOS evaluations and their complete metric table."""
+    """Multi-model OOS evaluations and their complete metric table.
+
+    Parameters
+    ----------
+    evaluations : dict of str to OOSResult
+        One leakage-free result per named estimator.
+    rank_by : str
+        Canonical error metric used for ordering models.
+
+    Attributes
+    ----------
+    target : str
+        Shared forecast target.
+    scores : dict of str to float
+        Ranking-metric scores.
+    ranking : list of str
+        Names ordered by ascending score.
+    best_model : str or None
+        Best finite-scoring model.
+    table : pandas.DataFrame
+        All canonical metrics, sample size, and rank.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsMetrics import OOSComparisonResult, OOSResult
+    >>> def evaluation(mean):
+    ...     return OOSResult(
+    ...         np.array(mean), np.array([1.0, 2.0]), None, None,
+    ...         np.arange(3), np.array([3, 4]), None, None, "Example", "level"
+    ...     )
+    >>> report = OOSComparisonResult(
+    ...     {"a": evaluation([1.0, 2.0]), "b": evaluation([2.0, 3.0])},
+    ...     rank_by="rmse",
+    ... )
+    >>> report.best_model
+    'a'
+    """
 
     evaluations: dict[str, OOSResult]
     rank_by: str

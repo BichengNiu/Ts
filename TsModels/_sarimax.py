@@ -289,10 +289,40 @@ def _normalise_dataframe_exog(exog, dates, exog_names, endog_length):
     return historical, names, future_frame
 
 
+def _normalise_series_exog(exog, dates, exog_names, endog_length):
+    name = exog.name
+    has_name = isinstance(name, str) and bool(name.strip())
+    if has_name:
+        if exog_names is not None:
+            raise ValueError(
+                "exog_names must not be provided when exog is a named Series"
+            )
+        resolved_name = _normalise_exog_names((name,), 1)[0]
+    else:
+        if exog_names is None:
+            raise ValueError(
+                "an unnamed exog Series requires exog_names with exactly one name"
+            )
+        resolved_name = _normalise_exog_names(exog_names, 1)[0]
+
+    frame = exog.rename(resolved_name).to_frame()
+    return _normalise_dataframe_exog(
+        frame,
+        dates,
+        None,
+        endog_length,
+    )
+
+
 def _normalise_array_exog(exog, endog_length, exog_names):
     values = _numeric_array(exog, "exog")
-    if values.ndim != 2:
-        raise ValueError(f"exog must be two-dimensional, got shape {values.shape}")
+    if values.ndim == 1:
+        values = values.reshape(-1, 1)
+    elif values.ndim != 2:
+        raise ValueError(
+            "exog must be one- or two-dimensional, "
+            f"got shape {values.shape}"
+        )
     if len(values) != endog_length:
         raise ValueError(
             f"exog has {len(values)} observations; expected {endog_length} observations"
@@ -318,6 +348,13 @@ def _normalise_sarimax_inputs(
             raise ValueError("exog_names requires exog")
         historical_exog = None
         names = ()
+    elif isinstance(exog, pd.Series):
+        historical_exog, names, future_exog = _normalise_series_exog(
+            exog,
+            data_dates,
+            exog_names,
+            len(endog),
+        )
     elif isinstance(exog, pd.DataFrame):
         historical_exog, names, future_exog = _normalise_dataframe_exog(
             exog,
@@ -459,7 +496,26 @@ def _combined_design(inputs, events, trend, *, distributed_lag_names=()):
 
 @dataclass
 class ScenarioForecastResult:
-    """Forecasts produced from multiple future-exogenous scenarios."""
+    """Forecasts produced from multiple future-exogenous scenarios.
+
+    Parameters
+    ----------
+    scenarios : dict of str to PredictResult
+        One forecast per named future-input scenario.
+    default_name : str or None
+        Scenario selected by convenience accessors, when defined.
+    dates : pandas.DatetimeIndex or None
+        Shared forecast dates.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsModels import PredictResult, ScenarioForecastResult
+    >>> forecast = PredictResult(np.array([1.0]), None, None, np.array([True]))
+    >>> result = ScenarioForecastResult({"baseline": forecast}, "baseline", None)
+    >>> result["baseline"].mean.tolist()
+    [1.0]
+    """
 
     scenarios: dict[str, PredictResult]
     default_name: str | None
@@ -492,7 +548,21 @@ class ScenarioForecastResult:
         return self.scenarios[name]
 
     def summary(self):
-        """Return a compact scenario inventory."""
+        """Return a compact scenario inventory.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import PredictResult, ScenarioForecastResult
+        >>> forecast = PredictResult(np.array([1.0]), None, None, np.array([True]))
+        >>> result = ScenarioForecastResult({"baseline": forecast}, "baseline", None)
+        >>> "baseline" in result.summary()
+        True
+        """
         default = self.default_name or "none"
         names = ", ".join(self.scenarios)
         return (
@@ -502,7 +572,26 @@ class ScenarioForecastResult:
         )
 
     def plot(self, title=None):
-        """Plot all scenario means on shared axes."""
+        """Plot all scenario means on shared axes.
+
+        Parameters
+        ----------
+        title : str, optional
+            Chart title.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import PredictResult, ScenarioForecastResult
+        >>> forecast = PredictResult(np.array([1.0]), None, None, np.array([True]))
+        >>> result = ScenarioForecastResult({"baseline": forecast}, "baseline", None)
+        >>> fig, ax = result.plot()
+        """
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -524,7 +613,32 @@ def _coerce_future_frame(
     exog_names,
     array_dates_provided,
 ):
-    if isinstance(values, pd.DataFrame):
+    if isinstance(values, pd.Series):
+        if len(exog_names) != 1:
+            raise ValueError(
+                f"scenario {name!r} Series requires exactly one exog column"
+            )
+        if values.name is not None:
+            series_name = _normalise_exog_names((values.name,), 1)[0]
+            if series_name != exog_names[0]:
+                raise ValueError(
+                    f"scenario {name!r} Series name must be "
+                    f"{exog_names[0]!r}, got {series_name!r}"
+                )
+        if isinstance(expected_dates, pd.DatetimeIndex):
+            index = _validate_datetime_index(
+                values.index,
+                f"scenario {name!r} dates",
+            )
+        else:
+            index = values.index
+        if len(index) != len(expected_dates) or not index.equals(expected_dates):
+            raise ValueError(
+                f"scenario {name!r} dates/rows must exactly match "
+                "the requested future dates"
+            )
+        array = _numeric_array(values, f"scenario {name!r}").reshape(-1, 1)
+    elif isinstance(values, pd.DataFrame):
         actual_columns = tuple(values.columns)
         if actual_columns != exog_names:
             raise ValueError(
@@ -548,8 +662,17 @@ def _coerce_future_frame(
         if not array_dates_provided:
             raise ValueError("array future_exog requires future_dates")
         array = _numeric_array(values, f"scenario {name!r}")
-        if array.ndim != 2:
-            raise ValueError(f"scenario {name!r} must be two-dimensional")
+        if array.ndim == 1:
+            if len(exog_names) != 1:
+                raise ValueError(
+                    f"scenario {name!r} one-dimensional array requires "
+                    "exactly one exog column"
+                )
+            array = array.reshape(-1, 1)
+        elif array.ndim != 2:
+            raise ValueError(
+                f"scenario {name!r} must be one- or two-dimensional"
+            )
         if array.shape != (len(expected_dates), len(exog_names)):
             raise ValueError(
                 f"scenario {name!r} has shape {array.shape}; expected "
@@ -639,6 +762,39 @@ class ARCycleResult:
     The period is measured in original observation intervals. It is available
     only when the selected AR(2) component has complex conjugate roots and the
     fitted model's complete AR polynomial is stationary.
+
+    Parameters
+    ----------
+    component : str
+        Non-seasonal or seasonal AR component label.
+    phi1, phi2 : float or None
+        Selected AR(2) coefficients.
+    discriminant : float or None
+        Quadratic discriminant determining real versus complex roots.
+    has_complex_roots : bool
+        Whether the selected component implies a damped oscillation.
+    is_stationary : bool
+        Stationarity verdict for the complete fitted AR polynomial.
+    period : float or None
+        Algebraic cycle period in observation intervals.
+    lag_scale : int
+        Original-time multiplier, equal to one for non-seasonal cycles.
+
+    Attributes
+    ----------
+    identified : bool
+        Whether a stationary complex-root cycle period is available.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import ARCycleResult
+    >>> result = ARCycleResult(
+    ...     component="nonseasonal", lag_scale=1, phi1=1.2, phi2=-0.5,
+    ...     discriminant=-0.56, has_complex_roots=True,
+    ...     is_stationary=True, period=8.0,
+    ... )
+    >>> result.identified
+    True
     """
 
     component: str
@@ -672,6 +828,20 @@ class SARIMAXResult(BaseModelResult):
     _statsmodels_result : object
         Raw statsmodels SARIMAXResultsWrapper, stored for internal
         predict / forecast delegation.
+    model_type, params, std_errors, p_values : see BaseModelResult
+    aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
+        Shared estimation output inherited from ``BaseModelResult``.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import SARIMAX, SARIMAXResult
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=60, order=(1, 0, 0), seed=42).data
+    >>> result = SARIMAX(data, order=(1, 0, 0)).fit()
+    >>> isinstance(result, SARIMAXResult)
+    True
+    >>> result.converged
+    True
     """
 
     _order: tuple | None = None
@@ -790,7 +960,35 @@ class SARIMAXResult(BaseModelResult):
         )
 
     def weights(self, steps):
-        """Return one impulse-weight column per distributed-lag input."""
+        """Return one impulse-weight column per distributed-lag input.
+
+        Parameters
+        ----------
+        steps : int
+            Strictly positive response horizon.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Dynamic weights with one column per RDL input.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import RationalLagSpec, SARIMAX
+        >>> from Ts.TsSims import RDLInputSpec, simulate_rdl
+        >>> simulated = simulate_rdl(
+        ...     n=100,
+        ...     distributed_lags={"x": RDLInputSpec({0: 1.0}, {1: 0.4})},
+        ...     seed=42,
+        ... )
+        >>> result = SARIMAX(
+        ...     simulated.data,
+        ...     exog=simulated.exog,
+        ...     distributed_lags={"x": RationalLagSpec(0, 1)},
+        ... ).fit()
+        >>> result.weights(4).shape
+        (4, 1)
+        """
         results = self._distributed_lag_results or {}
         if not results:
             raise ValueError("model has no rational distributed-lag inputs")
@@ -898,6 +1096,19 @@ class SARIMAXResult(BaseModelResult):
 
         Overrides BaseModelResult to add SARIMAX-specific details (order,
         seasonal_order), sparse-lag constraints, and AR/MA root conditions.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=80, order=(1, 0, 0), ar=[0.5], seed=42).data
+        >>> result = SARIMAX(data, order=(1, 0, 0)).fit()
+        >>> "SARIMAX" in result.summary()
+        True
         """
         base = super().summary()
         lines = base.split("\n")
@@ -1220,6 +1431,39 @@ class SARIMAXResult(BaseModelResult):
         arrays are on the original response scale. Point predictions are
         lognormal means using each prediction's own variance; interval bounds
         are the exponentiated Gaussian bounds from the log scale.
+
+        Parameters
+        ----------
+        start : int or datetime-like, default 0
+            First requested in-sample or forecast position.
+        end : int or datetime-like, optional
+            Inclusive last position; defaults to the fitted sample end.
+        dynamic : bool or int or datetime-like, default False
+            Statsmodels dynamic-prediction control.
+        alpha : float, default 0.05
+            Significance level for prediction intervals.
+        future_exog : array-like, pandas object, or mapping, optional
+            Complete future input path or named scenario paths.
+        future_dates : datetime-like sequence, optional
+            Exact forecast dates, required for array future inputs on dated
+            models when they cannot be inferred.
+
+        Returns
+        -------
+        PredictResult or ScenarioForecastResult
+            One prediction path, or one path per named input scenario.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> fitted = SARIMAX(
+        ...     simulate_sarima(n=60, order=(1, 0, 0), seed=42).data,
+        ...     order=(1, 0, 0),
+        ... ).fit()
+        >>> forecast = fitted.predict(start=60, end=64)
+        >>> forecast.mean.shape
+        (5,)
         """
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
@@ -1301,7 +1545,42 @@ class SARIMAXResult(BaseModelResult):
         n_draws=2000,
         seed=None,
     ):
-        """Estimate conditional effects for selected fitted events."""
+        """Estimate conditional effects for selected fitted events.
+
+        Parameters
+        ----------
+        events : str or sequence of str
+            Fitted event names included in the contrast.
+        start, end : int or datetime-like, optional
+            Inclusive effect window; defaults to the fitted sample.
+        method : {"delta", "simulation", "bootstrap"}, default "simulation"
+            Interval construction method.
+        alpha : float, default 0.05
+            Significance level.
+        n_draws : int, default 2000
+            Simulation or bootstrap draw count.
+        seed : int, optional
+            Reproducibility seed for stochastic inference.
+
+        Returns
+        -------
+        PolicyEffectResult
+            Coefficients, factual/counterfactual paths, contrasts, intervals,
+            cumulative effects, and identification note.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from Ts.TsModels import EventSpec, SARIMAX
+        >>> dates = pd.date_range("2020-01-01", periods=60, freq="MS")
+        >>> data = np.random.default_rng(42).normal(size=60)
+        >>> event = EventSpec("policy", [dates[35]], kind="step")
+        >>> fitted = SARIMAX(data, dates=dates, events=[event]).fit()
+        >>> effect = fitted.policy_effect("policy", method="delta")
+        >>> effect.method
+        'delta'
+        """
         if self.log:
             raise NotImplementedError(
                 "policy_effect is not available for log=True because log-scale "
@@ -1351,6 +1630,17 @@ class SARIMAXResult(BaseModelResult):
             second AR lags.
         RuntimeError
             If no fitted statsmodels result or finite AR coefficients exist.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import ARCycleResult, SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(
+        ...     n=300, order=(2, 0, 0), ar=[1.1, -0.5], seed=42
+        ... ).data
+        >>> cycle = SARIMAX(data, order=(2, 0, 0)).fit().cycle_period()
+        >>> isinstance(cycle, ARCycleResult)
+        True
         """
         if not isinstance(seasonal, (bool, np.bool_)):
             raise TypeError("seasonal must be a boolean")
@@ -1459,6 +1749,16 @@ class SARIMAXResult(BaseModelResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, order=(1, 0, 0), seed=42).data
+        >>> result = SARIMAX(data, order=(1, 0, 0)).fit()
+        >>> fig, ax = result.plot_roots()
+        >>> ax.get_aspect()
+        1.0
         """
         import matplotlib.pyplot as plt
 
@@ -1578,6 +1878,17 @@ class SARIMAXResult(BaseModelResult):
         Returns
         -------
         float or None
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(
+        ...     n=200, order=(1, 0, 0), ar=[0.5], const=1.0, seed=42
+        ... ).data
+        >>> equilibrium = SARIMAX(data, order=(1, 0, 0), trend="c").fit().long_run_equilibrium()
+        >>> equilibrium is None
+        False
         """
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
@@ -1643,6 +1954,16 @@ class SARIMAX(BaseModel):
     dates : datetime-like sequence, optional
         Strict sample dates. A Series DatetimeIndex is inferred automatically.
         Array inputs may provide dates explicitly.
+    exog : pandas.Series, pandas.DataFrame, or array-like, optional
+        Exogenous inputs. A named Series represents one input and preserves
+        its name and optional DatetimeIndex. One-dimensional arrays represent
+        one input and require exactly one ``exog_names`` value. A dated Series
+        or DataFrame may also include future rows for default forecasting.
+    exog_names : sequence[str], optional
+        Required for array exog and for an unnamed Series. Named Series and
+        DataFrame labels are authoritative and must not be overridden.
+    events : sequence of EventSpec, optional
+        Date-mapped pulse, step, or event-study intervention designs.
     missing : {"raise", "drop"}
         Non-finite input policy. ``"drop"`` records removed zero-based rows
         in :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"``
@@ -1658,6 +1979,25 @@ class SARIMAX(BaseModel):
     enforce_distributed_lag_stability : bool
         Whether denominator parameters are transformed toward stable values
         and the complete fitted denominator polynomial must be stable.
+
+    Examples
+    --------
+    Fit a non-seasonal AR model and inspect the returned result.
+
+    >>> from Ts.TsModels import SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=80, order=(1, 0, 0), ar=[0.6], seed=42).data
+    >>> result = SARIMAX(data, order=(1, 0, 0), trend="c").fit()
+    >>> result.nobs
+    80
+
+    A named Series is a one-column exogenous input and preserves its name.
+
+    >>> import pandas as pd
+    >>> exog = pd.Series(range(80), dtype=float, name="policy")
+    >>> result = SARIMAX(data, exog=exog).fit()
+    >>> result.exog_names
+    ('policy',)
     """
 
     def __init__(
@@ -1822,6 +2162,15 @@ class SARIMAX(BaseModel):
         Returns
         -------
         SARIMAXResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=80, order=(1, 0, 0), ar=[0.5], seed=42).data
+        >>> result = SARIMAX(data, order=(1, 0, 0)).fit(maxiter=100)
+        >>> result.nobs
+        80
         """
         method = _normalise_fit_method(method)
         maxiter = _normalise_maxiter(maxiter)

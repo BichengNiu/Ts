@@ -30,7 +30,11 @@ from Ts.TsUtils import (
 
 这些符号也可以从 `Ts` 顶层导入。
 
-完整、可执行的公共接口示例见 [`demo.ipynb`](demo.ipynb)。
+## 交互式帮助
+
+公共接口的参数、返回值和可执行样例均已写入 docstring。在 IPython/Jupyter
+中输入 `?boxcox`（或 `boxcox?`），也可在 Python 中调用 `help(boxcox)`
+查看完整帮助。
 
 ## EACF 阶数识别
 

@@ -111,6 +111,19 @@ class PredictResult:
         Upper bound of confidence interval, same shape as *mean*.
     is_oos : np.ndarray
         Boolean mask marking periods beyond the fitted sample.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsModels import PredictResult
+    >>> result = PredictResult(
+    ...     mean=np.array([1.0, 2.0]),
+    ...     lower=np.array([0.5, 1.5]),
+    ...     upper=np.array([1.5, 2.5]),
+    ...     is_oos=np.array([False, True]),
+    ... )
+    >>> result.is_oos.tolist()
+    [False, True]
     """
 
     mean: np.ndarray
@@ -140,6 +153,15 @@ class PredictResult:
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, seed=42).data
+        >>> result = SARIMAX(data).fit()
+        >>> prediction = result.predict(start=60, end=62)
+        >>> fig, ax = prediction.plot(ci=True)
         """
         import matplotlib.pyplot as plt
         import numpy as np
@@ -341,6 +363,15 @@ class BaseModelResult:
         Effective number of observations used in estimation.
     data : np.ndarray
         Original input data series.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import BaseModelResult, SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=50, order=(1, 0, 0), seed=42).data
+    >>> result = SARIMAX(data, order=(1, 0, 0)).fit()
+    >>> isinstance(result, BaseModelResult)
+    True
     """
 
     model_type: str
@@ -361,6 +392,14 @@ class BaseModelResult:
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = SARIMAX(simulate_sarima(n=40, seed=42).data).fit()
+        >>> "SARIMAX" in result.summary()
+        True
         """
         lines = [
             f"{self.model_type} Model Estimation Result",
@@ -400,6 +439,15 @@ class BaseModelResult:
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = SARIMAX(simulate_sarima(n=40, seed=42).data).fit()
+        >>> fig, ax = result.plot_fit(title="Observed and fitted")
+        >>> ax.get_title()
+        'Observed and fitted'
         """
         from Ts.TsPlots import plot_series
 
@@ -438,6 +486,15 @@ class BaseModelResult:
         axes : tuple of matplotlib.axes.Axes
             Flat row-major tuple containing residuals, histogram, ACF, and
             PACF axes.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = SARIMAX(simulate_sarima(n=120, seed=42).data).fit()
+        >>> fig, axes = result.plot_diagnostics()
+        >>> len(axes)
+        4
         """
         import matplotlib.pyplot as plt
 
@@ -563,7 +620,16 @@ class BaseModelResult:
         ResidualTestResults
             Container with ``.white_noise``, ``.normality``, ``.ljung_box``,
             `.engle_lm` attributes and supports `print()` for a formatted
-            summary with detailed output.
+        summary with detailed output.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = SARIMAX(simulate_sarima(n=60, seed=42).data).fit()
+        >>> tests = result.test_residuals(lags=5)
+        >>> tests.white_noise.lags
+        5
         """
         from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
 
@@ -611,6 +677,15 @@ class BaseModelResult:
         -------
         float or np.ndarray or None
             The long-run equilibrium value, or ``None`` if not applicable.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=100, order=(1, 0, 0), ar=[.5], seed=42).data
+        >>> result = SARIMAX(data, order=(1, 0, 0), trend="c").fit()
+        >>> result.long_run_equilibrium() is None
+        False
         """
         return
 
@@ -631,6 +706,15 @@ class ResidualTestResults:
         Ljung-Box Q-test on squared residuals (H0: no ARCH effects).
     engle_lm : EngleLMTestResult
         Engle LM test for ARCH effects.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import ResidualTestResults, SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> fitted = SARIMAX(simulate_sarima(n=60, seed=42).data).fit()
+    >>> diagnostics = fitted.test_residuals(lags=5)
+    >>> isinstance(diagnostics, ResidualTestResults)
+    True
     """
 
     white_noise: object
@@ -672,7 +756,21 @@ class ResidualTestResults:
         return "\n".join(lines)
 
     def summary(self) -> str:
-        """Return formatted summary string (same as ``__str__``)."""
+        """Return formatted summary string (same as ``__str__``).
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = SARIMAX(simulate_sarima(n=80, seed=42).data).fit()
+        >>> tests = result.test_residuals(lags=5)
+        >>> "Residual Diagnostic Tests" in tests.summary()
+        True
+        """
         return str(self)
 
 
@@ -681,6 +779,20 @@ class BaseModel(ABC):
 
     Every model must implement :meth:`fit` and expose a :attr:`result_`
     attribute. The :meth:`summary` method returns a formatted string.
+
+    Attributes
+    ----------
+    result_ : BaseModelResult or None
+        Fitted result stored by concrete subclasses.
+
+    Examples
+    --------
+    Use a concrete estimator rather than instantiating this abstract class.
+
+    >>> from Ts.TsModels import BaseModel, SARIMAX
+    >>> model = SARIMAX([1.0] * 20)
+    >>> isinstance(model, BaseModel)
+    True
     """
 
     result_: BaseModelResult | None = None
@@ -690,6 +802,21 @@ class BaseModel(ABC):
         """Estimate the model and return a result object.
 
         The result is also stored in :attr:`result_`.
+
+        Returns
+        -------
+        BaseModelResult
+
+        Examples
+        --------
+        Use a concrete implementation such as :class:`SARIMAX`:
+
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> model = SARIMAX(simulate_sarima(n=60, seed=42).data)
+        >>> result = model.fit()
+        >>> model.result_ is result
+        True
         """
         ...
 
@@ -732,7 +859,31 @@ class BaseModel(ABC):
         *,
         alpha=0.05,
     ):
-        """Evaluate an explicit validation period after isolated estimation."""
+        """Evaluate an explicit validation period after isolated estimation.
+
+        Parameters
+        ----------
+        estimation_period : tuple
+            Inclusive positional or date bounds used for fitting.
+        validation_period : tuple
+            Inclusive later bounds used only for scoring.
+        alpha : float, default 0.05
+            Significance level for forecast intervals.
+
+        Returns
+        -------
+        OOSResult
+            Leakage-free forecasts, actuals, metadata, and metrics.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=50, seed=42).data
+        >>> result = SARIMAX(data).oos((0, 29), (30, 39))
+        >>> result.mean.shape
+        (10,)
+        """
         from Ts.TsMetrics import oos
 
         return oos(
@@ -780,6 +931,15 @@ class BaseModel(ABC):
         Returns
         -------
         BacktestResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> model = SARIMAX(simulate_sarima(n=40, seed=42).data)
+        >>> result = model.backtest(initial_window=30, horizon=1, step=5)
+        >>> result.mean.shape[1]
+        1
         """
         from Ts.TsMetrics import backtest
 
@@ -813,6 +973,15 @@ class BaseModel(ABC):
         Returns
         -------
         BackcastResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> model = SARIMAX(simulate_sarima(n=40, seed=42).data)
+        >>> result = model.backcast(steps=3)
+        >>> result.mean.shape
+        (3,)
         """
         from Ts.TsModels._backcast import backcast_model
 
@@ -822,6 +991,18 @@ class BaseModel(ABC):
         """Return a formatted summary string.
 
         Automatically calls :meth:`fit` if :attr:`result_` is ``None``.
+
+        Returns
+        -------
+        str
+            Formatted summary from the concrete fitted result.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> model = SARIMAX([1.0] * 20)
+        >>> "SARIMAX" in model.summary()
+        True
         """
         if self.result_ is None:
             self.fit()

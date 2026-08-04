@@ -25,6 +25,22 @@ class NormalityTestResult(BaseTestResult):
 
     - ``skewness`` --- sample skewness.
     - ``kurtosis`` --- sample excess kurtosis.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Jarque-Bera statistic, p-value, unused lag field, sample size, and
+        tested observations.
+    skewness, kurtosis : float
+        Sample skewness and excess kurtosis.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import NormalityTest
+    >>> result = NormalityTest(np.random.default_rng(42).normal(size=200)).fit()
+    >>> result.nobs
+    200
     """
 
     skewness: float = 0.0
@@ -56,6 +72,13 @@ class NormalityTestResult(BaseTestResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import NormalityTest
+        >>> result = NormalityTest(np.random.default_rng(42).normal(size=100)).fit()
+        >>> fig, ax = result.plot_test()
         """
         import matplotlib.pyplot as plt
         from Ts.TsPlots.style import DEFAULT_PALETTE, style_axes, FIGSIZE
@@ -104,6 +127,15 @@ class NormalityTest(BaseTest):
     ----------
     result_ : NormalityTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import NormalityTest
+    >>> data = np.random.default_rng(42).normal(size=200)
+    >>> result = NormalityTest(data).fit()
+    >>> (bool(np.isfinite(result.skewness)), bool(np.isfinite(result.kurtosis)))
+    (True, True)
     """
 
     def __init__(self, data):
@@ -121,6 +153,14 @@ class NormalityTest(BaseTest):
         Returns
         -------
         NormalityTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import NormalityTest
+        >>> result = NormalityTest(np.random.default_rng(42).normal(size=100)).fit()
+        >>> result.nobs
+        100
         """
         skew = float(scipy_stats.skew(self.data))
         kurt = float(scipy_stats.kurtosis(self.data))  # excess kurtosis

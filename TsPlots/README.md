@@ -3,6 +3,12 @@
 适用于时间序列计量经济学学习的 Python 绘图工具包。提供统一的字体、配色和坐标轴风格，
 支持时间序列折线图、散点图和自相关函数图。
 
+## 交互式帮助
+
+公共接口的参数、返回值和可执行样例均已写入 docstring。在 IPython/Jupyter
+中输入 `?plot_series`（或 `plot_series?`），也可在 Python 中调用
+`help(plot_series)` 查看完整帮助。
+
 ## 模块结构
 
 ```

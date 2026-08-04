@@ -33,6 +33,36 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
     date labels; position-based models require zero-based integer positions.
     A gap between the periods is allowed and forecast through, but only the
     validation period is scored.
+
+    Parameters
+    ----------
+    model : estimator
+        Unfitted Ts model implementing the evaluation protocol. The evaluator
+        clones and refits it on the estimation period.
+    estimation_period : tuple of int or datetime-like
+        Inclusive training bounds. Use positions for undated models and exact
+        dates for date-aware models.
+    validation_period : tuple of int or datetime-like
+        Inclusive scored bounds strictly after the estimation period.
+    alpha : float, default 0.05
+        Significance level for forecast intervals.
+
+    Returns
+    -------
+    OOSResult
+        Forecasts, actuals, period metadata, intervals, and metrics.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import oos
+    >>> from Ts.TsModels import SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=60, order=(1, 0, 0), seed=42).data
+    >>> result = oos(SARIMAX(data, order=(1, 0, 0)), (0, 39), (40, 49))
+    >>> result.mean.shape
+    (10,)
+    >>> result.validation_indices[[0, -1]].tolist()
+    [40, 49]
     """
     data = model_data(model)
     target = validate_model_protocol(model, "oos")

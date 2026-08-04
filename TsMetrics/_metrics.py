@@ -99,7 +99,26 @@ def _theil_u1_values(actual, predicted):
 
 
 def mae(actual, predicted, *, nan_policy="omit"):
-    """Return mean absolute error."""
+    """Return mean absolute error.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Mean absolute paired error, or NaN when no valid pair remains.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import mae
+    >>> mae([1, 2, 3], [1, 4, 2])
+    1.0
+    """
     actual_values, predicted_values = _paired_values(
         actual,
         predicted,
@@ -109,7 +128,26 @@ def mae(actual, predicted, *, nan_policy="omit"):
 
 
 def mse(actual, predicted, *, nan_policy="omit"):
-    """Return mean squared error."""
+    """Return mean squared error.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Mean squared paired error, or NaN when no valid pair remains.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import mse
+    >>> mse([1, 2, 3], [1, 4, 2])
+    1.6666666666666667
+    """
     actual_values, predicted_values = _paired_values(
         actual,
         predicted,
@@ -121,7 +159,26 @@ def mse(actual, predicted, *, nan_policy="omit"):
 
 
 def rmse(actual, predicted, *, nan_policy="omit"):
-    """Return root mean squared error."""
+    """Return root mean squared error.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Square root of mean squared error.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import rmse
+    >>> round(rmse([1, 2, 3], [1, 4, 2]), 6)
+    1.290994
+    """
     actual_values, predicted_values = _paired_values(
         actual,
         predicted,
@@ -135,6 +192,24 @@ def mape(actual, predicted, *, nan_policy="omit"):
 
     Pairs whose actual value is zero are excluded because their percentage
     error is undefined. The result is NaN when no non-zero actual remains.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Mean absolute percentage error in percentage points.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import mape
+    >>> round(mape([100, 200], [90, 220]), 10)
+    10.0
     """
     actual_values, predicted_values = _paired_values(
         actual,
@@ -148,6 +223,24 @@ def smape(actual, predicted, *, nan_policy="omit"):
     """Return symmetric mean absolute percentage error.
 
     Terms where both actual and prediction are zero contribute zero.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Symmetric percentage error in percentage points.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import smape
+    >>> round(smape([100, 200], [90, 220]), 6)
+    10.025063
     """
     actual_values, predicted_values = _paired_values(
         actual,
@@ -162,6 +255,24 @@ def theil_u1(actual, predicted, *, nan_policy="omit"):
 
     U1 is bounded between zero and one for finite real-valued inputs. It is
     zero for a perfect all-zero forecast.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Theil's U1 inequality coefficient.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import theil_u1
+    >>> theil_u1([1, 2, 3], [1, 2, 3])
+    0.0
     """
     actual_values, predicted_values = _paired_values(
         actual,
@@ -176,6 +287,26 @@ def compute_metrics(actual, predicted, *, nan_policy="omit"):
 
     Returns MAE, MSE, RMSE, MAPE, sMAPE, Theil U1, and the number of finite
     actual/prediction pairs used by the common error metrics.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    dict
+        Keys ``mae``, ``mse``, ``rmse``, ``mape``, ``smape``, ``theil_u1``,
+        and ``n``.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import compute_metrics
+    >>> metrics = compute_metrics([1, 2, 3], [1, 4, 2])
+    >>> (metrics["mae"], metrics["n"])
+    (1.0, 3)
     """
     actual_values, predicted_values = _paired_values(
         actual,

@@ -23,7 +23,30 @@ def _optional_array(values):
 
 @dataclass
 class BackcastResult:
-    """Chronological pre-sample reverse-time estimates."""
+    """Chronological pre-sample reverse-time estimates.
+
+    Parameters
+    ----------
+    mean : numpy.ndarray
+        Backcast means ordered from earliest to latest pre-sample period.
+    lower, upper : numpy.ndarray or None
+        Aligned interval bounds.
+    indices : numpy.ndarray
+        Negative pre-sample indices ending at ``-1``.
+    model_type : str
+        Refitted model label.
+    target : str
+        Backcast target name.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> model = SARIMAX(simulate_sarima(n=40, seed=42).data)
+    >>> result = model.backcast(steps=3)
+    >>> result.indices.tolist()
+    [-3, -2, -1]
+    """
 
     mean: np.ndarray
     lower: np.ndarray | None

@@ -32,6 +32,19 @@ class PhillipsPerronTestResult(BaseTestResult):
         Test type: ``"tau"`` (t-statistic, default) or ``"rho"``.
     critical_values : dict
         Critical values keyed by significance level.
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Common statistic, p-value, bandwidth, effective sample size, and
+        optional residuals inherited from ``BaseTestResult``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import PhillipsPerronTest
+    >>> result = PhillipsPerronTest(
+    ...     np.random.default_rng(42).normal(size=100)
+    ... ).fit()
+    >>> result.test_type
+    'tau'
     """
 
     trend: str = "c"
@@ -78,6 +91,13 @@ class PhillipsPerronTestResult(BaseTestResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import PhillipsPerronTest
+        >>> data = np.cumsum(np.random.default_rng(42).normal(size=80))
+        >>> fig, ax = PhillipsPerronTest(data).fit().plot_test()
         """
         label = "Phillips-Perron"
         return _render_critical_value_plot(self, label, ax)
@@ -112,6 +132,15 @@ class PhillipsPerronTest(BaseTest):
     ----------
     result_ : PhillipsPerronTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import PhillipsPerronTest
+    >>> data = np.random.default_rng(42).normal(size=100)
+    >>> result = PhillipsPerronTest(data, trend="c", test_type="tau").fit()
+    >>> result.pvalue < 0.05
+    True
     """
 
     _VALID_TRENDS = ("c", "ct")
@@ -142,6 +171,14 @@ class PhillipsPerronTest(BaseTest):
         Returns
         -------
         PhillipsPerronTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import PhillipsPerronTest
+        >>> result = PhillipsPerronTest(np.random.default_rng(42).normal(size=80)).fit()
+        >>> result.nobs > 0
+        True
         """
         from arch.unitroot import PhillipsPerron
 

@@ -133,6 +133,11 @@ class SVARResult(VARResult):
 
     Parameters
     ----------
+    model_type, params, std_errors, p_values : see BaseModelResult
+    aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
+        Common fitted-model fields inherited through :class:`VARResult`.
+    _lags, _data_names, _k, _var_result, _var_model : see VARResult
+        Reduced-form VAR metadata inherited from :class:`VARResult`.
     A : np.ndarray
         Estimated A matrix (k, k).
     B : np.ndarray
@@ -147,6 +152,17 @@ class SVARResult(VARResult):
         Structural shocks, shape (nobs, k).
     _sirf_cache : dict or None
         Internal cache for structural IRF computation.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsModels import SVAR
+    >>> data = np.random.default_rng(42).normal(size=(120, 2))
+    >>> A = np.array([[1.0, 0.0], [np.nan, 1.0]])
+    >>> B = np.array([[np.nan, 0.0], [0.0, np.nan]])
+    >>> result = SVAR(data, lags=1, A=A, B=B).fit()
+    >>> result.A.shape
+    (2, 2)
     """
 
     A: np.ndarray = None
@@ -170,6 +186,17 @@ class SVARResult(VARResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import SVAR
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> A = np.array([[1.0, 0.0], [np.nan, 1.0]])
+        >>> B = np.array([[np.nan, 0.0], [0.0, np.nan]])
+        >>> result = SVAR(data, lags=1, A=A, B=B).fit()
+        >>> isinstance(result.summary(), str)
+        True
         """
         ll_str = (
             f"{self.svar_log_likelihood:.4f}"
@@ -272,6 +299,17 @@ class SVARResult(VARResult):
         IRFResult
             Container with ``.values``, ``.lower``, ``.upper``,
             ``.summary()``, and ``.get()``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import SVAR
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> A = np.array([[1.0, 0.0], [np.nan, 1.0]])
+        >>> B = np.array([[np.nan, 0.0], [0.0, np.nan]])
+        >>> result = SVAR(data, lags=1, A=A, B=B).fit()
+        >>> result.irf(periods=3, orth=True, n_draws=20, seed=42).values.shape
+        (4, 2, 2)
         """
         if not orth:
             return super().irf(periods=periods, orth=False, alpha=alpha)
@@ -338,6 +376,18 @@ class SVARResult(VARResult):
         -------
         fig : matplotlib.figure.Figure
         axes : numpy.ndarray of matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import SVAR
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> A = np.array([[1.0, 0.0], [np.nan, 1.0]])
+        >>> B = np.array([[np.nan, 0.0], [0.0, np.nan]])
+        >>> result = SVAR(data, lags=1, A=A, B=B).fit()
+        >>> fig, axes = result.plot_irf(periods=3, orth=False)
+        >>> axes.shape
+        (2, 2)
         """
         return super().plot_irf(
             periods=periods, orth=orth, alpha=alpha, n_draws=n_draws, seed=seed
@@ -590,6 +640,19 @@ class SVAR(BaseModel):
     At least one of ``A`` / ``B`` (short-run) or ``C_lr`` (long-run)
     must be provided.  The AB-model uses MLE via scipy BFGS; the
     long-run model uses the Blanchard-Quah closed-form solution.
+
+    Examples
+    --------
+    Estimate a recursive short-run AB model:
+
+    >>> import numpy as np
+    >>> from Ts.TsModels import SVAR
+    >>> data = np.random.default_rng(42).normal(size=(120, 2))
+    >>> A = np.array([[1.0, 0.0], [np.nan, 1.0]])
+    >>> B = np.array([[np.nan, 0.0], [0.0, np.nan]])
+    >>> result = SVAR(data, lags=1, A=A, B=B).fit()
+    >>> result.svar_type
+    'AB'
     """
 
     def __init__(
@@ -703,6 +766,17 @@ class SVAR(BaseModel):
         Returns
         -------
         SVARResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import SVAR
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> A = np.array([[1.0, 0.0], [np.nan, 1.0]])
+        >>> B = np.array([[np.nan, 0.0], [0.0, np.nan]])
+        >>> result = SVAR(data, lags=1, A=A, B=B).fit()
+        >>> result.structural_residuals.shape[1]
+        2
         """
         # --- Step 1: reduced-form VAR ---
         var_model = VAR(

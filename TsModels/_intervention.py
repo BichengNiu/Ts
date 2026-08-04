@@ -35,7 +35,38 @@ EventKind = Literal["pulse", "step"]
 
 @dataclass(frozen=True)
 class EventSpec:
-    """Immutable definition of one named intervention."""
+    """Immutable definition of one named intervention.
+
+    Parameters
+    ----------
+    name : str
+        Non-empty event name used in generated design columns.
+    dates : sequence of datetime-like
+        One or more intervention dates.
+    kind : {"pulse", "step"}
+        Temporary impulse or persistent level intervention.
+    window : tuple of int, optional
+        Inclusive relative-period window for a pulse event study.
+    reference : int, optional
+        Omitted reference period inside ``window``.
+    date_rule : {"exact", "period", "next", "previous"}, default "period"
+        Rule mapping event dates to observation dates.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import EventSpec
+    >>> event = EventSpec(
+    ...     "policy",
+    ...     ["2024-01-15"],
+    ...     kind="pulse",
+    ...     window=(-2, 2),
+    ...     reference=-1,
+    ... )
+    >>> event.name
+    'policy'
+    >>> event.dates[0].isoformat()
+    '2024-01-15T00:00:00'
+    """
 
     name: str
     dates: Sequence[object]
@@ -114,7 +145,47 @@ _IDENTIFICATION_NOTE = (
 
 @dataclass
 class PolicyEffectResult:
-    """Conditional effect contrast for one or more fitted events."""
+    """Conditional effect contrast for one or more fitted events.
+
+    Parameters
+    ----------
+    coefficients : pandas.DataFrame
+        Selected event-coefficient estimates and inference.
+    factual_mean, counterfactual_mean : pandas.Series
+        Aligned fitted factual and no-event paths.
+    effect, lower, upper : pandas.Series
+        Pointwise contrast and confidence interval.
+    cumulative_effect, cumulative_lower, cumulative_upper : float
+        Cumulative contrast and interval over the reported window.
+    pretrend_test : dict or None
+        Joint pre-event Wald test when defined.
+    method : str
+        Inference method used.
+    identification_note : str
+        Required interpretation boundary.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsModels import PolicyEffectResult
+    >>> index = pd.date_range("2024-01-01", periods=2, freq="D")
+    >>> result = PolicyEffectResult(
+    ...     coefficients=pd.DataFrame(),
+    ...     factual_mean=pd.Series([2.0, 3.0], index=index),
+    ...     counterfactual_mean=pd.Series([1.0, 1.0], index=index),
+    ...     effect=pd.Series([1.0, 2.0], index=index),
+    ...     lower=pd.Series([0.5, 1.5], index=index),
+    ...     upper=pd.Series([1.5, 2.5], index=index),
+    ...     cumulative_effect=3.0,
+    ...     cumulative_lower=2.0,
+    ...     cumulative_upper=4.0,
+    ...     pretrend_test=None,
+    ...     method="delta",
+    ...     identification_note="Conditional model contrast.",
+    ... )
+    >>> result.cumulative_effect
+    3.0
+    """
 
     coefficients: pd.DataFrame
     factual_mean: pd.Series
@@ -153,7 +224,26 @@ class PolicyEffectResult:
             setattr(self, name, getattr(self, name).copy())
 
     def summary(self) -> str:
-        """Return a self-contained text summary."""
+        """Return a self-contained text summary.
+
+        Returns
+        -------
+        str
+            Coefficients, cumulative interval, pretrend test, and
+            identification note.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from Ts.TsModels import PolicyEffectResult
+        >>> path = pd.Series([1.0])
+        >>> result = PolicyEffectResult(
+        ...     pd.DataFrame(), path, path * 0, path, path - 0.1, path + 0.1,
+        ...     1.0, 0.9, 1.1, None, "delta", "Conditional contrast."
+        ... )
+        >>> "Cumulative effect" in result.summary()
+        True
+        """
         coefficient_text = (
             "No event coefficients"
             if self.coefficients.empty
@@ -188,7 +278,32 @@ class PolicyEffectResult:
         return "\n".join(lines)
 
     def plot(self, title=None):
-        """Plot factual/counterfactual paths and the estimated effect."""
+        """Plot factual/counterfactual paths and the estimated effect.
+
+        Parameters
+        ----------
+        title : str, optional
+            Figure suptitle.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        axes : numpy.ndarray
+            Factual/counterfactual and effect panels.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from Ts.TsModels import PolicyEffectResult
+        >>> path = pd.Series([1.0, 2.0])
+        >>> result = PolicyEffectResult(
+        ...     pd.DataFrame(), path, path * 0, path, path - 0.1, path + 0.1,
+        ...     3.0, 2.8, 3.2, None, "delta", "Conditional contrast."
+        ... )
+        >>> fig, axes = result.plot()
+        >>> len(axes)
+        2
+        """
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)

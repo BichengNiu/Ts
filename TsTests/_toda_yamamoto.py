@@ -85,6 +85,18 @@ class TodaYamamotoTestResult(BaseMultiTestResult):
         Number of endogenous variables.
     cols : list of str
         Variable names.
+    lags, nobs, residuals : see BaseMultiTestResult
+        Common lag order, effective sample size, and residual matrix inherited
+        from ``BaseMultiTestResult``.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_cointegrated
+    >>> from Ts.TsTests import TodaYamamotoTest
+    >>> data = simulate_cointegrated(n=120, k=2, coint_rank=1, seed=42).data
+    >>> result = TodaYamamotoTest(data, p=1, d_max=1).fit()
+    >>> len(result.tests)
+    2
     """
 
     tests: list = field(default_factory=list)
@@ -99,6 +111,15 @@ class TodaYamamotoTestResult(BaseMultiTestResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import TodaYamamotoTest
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> result = TodaYamamotoTest(data, p=1, d_max=0).fit()
+        >>> "Toda-Yamamoto" in result.summary()
+        True
         """
         if not self.tests:
             return "No Toda-Yamamoto test results."
@@ -178,6 +199,21 @@ class TodaYamamotoTest(BaseTest):
         ``"ct"`` (constant + trend), ``"n"`` (none).
     cols : list of str, optional
         Variable names for display.  Auto-generated if None.
+
+    Attributes
+    ----------
+    result_ : TodaYamamotoTestResult or None
+        Fitted directional causality tests.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_cointegrated
+    >>> from Ts.TsTests import TodaYamamotoTest
+    >>> data = simulate_cointegrated(n=120, k=2, coint_rank=1, seed=42).data
+    >>> test = TodaYamamotoTest(data, p=1, d_max=1, cols=["x", "y"])
+    >>> result = test.fit()
+    >>> result.cols
+    ['x', 'y']
     """
 
     def __init__(self, data, p, d_max=None, trend="c", cols=None):
@@ -252,6 +288,15 @@ class TodaYamamotoTest(BaseTest):
         Returns
         -------
         TodaYamamotoTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import TodaYamamotoTest
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> result = TodaYamamotoTest(data, p=1, d_max=0).fit()
+        >>> len(result.tests)
+        2
         """
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
 

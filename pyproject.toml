@@ -34,6 +34,7 @@ indent-style = "space"
 [tool.pytest.ini_options]
 addopts = "-p no:cacheprovider"
 testpaths = [
+    "tests",
     "TsMetrics/tests",
     "TsModels/tests",
     "TsPlots/tests",

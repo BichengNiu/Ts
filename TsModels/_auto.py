@@ -112,6 +112,22 @@ class AutoModelResult(BaseModelResult):
         Seasonal orders corresponding to successful AutoSARIMAX candidates.
     search_messages : list of str, optional
         Warnings and failed-fit messages collected during the search.
+    model_type, params, std_errors, p_values : see BaseModelResult
+    aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
+        Shared fields copied from the selected result.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import AutoModelResult, AutoSARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=60, order=(1, 0, 0), seed=42).data
+    >>> result = AutoSARIMAX(
+    ...     data, p=(0, 1), d=(0, 0), q=(0, 0), P=(0, 0), D=(0, 0), Q=(0, 0)
+    ... ).fit()
+    >>> isinstance(result, AutoModelResult)
+    True
+    >>> result.best_order in {(0, 0, 0), (1, 0, 0)}
+    True
     """
 
     best_result: BaseModelResult = field(default=None, repr=False)
@@ -162,10 +178,32 @@ class AutoModelResult(BaseModelResult):
             Criterion name.
         search_method : str
             Search strategy name.
+        n_attempted : int or None
+            Total number of attempted candidates.
+        best_seasonal_order : tuple or None
+            Seasonal order of the selected model.
+        candidate_seasonal_orders : list or None
+            Seasonal orders corresponding to successful candidates.
+        search_messages : list of str or None
+            Diagnostics recorded for unsuccessful candidates.
 
         Returns
         -------
         AutoModelResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoModelResult, AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, seed=42).data
+        >>> searched = AutoSARIMAX(data, p=(0, 0), d=(0, 0), q=(0, 0)).fit()
+        >>> copied = AutoModelResult.from_search(
+        ...     searched.best_result, searched.best_order,
+        ...     searched.candidate_results, searched.candidate_orders,
+        ...     searched.criterion_values, "aic", "grid",
+        ... )
+        >>> copied.best_order == searched.best_order
+        True
         """
         return cls(
             model_type=best_result.model_type,
@@ -199,6 +237,19 @@ class AutoModelResult(BaseModelResult):
 
         Prepends auto-selection metadata (best order, criterion, success
         count) before the best model's full parameter table.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=80, order=(1, 0, 0), ar=[0.5], seed=42).data
+        >>> result = AutoSARIMAX(data, p=(0, 1), d=(0, 0), q=(0, 0)).fit()
+        >>> isinstance(result.summary(), str)
+        True
         """
         n_ok = len(self.candidate_results)
         n_total = n_ok if self.n_attempted is None else self.n_attempted
@@ -252,6 +303,15 @@ class AutoModelResult(BaseModelResult):
         Returns
         -------
         PredictResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, seed=42).data
+        >>> result = AutoSARIMAX(data, p=(0, 0), d=(0, 0), q=(0, 0)).fit()
+        >>> result.predict(start=60, end=62).mean.shape
+        (3,)
         """
         if self.best_result is None:
             raise RuntimeError("No best_result available")
@@ -283,7 +343,34 @@ class AutoModelResult(BaseModelResult):
         return getattr(self.best_result, "steady_state_gains", pd.DataFrame())
 
     def weights(self, steps):
-        """Delegate rational distributed-lag impulse weights."""
+        """Delegate rational distributed-lag impulse weights.
+
+        Parameters
+        ----------
+        steps : int
+            Strictly positive response horizon.
+
+        Returns
+        -------
+        pandas.DataFrame
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoModelResult, RationalLagSpec, SARIMAX
+        >>> from Ts.TsSims import RDLInputSpec, simulate_rdl
+        >>> simulated = simulate_rdl(
+        ...     n=80, distributed_lags={"x": RDLInputSpec({0: 1.0}, {1: .3})}, seed=42
+        ... )
+        >>> best = SARIMAX(
+        ...     simulated.data, exog=simulated.exog,
+        ...     distributed_lags={"x": RationalLagSpec(0, 1)},
+        ... ).fit()
+        >>> result = AutoModelResult.from_search(
+        ...     best, (0, 0, 0), [best], [(0, 0, 0)], [best.aic], "aic", "grid"
+        ... )
+        >>> result.weights(3).shape
+        (3, 1)
+        """
         if self.best_result is None:
             raise RuntimeError("No best_result available")
         method = getattr(self.best_result, "weights", None)
@@ -300,13 +387,41 @@ class AutoModelResult(BaseModelResult):
         Returns
         -------
         float or np.ndarray or None
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=100, order=(1, 0, 0), ar=[.5], seed=42).data
+        >>> result = AutoSARIMAX(data, p=(1, 1), d=(0, 0), q=(0, 0)).fit()
+        >>> result.long_run_equilibrium() is None
+        False
         """
         if self.best_result is not None:
             return self.best_result.long_run_equilibrium()
         return None
 
     def cycle_period(self, *, seasonal=False):
-        """Return the AR(2) cycle diagnostic of the selected SARIMAX model."""
+        """Return the AR(2) cycle diagnostic of the selected SARIMAX model.
+
+        Parameters
+        ----------
+        seasonal : bool, default False
+            Inspect the seasonal rather than non-seasonal AR component.
+
+        Returns
+        -------
+        ARCycleResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=150, order=(2, 0, 0), ar=[1.1, -.5], seed=42).data
+        >>> result = AutoSARIMAX(data, p=(2, 2), d=(0, 0), q=(0, 0)).fit()
+        >>> result.cycle_period().component
+        'nonseasonal'
+        """
         if self.best_result is None:
             raise RuntimeError("No best_result available")
         method = getattr(self.best_result, "cycle_period", None)
@@ -457,13 +572,15 @@ class AutoSARIMAX(_BaseAutoModel):
     dates : datetime-like sequence, optional
         Strict sample dates. A Series DatetimeIndex is inferred automatically.
         Array inputs may provide dates explicitly.
-    exog : array-like or pandas.DataFrame, optional
-        Ordinary exogenous variables shared by every candidate. A dated
-        DataFrame may include rows after the estimation sample for default
+    exog : pandas.Series, pandas.DataFrame, or array-like, optional
+        Ordinary exogenous variables shared by every candidate. A named
+        Series or one-dimensional array represents one input. A dated Series
+        or DataFrame may include rows after the estimation sample for default
         future forecasting.
     exog_names : sequence[str], optional
-        Required column names for array exog. DataFrame columns are
-        authoritative and must not be overridden.
+        Required column names for array exog and for an unnamed Series. Named
+        Series and DataFrame labels are authoritative and must not be
+        overridden.
     events : sequence[EventSpec], optional
         Event designs shared by every candidate.
     enforce_stationarity : bool
@@ -476,6 +593,19 @@ class AutoSARIMAX(_BaseAutoModel):
     enforce_distributed_lag_stability : bool
         Whether all candidates enforce and diagnose complete transfer
         denominator stability. Default ``True``.
+
+    Examples
+    --------
+    Restrict ranges when the admissible model family is known.
+
+    >>> from Ts.TsModels import AutoSARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=70, order=(1, 0, 0), seed=42).data
+    >>> result = AutoSARIMAX(
+    ...     data, p=(0, 1), d=(0, 0), q=(0, 0), P=(0, 0), D=(0, 0), Q=(0, 0)
+    ... ).fit()
+    >>> len(result.candidate_orders)
+    2
     """
 
     def __init__(
@@ -613,6 +743,32 @@ class AutoSARIMAX(_BaseAutoModel):
         Returns
         -------
         AutoModelResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoModelResult, AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, seed=42).data
+        >>> searched = AutoSARIMAX(data, p=(0, 0), d=(0, 0), q=(0, 0)).fit()
+        >>> copied = AutoModelResult.from_search(
+        ...     searched.best_result, searched.best_order,
+        ...     searched.candidate_results, searched.candidate_orders,
+        ...     searched.criterion_values, "aic", "grid",
+        ... )
+        >>> copied.best_order == searched.best_order
+        True
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, seed=42).data
+        >>> result = AutoSARIMAX(
+        ...     data, p=(0, 1), d=(0, 0), q=(0, 0),
+        ...     P=(0, 0), D=(0, 0), Q=(0, 0),
+        ... ).fit()
+        >>> result.best_result is not None
+        True
         """
         import itertools
 
@@ -764,6 +920,15 @@ class AutoGARCH(_BaseAutoModel):
         Joint non-finite policy for data and exog. ``"drop"`` records removed
         zero-based rows in :attr:`dropped_positions`. Default ``"drop"``;
         use ``"raise"`` to reject any sample change.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import AutoGARCH
+    >>> from Ts.TsSims import simulate_garch
+    >>> data = simulate_garch(n=150, p=1, q=1, seed=42).data
+    >>> result = AutoGARCH(data, p=(1, 1), q=(0, 1), o=(0, 0)).fit()
+    >>> len(result.candidate_orders)
+    2
     """
 
     _evaluation_target_name = "absolute_demeaned_return_proxy"
@@ -883,6 +1048,15 @@ class AutoGARCH(_BaseAutoModel):
         Returns
         -------
         AutoModelResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoGARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> data = simulate_garch(n=120, seed=42).data
+        >>> result = AutoGARCH(data, p=(1, 1), q=(0, 1), o=(0, 0)).fit()
+        >>> result.best_result is not None
+        True
         """
         import itertools
 

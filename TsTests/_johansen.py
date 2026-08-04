@@ -126,6 +126,20 @@ class JohansenTestResult(BaseTestResult):
         Deterministic trend specification used.
     cols : list of str
         Variable names.
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Compatibility fields inherited from ``BaseTestResult``; Johansen
+        conclusions use the rank statistics and critical-value matrices.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_cointegrated
+    >>> from Ts.TsTests import JohansenTest
+    >>> data = simulate_cointegrated(n=120, k=2, coint_rank=1, seed=42).data
+    >>> result = JohansenTest(data, lags=2).fit()
+    >>> result.k
+    2
+    >>> result.trace_statistics.shape
+    (2,)
     """
 
     eigenvalues: np.ndarray | None = None
@@ -153,6 +167,15 @@ class JohansenTestResult(BaseTestResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_cointegrated
+        >>> from Ts.TsTests import JohansenTest
+        >>> data = simulate_cointegrated(n=120, k=2, coint_rank=1, seed=42).data
+        >>> result = JohansenTest(data, lags=2).fit()
+        >>> "Johansen tests for cointegration" in result.summary()
+        True
         """
         lines = [
             "Johansen tests for cointegration",
@@ -251,6 +274,21 @@ class JohansenTest(BaseTest):
         default), or ``"trend"`` (linear trend).
     cols : list of str, optional
         Variable names for display. Auto-generated if None.
+
+    Attributes
+    ----------
+    result_ : JohansenTestResult or None
+        Fitted cointegration-rank result.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_cointegrated
+    >>> from Ts.TsTests import JohansenTest
+    >>> data = simulate_cointegrated(n=120, k=2, coint_rank=1, seed=42).data
+    >>> test = JohansenTest(data, lags=2, cols=["y1", "y2"])
+    >>> result = test.fit()
+    >>> result.cols
+    ['y1', 'y2']
     """
 
     _VALID_TRENDS = frozenset(_TREND_TO_DET_ORDER)
@@ -289,6 +327,15 @@ class JohansenTest(BaseTest):
         Returns
         -------
         JohansenTestResult
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_cointegrated
+        >>> from Ts.TsTests import JohansenTest
+        >>> data = simulate_cointegrated(n=100, k=2, coint_rank=1, seed=42).data
+        >>> result = JohansenTest(data, lags=2).fit()
+        >>> result.k
+        2
         """
         from statsmodels.tsa.vector_ar.vecm import coint_johansen
 

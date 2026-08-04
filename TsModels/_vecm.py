@@ -80,6 +80,19 @@ class VECMOrderResult:
         Maximum lags considered.
     nobs : int
         Number of observations used.
+    dropped_positions : tuple of int
+        Zero-based rows removed under ``missing="drop"``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsModels import VECM
+    >>> rng = np.random.default_rng(42)
+    >>> common = np.cumsum(rng.normal(size=100))
+    >>> data = np.column_stack([common + rng.normal(size=100), common])
+    >>> order = VECM.select_order(data, max_lags=3, coint_rank=1)
+    >>> 1 <= order.selected_lag <= 3
+    True
     """
 
     selected_lag: int
@@ -91,6 +104,23 @@ class VECMOrderResult:
     dropped_positions: tuple[int, ...] = ()
 
     def summary(self) -> str:
+        """Return a formatted VECM lag-order selection table.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=100))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=100), common])
+        >>> order = VECM.select_order(data, max_lags=3, coint_rank=1)
+        >>> isinstance(order.summary(), str)
+        True
+        """
         lines = [
             "VECM Lag Order Selection",
             "=" * 60,
@@ -161,6 +191,9 @@ class VECMResult(BaseModelResult):
 
     Parameters
     ----------
+    model_type, params, std_errors, p_values : see BaseModelResult
+    aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
+        Common fitted-model fields inherited from :class:`BaseModelResult`.
     alpha : np.ndarray
         Loading (adjustment) coefficients, shape (k, r).
     beta : np.ndarray
@@ -181,6 +214,17 @@ class VECMResult(BaseModelResult):
         Raw statsmodels VECMResults, stored for internal delegation.
     _trend : str
         Trend specification.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsModels import VECM
+    >>> rng = np.random.default_rng(42)
+    >>> common = np.cumsum(rng.normal(size=120))
+    >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+    >>> result = VECM(data, lags=2, coint_rank=1).fit()
+    >>> result.beta.shape
+    (2, 1)
     """
 
     alpha: np.ndarray | None = None
@@ -204,6 +248,17 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> isinstance(result.summary(), str)
+        True
         """
         sm = self._vecm_result
         if sm is None:
@@ -381,6 +436,17 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         IRFResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> result.irf(periods=3, orth=True).values.shape
+        (4, 2, 2)
         """
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
@@ -439,6 +505,17 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         FEVDResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> result.fevd(periods=3).values.shape
+        (3, 2, 2)
         """
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
@@ -484,6 +561,17 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         GrangerCausalityResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> len(result.granger_causality(caused=0, causing=1))
+        1
         """
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
@@ -569,6 +657,18 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         fig, axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> fig, axes = result.plot_diagnostics()
+        >>> axes.shape
+        (2, 3)
         """
         import matplotlib.pyplot as plt
         from Ts.TsPlots import plot_series, plot_acf, plot_pacf
@@ -605,6 +705,17 @@ class VECMResult(BaseModelResult):
         -------
         dict
             Mapping from variable name to ResidualTestResults.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> sorted(result.test_residuals(lags=5))
+        ['y0', 'y1']
         """
         from Ts.TsTests import LjungBoxTest, EngleLMTest, NormalityTest
         from Ts.TsModels._base import ResidualTestResults
@@ -641,6 +752,17 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         PredictResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> result.predict(start=result.nobs, end=result.nobs + 2).mean.shape
+        (3, 2)
         """
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
@@ -687,6 +809,16 @@ class VECMResult(BaseModelResult):
         Returns
         -------
         fig, ax
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=120))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> fig, ax = result.plot_roots()
         """
         import matplotlib.pyplot as plt
         from Ts.TsPlots.style import (
@@ -803,6 +935,17 @@ class VECM(BaseModel):
         Non-finite row policy. ``"drop"`` records removed zero-based rows in
         :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"`` to
         reject any sample change.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsModels import VECM
+    >>> rng = np.random.default_rng(42)
+    >>> common = np.cumsum(rng.normal(size=120))
+    >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
+    >>> result = VECM(data, lags=2, coint_rank=1, cols=["consumption", "income"]).fit()
+    >>> result.coint_rank
+    1
     """
 
     def __init__(
@@ -906,6 +1049,17 @@ class VECM(BaseModel):
         Returns
         -------
         VECMOrderResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=100))
+        >>> data = np.column_stack([common + rng.normal(size=100), common])
+        >>> order = VECM.select_order(data, max_lags=3, coint_rank=1)
+        >>> order.criterion
+        'aic'
         """
         valid_criteria = {"aic", "bic"}
         if criterion not in valid_criteria:
@@ -977,6 +1131,17 @@ class VECM(BaseModel):
         Returns
         -------
         VECMResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VECM
+        >>> rng = np.random.default_rng(42)
+        >>> common = np.cumsum(rng.normal(size=100))
+        >>> data = np.column_stack([common + rng.normal(scale=.2, size=100), common])
+        >>> result = VECM(data, lags=2, coint_rank=1).fit()
+        >>> result.alpha.shape
+        (2, 1)
         """
         from statsmodels.tsa.vector_ar.vecm import VECM as _SM_VECM
 

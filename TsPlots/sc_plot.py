@@ -264,6 +264,33 @@ def plot_scatter(
     -------
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
+
+    Examples
+    --------
+    Plot columns from a DataFrame and add an ordinary least-squares trend.
+
+    >>> import pandas as pd
+    >>> from Ts.TsPlots import plot_scatter
+    >>> frame = pd.DataFrame(
+    ...     {"income": [1, 2, 3, 4], "consumption": [2, 3, 5, 6]}
+    ... )
+    >>> fig, ax = plot_scatter(
+    ...     frame,
+    ...     x="income",
+    ...     y="consumption",
+    ...     fit_line=True,
+    ... )
+    >>> len(ax.collections)
+    1
+
+    A grouping column creates one scatter series per group.
+
+    >>> frame["region"] = ["A", "A", "B", "B"]
+    >>> fig, ax = plot_scatter(
+    ...     frame, x="income", y="consumption", group="region"
+    ... )
+    >>> len(ax.collections)
+    2
     """
     series, default_xlabel, default_ylabel = _resolve_scatter_input(data, x, y, group)
     colors = _resolve_colors(colors, len(series))

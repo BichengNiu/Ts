@@ -20,7 +20,37 @@ def _copy_data(data):
 
 @dataclass
 class InterpolationResult:
-    """Interpolated data plus an explicit missing-value audit trail."""
+    """Interpolated data plus an explicit missing-value audit trail.
+
+    Attributes
+    ----------
+    data : numpy.ndarray, pandas.Series, or pandas.DataFrame
+        Type-preserving interpolated output.
+    missing_mask : numpy.ndarray
+        Positions missing in the original input.
+    filled_mask : numpy.ndarray
+        Original missing positions filled by the operation.
+    method : str
+        Interpolation method used.
+    max_gap : int or None
+        Maximum eligible missing-run length.
+    edge : str
+        Boundary policy used.
+    n_missing, n_filled, n_remaining : int
+        Audit counts derived from the masks.
+    complete : bool
+        Whether every original missing position was filled.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsUtils import interpolate_missing
+    >>> result = interpolate_missing([1.0, np.nan, 3.0])
+    >>> result.data.tolist()
+    [1.0, 2.0, 3.0]
+    >>> (result.n_missing, result.n_filled, result.complete)
+    (1, 1, True)
+    """
 
     data: np.ndarray | pd.Series | pd.DataFrame
     missing_mask: np.ndarray
@@ -89,7 +119,21 @@ class InterpolationResult:
         return self.n_remaining == 0
 
     def summary(self):
-        """Return a compact interpolation audit summary."""
+        """Return a compact interpolation audit summary.
+
+        Returns
+        -------
+        str
+            Method, policy, and missing-value counts.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import interpolate_missing
+        >>> result = interpolate_missing([1.0, np.nan, 3.0])
+        >>> "Filled values   : 1" in result.summary()
+        True
+        """
         max_gap = "None" if self.max_gap is None else str(self.max_gap)
         lines = [
             "Interpolation Result",
@@ -270,6 +314,28 @@ def interpolate_missing(
     -------
     InterpolationResult
         Type-preserving data plus masks and counts describing what changed.
+
+    Examples
+    --------
+    Interior linear interpolation preserves the input container.
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from Ts.TsUtils import interpolate_missing
+    >>> series = pd.Series([1.0, np.nan, 3.0], name="x")
+    >>> result = interpolate_missing(series)
+    >>> result.data.tolist()
+    [1.0, 2.0, 3.0]
+    >>> result.data.name
+    'x'
+
+    ``max_gap`` and ``edge`` make non-filling decisions explicit.
+
+    >>> result = interpolate_missing(
+    ...     [np.nan, 1.0, np.nan, np.nan, 4.0], max_gap=1, edge="nearest"
+    ... )
+    >>> result.data.tolist()
+    [1.0, 1.0, nan, nan, 4.0]
     """
     method, max_gap, edge = _normalise_options(method, max_gap, edge)
     frame, kind = _numeric_frame(data)

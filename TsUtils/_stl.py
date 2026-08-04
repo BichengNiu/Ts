@@ -12,7 +12,33 @@ from ._validation import _resolve_missing_rows
 
 @dataclass
 class STLResult:
-    """Result container for STL decomposition components."""
+    """Result container for STL decomposition components.
+
+    Attributes
+    ----------
+    observed, trend, seasonal, residuals, weights : numpy.ndarray
+        Aligned observed values, decomposition components, residuals, and
+        robust-fit weights.
+    period : int
+        Seasonal period used by the decomposition.
+    config : dict
+        Resolved statsmodels STL configuration.
+    nobs : int
+        Number of decomposed observations.
+    fitted_values : numpy.ndarray
+        Sum of trend and seasonal components.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsUtils import STL
+    >>> time = np.arange(36.0)
+    >>> result = STL(time + np.sin(2 * np.pi * time / 12), period=12).fit()
+    >>> result.nobs
+    36
+    >>> np.allclose(result.observed, result.fitted_values + result.residuals)
+    True
+    """
 
     observed: np.ndarray
     trend: np.ndarray
@@ -73,7 +99,21 @@ class STLResult:
         return self.trend + self.seasonal
 
     def summary(self):
-        """Return a formatted decomposition summary."""
+        """Return a formatted decomposition summary.
+
+        Returns
+        -------
+        str
+            Resolved period, smoother settings, and residual dispersion.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import STL
+        >>> result = STL(np.arange(24.0), period=4).fit()
+        >>> "Period             : 4" in result.summary()
+        True
+        """
         robust = self.config["robust"]
         seasonal = self.config["seasonal"]
         trend = self.config["trend"]
@@ -92,7 +132,28 @@ class STLResult:
         return "\n".join(lines)
 
     def plot(self, title=None):
-        """Plot observed, trend, seasonal, and residual components."""
+        """Plot observed, trend, seasonal, and residual components.
+
+        Parameters
+        ----------
+        title : str, optional
+            Figure title. The default is ``"STL Decomposition"``.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        axes : numpy.ndarray
+            Four vertically stacked axes.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import STL
+        >>> result = STL(np.arange(24.0), period=4).fit()
+        >>> fig, axes = result.plot(title="Quarterly decomposition")
+        >>> len(axes)
+        4
+        """
         import matplotlib.pyplot as plt
 
         from ..TsPlots import plot_series
@@ -135,6 +196,49 @@ class STL:
     ``missing="raise"`` rejects non-finite input. Explicit ``"drop"`` removes
     affected observations and records their original zero-based positions in
     :attr:`dropped_positions`.
+
+    Parameters
+    ----------
+    data : array-like
+        One-dimensional numeric series with at least two complete periods.
+    period : int
+        Seasonal cycle length, at least 2.
+    seasonal : int, default 7
+        Odd seasonal smoother length.
+    trend : int, optional
+        Odd trend smoother length; statsmodels chooses a default when omitted.
+    low_pass : int, optional
+        Odd low-pass filter length; statsmodels chooses a default when omitted.
+    seasonal_deg, trend_deg, low_pass_deg : {0, 1}, default 1
+        Polynomial degrees for the three LOESS smoothers.
+    robust : bool, default False
+        Use robust reweighting against outliers.
+    seasonal_jump, trend_jump, low_pass_jump : int, default 1
+        Positive subsampling steps used to accelerate each smoother.
+    missing : {"raise", "drop"}, default "raise"
+        Reject non-finite values or remove their rows before fitting.
+
+    Attributes
+    ----------
+    data : numpy.ndarray
+        Validated series used for fitting.
+    period : int
+        Resolved seasonal period.
+    dropped_positions : numpy.ndarray
+        Original zero-based rows removed under ``missing="drop"``.
+    result_ : STLResult or None
+        Fitted result after :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsUtils import STL
+    >>> time = np.arange(48.0)
+    >>> data = 0.2 * time + np.sin(2 * np.pi * time / 12)
+    >>> model = STL(data, period=12, robust=True)
+    >>> result = model.fit()
+    >>> result.period
+    12
     """
 
     def __init__(
@@ -195,7 +299,27 @@ class STL:
         self.result_ = None
 
     def fit(self, inner_iter=None, outer_iter=None):
-        """Estimate trend, seasonal, and residual components."""
+        """Estimate trend, seasonal, and residual components.
+
+        Parameters
+        ----------
+        inner_iter, outer_iter : int, optional
+            Iteration counts passed to statsmodels. Defaults depend on
+            whether robust fitting is enabled.
+
+        Returns
+        -------
+        STLResult
+            Aligned decomposition components and resolved configuration.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import STL
+        >>> result = STL(np.arange(24.0), period=4).fit()
+        >>> result.observed.shape
+        (24,)
+        """
         decomposed = self._model.fit(
             inner_iter=inner_iter,
             outer_iter=outer_iter,
@@ -213,7 +337,24 @@ class STL:
         return result
 
     def summary(self):
-        """Return the fitted decomposition summary."""
+        """Return the fitted decomposition summary.
+
+        Returns
+        -------
+        str
+            Summary from :class:`STLResult`; fitting occurs automatically if
+            needed.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import STL
+        >>> model = STL(np.arange(24.0), period=4)
+        >>> "STL Decomposition Result" in model.summary()
+        True
+        >>> model.result_ is not None
+        True
+        """
         if self.result_ is None:
             self.fit()
         return self.result_.summary()

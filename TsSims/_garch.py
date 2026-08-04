@@ -81,6 +81,23 @@ def simulate_garch(
         Container with ``.data``, ``.residuals``, ``.conditional_volatility``,
         ``.params`` and methods ``.get_data()``, ``.get_params()``,
         ``.summary()``, ``.plot()``, ``.to_dataframe()``.
+
+    Examples
+    --------
+    Simulate ARCH by setting ``q=0``, or a conventional GARCH process with
+    positive ``q``.
+
+    >>> from Ts.TsSims import simulate_garch
+    >>> arch = simulate_garch(
+    ...     n=50, p=1, q=0, omega=0.4, alpha=[0.5], seed=42
+    ... )
+    >>> arch.model_type
+    'ARCH'
+    >>> garch = simulate_garch(
+    ...     n=50, p=1, q=1, alpha=[0.2], beta=[0.7], seed=42
+    ... )
+    >>> garch.conditional_volatility.shape
+    (50,)
     """
     n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
@@ -163,6 +180,18 @@ def simulate_igarch(
     Returns
     -------
     SimGARCHResult
+
+    Examples
+    --------
+    The final beta coefficient is derived so that total persistence equals
+    one exactly.
+
+    >>> from Ts.TsSims import simulate_igarch
+    >>> result = simulate_igarch(
+    ...     n=50, p=1, q=1, alpha=[0.2], seed=42
+    ... )
+    >>> sum(result.params["alpha"]) + sum(result.params["beta"])
+    1.0
     """
     n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)

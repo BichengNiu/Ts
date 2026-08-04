@@ -93,6 +93,22 @@ def difference(data, *, order=1, log=False, lag=1):
     With lag ``s``, the first-order result is ``(1 - L^s) x_t`` and the
     second-order result is ``(1 - L^s)^2 x_t``. Log differences apply the same
     operator to ``log(x_t)``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsUtils import difference
+    >>> series = pd.Series([100.0, 110.0, 121.0], name="index")
+    >>> difference(series).tolist()
+    [nan, 10.0, 11.0]
+    >>> difference(series, log=True).round(6).tolist()
+    [nan, 0.09531, 0.09531]
+
+    Use ``lag=4`` for a year-over-year change in quarterly data.
+
+    >>> quarterly = pd.Series([1, 2, 3, 4, 6], dtype=float)
+    >>> difference(quarterly, lag=4).tolist()
+    [nan, nan, nan, nan, 5.0]
     """
     order = _validate_order(order)
     lag = _validate_lag(lag)

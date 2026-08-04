@@ -19,7 +19,38 @@ from ._regression_break_utils import (
 
 @dataclass
 class ChowTestResult(BaseTestResult):
-    """Result of a classical known-break Chow F test."""
+    """Result of a classical known-break Chow F test.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Chow F statistic, p-value, unused lag field, sample size, and pooled
+        residuals.
+    break_year : float
+        Matched known-break label.
+    break_index : int
+        Zero-based break position, included in the first regime.
+    df_num, df_denom : int
+        Numerator and denominator degrees of freedom.
+    rss_pooled, rss_split : float
+        Residual sums of squares for pooled and split regressions.
+    coefficients_pooled, coefficients_before, coefficients_after : dict
+        Coefficients from the pooled and regime-specific regressions.
+    fitted_pooled, fitted_split : numpy.ndarray or None
+        Pooled and split fitted values.
+    time_index, observed : numpy.ndarray or None
+        Original time labels and response observations.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import ChowTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=40), 3 + rng.normal(size=40)]
+    >>> result = ChowTest(data, break_year=39).fit()
+    >>> result.break_index
+    39
+    """
 
     break_year: float = 0.0
     break_index: int = 0
@@ -53,7 +84,27 @@ class ChowTestResult(BaseTestResult):
         )
 
     def plot_test(self, ax=None):
-        """Plot observed values and pooled/split fitted regressions."""
+        """Plot observed values and pooled/split fitted regressions.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw on; a new figure is created when omitted.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ChowTest
+        >>> years = np.arange(2000, 2080, dtype=float)
+        >>> data = np.r_[np.zeros(40), np.ones(40)]
+        >>> result = ChowTest(data, 2040, time_index=years).fit()
+        >>> fig, ax = result.plot_test()
+        """
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 5))
         else:
@@ -80,6 +131,40 @@ class ChowTest(BaseTest):
     The classical F reference distribution assumes independent,
     homoskedastic errors. The first regime includes the matched break
     observation; the second begins at the following observation.
+
+    Parameters
+    ----------
+    data : array-like or pandas.DataFrame
+        Response observations, or a table containing selected columns.
+    break_year : float
+        Known break label; the matched observation ends the first regime.
+    exog : array-like, optional
+        External regressors supplied separately from ``data``.
+    time_index : array-like, optional
+        Ordered labels used to locate ``break_year``.
+    trend : {"n", "c", "ct"}, default "c"
+        Deterministic regressors included in every regime.
+    y_col : str or int, optional
+        Response column in a DataFrame.
+    time_col : str or int, optional
+        Time-label column in a DataFrame.
+    exog_cols : sequence of str or int, optional
+        Regressor columns selected from a DataFrame.
+
+    Attributes
+    ----------
+    result_ : ChowTestResult or None
+        Fitted known-break test.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import ChowTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=40), 3 + rng.normal(size=40)]
+    >>> result = ChowTest(data, break_year=39, trend="c").fit()
+    >>> result.pvalue < 0.05
+    True
     """
 
     def __init__(
@@ -108,7 +193,22 @@ class ChowTest(BaseTest):
         self.result_: ChowTestResult | None = None
 
     def fit(self) -> ChowTestResult:
-        """Estimate pooled and split regressions and compute the Chow F test."""
+        """Estimate pooled and split regressions and compute the Chow F test.
+
+        Returns
+        -------
+        ChowTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ChowTest
+        >>> years = np.arange(2000, 2080, dtype=float)
+        >>> data = np.r_[np.zeros(40), np.ones(40)]
+        >>> result = ChowTest(data, 2040, time_index=years).fit()
+        >>> result.break_year
+        2040.0
+        """
         y = self.design.endog
         x = self.design.exog
         nobs, nparams = x.shape

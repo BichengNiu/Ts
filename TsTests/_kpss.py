@@ -42,6 +42,17 @@ class KPSSTestResult(BaseTestResult):
         ``"ct"`` for trend-stationary).
     critical_values : dict
         Critical values keyed by significance level.
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Common statistic, p-value, bandwidth, effective sample size, and
+        optional residuals inherited from ``BaseTestResult``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import KPSSTest
+    >>> result = KPSSTest(np.random.default_rng(42).normal(size=100)).fit()
+    >>> result.trend
+    'c'
     """
 
     trend: str = "ct"
@@ -82,6 +93,13 @@ class KPSSTestResult(BaseTestResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import KPSSTest
+        >>> result = KPSSTest(np.random.default_rng(42).normal(size=80)).fit()
+        >>> fig, ax = result.plot_test()
         """
         return _render_critical_value_plot(self, "KPSS", ax)
 
@@ -118,6 +136,18 @@ class KPSSTest(BaseTest):
     ----------
     result_ : KPSSTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    KPSS reverses the ADF/PP null: a large p-value does not reject
+    stationarity.
+
+    >>> import numpy as np
+    >>> from Ts.TsTests import KPSSTest
+    >>> data = np.random.default_rng(42).normal(size=100)
+    >>> result = KPSSTest(data, trend="c", lags=3).fit()
+    >>> result.lags
+    3
     """
 
     _VALID_TRENDS = ("c", "ct")
@@ -145,6 +175,14 @@ class KPSSTest(BaseTest):
         Returns
         -------
         KPSSTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import KPSSTest
+        >>> result = KPSSTest(np.random.default_rng(42).normal(size=80)).fit()
+        >>> 0.0 <= result.pvalue <= 1.0
+        True
         """
         from statsmodels.tsa.stattools import kpss
 

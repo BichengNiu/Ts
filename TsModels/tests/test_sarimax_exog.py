@@ -50,13 +50,66 @@ def test_ndarray_exog_requires_names_and_equal_length():
         )
 
 
-def test_ndarray_exog_must_be_two_dimensional():
-    with pytest.raises(ValueError, match="two-dimensional"):
+def test_one_dimensional_ndarray_exog_is_normalised_to_one_column():
+    model = SARIMAX(
+        np.arange(12.0),
+        exog=np.linspace(-1.0, 1.0, 12),
+        exog_names=["x"],
+    )
+
+    assert model.exog.shape == (12, 1)
+    assert model.exog_names == ("x",)
+
+
+def test_array_exog_rejects_more_than_two_dimensions():
+    with pytest.raises(ValueError, match="one- or two-dimensional"):
         SARIMAX(
             np.arange(12.0),
-            exog=np.ones(12),
+            exog=np.ones((12, 1, 1)),
             exog_names=["x"],
         )
+
+
+def test_named_series_exog_uses_name_and_is_normalised_to_one_column():
+    x = pd.Series(np.arange(12.0), name="leading_indicator")
+
+    model = SARIMAX(np.arange(12.0), exog=x, trend="n")
+
+    assert model.exog.shape == (12, 1)
+    assert model.exog_names == ("leading_indicator",)
+
+
+def test_dated_series_exog_splits_history_and_default_future():
+    y_dates = pd.date_range("2025-01-01", periods=12, freq="MS")
+    all_dates = pd.date_range("2025-01-01", periods=15, freq="MS")
+    y = pd.Series(np.arange(12.0), index=y_dates)
+    exog = pd.Series(np.arange(15.0), index=all_dates, name="price")
+
+    model = SARIMAX(y, exog=exog, order=(0, 0, 0), trend="n")
+
+    assert model.exog.shape == (12, 1)
+    assert model.exog_names == ("price",)
+    assert model.future_exog.index.equals(all_dates[12:])
+    assert model.future_exog.columns.tolist() == ["price"]
+
+
+def test_unnamed_series_exog_requires_exactly_one_explicit_name():
+    y = np.arange(12.0)
+    exog = pd.Series(np.linspace(-1.0, 1.0, 12))
+
+    with pytest.raises(ValueError, match=r"unnamed.*exog_names"):
+        SARIMAX(y, exog=exog)
+
+    model = SARIMAX(y, exog=exog, exog_names=["x"])
+    assert model.exog_names == ("x",)
+
+
+def test_named_series_exog_rejects_redundant_explicit_names():
+    y = np.arange(12.0)
+    exog = pd.Series(np.ones(12), name="x")
+
+    with pytest.raises(ValueError, match=r"exog_names.*named Series"):
+        SARIMAX(y, exog=exog, exog_names=["renamed"])
 
 
 def test_missing_default_drops_y_exog_and_dates_jointly():
@@ -477,6 +530,33 @@ def test_dataframe_future_exog_is_one_custom_scenario():
     assert result.mean.shape == (3,)
 
 
+def test_series_future_exog_is_one_custom_scenario():
+    from Ts.TsModels._base import PredictResult
+
+    model = _dated_model_with_future_exog(include_future=False)
+    dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+    result = model.fit().predict(
+        start=len(model.data),
+        end=len(model.data) + 2,
+        future_exog=pd.Series([1.0, 1.0, 1.0], index=dates, name="x"),
+    )
+
+    assert isinstance(result, PredictResult)
+    assert result.mean.shape == (3,)
+
+
+def test_series_future_exog_rejects_the_wrong_name():
+    model = _dated_model_with_future_exog(include_future=False)
+    dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+
+    with pytest.raises(ValueError, match=r"name.*x"):
+        model.fit().predict(
+            start=len(model.data),
+            end=len(model.data) + 2,
+            future_exog=pd.Series([1.0, 1.0, 1.0], index=dates, name="wrong"),
+        )
+
+
 def test_future_scenarios_reject_reserved_or_invalid_names():
     fitted = _dated_model_with_future_exog().fit()
     dates = fitted._default_future_exog.index
@@ -570,6 +650,21 @@ def test_array_scenario_requires_future_dates_and_is_copied():
     original = prediction.mean.copy()
     values[:] = 100
     np.testing.assert_array_equal(prediction.mean, original)
+
+
+def test_one_dimensional_array_future_exog_supports_one_input():
+    fitted = _dated_model_with_future_exog(include_future=False).fit()
+    values = np.ones(3)
+    dates = pd.date_range("2023-01-01", periods=3, freq="MS")
+
+    prediction = fitted.predict(
+        start=fitted.nobs,
+        end=fitted.nobs + 2,
+        future_exog=values,
+        future_dates=dates,
+    )
+
+    assert prediction.mean.shape == (3,)
 
 
 def test_exogenous_forecast_without_coverage_lists_missing_date():

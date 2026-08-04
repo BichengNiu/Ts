@@ -13,7 +13,32 @@ from ._validation import validate_positive_int
 
 @dataclass(frozen=True)
 class EACFResult:
-    """Immutable numeric and coded extended-autocorrelation tables."""
+    """Immutable numeric and coded extended-autocorrelation tables.
+
+    Attributes
+    ----------
+    values : numpy.ndarray
+        Numeric EACF values with AR orders on rows and MA orders on columns.
+    significant : numpy.ndarray
+        Boolean significance decisions aligned with ``values``.
+    symbols : numpy.ndarray
+        Conventional ``"x"`` and ``"o"`` display codes.
+    ar_orders, ma_orders : numpy.ndarray
+        Row and column order labels.
+    nobs : int
+        Number of observations used.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsUtils import eacf
+    >>> rng = np.random.default_rng(42)
+    >>> result = eacf(rng.normal(size=80), ar_max=2, ma_max=2)
+    >>> result.values.shape
+    (3, 3)
+    >>> result.symbols.shape
+    (3, 3)
+    """
 
     values: np.ndarray
     significant: np.ndarray
@@ -36,7 +61,21 @@ class EACFResult:
             object.__setattr__(self, name, array)
 
     def summary(self) -> str:
-        """Return the conventional ``x``/``o`` EACF table."""
+        """Return the conventional ``x``/``o`` EACF table.
+
+        Returns
+        -------
+        str
+            Formatted table with order labels and the symbol legend.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import eacf
+        >>> result = eacf(np.arange(40.0) + np.sin(np.arange(40.0)), 1, 1)
+        >>> "AR\\MA" in result.summary()
+        True
+        """
         width = max(5, *(len(str(order)) + 1 for order in self.ma_orders))
         header = "AR\\MA".rjust(width) + "".join(
             str(order).rjust(width) for order in self.ma_orders
@@ -154,6 +193,17 @@ def eacf(data, ar_max=7, ma_max=13, *, variable=None) -> EACFResult:
     ``o`` denotes an entry within ``2 / sqrt(n - p - q - 1)`` of zero.
     A triangular wedge of ``o`` entries is an order-identification heuristic,
     not an automatic or unique model-selection rule.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsUtils import eacf
+    >>> rng = np.random.default_rng(7)
+    >>> result = eacf(rng.normal(size=100), ar_max=3, ma_max=4)
+    >>> result.values.shape
+    (4, 5)
+    >>> print(result.summary().splitlines()[0])
+    Extended Autocorrelation Function
     """
     ar_max = validate_positive_int("ar_max", ar_max, minimum=0)
     ma_max = validate_positive_int("ma_max", ma_max, minimum=0)

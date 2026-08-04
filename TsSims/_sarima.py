@@ -34,6 +34,15 @@ class SimSARIMAResult(BaseSimResult):
         White-noise innovations used in generation.
     params : dict
         All parameters used for simulation.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_sarima
+    >>> result = simulate_sarima(n=30, order=(1, 0, 0), ar=[0.6], seed=42)
+    >>> result.data.shape
+    (30,)
+    >>> result.get_params()["ar"]
+    [0.6]
     """
 
     def summary(self) -> str:
@@ -42,6 +51,13 @@ class SimSARIMAResult(BaseSimResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = simulate_sarima(n=50, order=(1, 0, 0), ar=[0.5], seed=42)
+        >>> result.summary().startswith("SARIMA Simulation Result")
+        True
         """
         p = self.params
         lines = [
@@ -86,6 +102,12 @@ class SimSARIMAResult(BaseSimResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = simulate_sarima(n=50, order=(1, 0, 0), ar=[0.5], seed=42)
+        >>> fig, ax = result.plot()
         """
         if title is None:
             title = f"SARIMA{self.params.get('order', '')} Simulation"
@@ -271,6 +293,28 @@ def simulate_sarima(
     SimSARIMAResult
         Container with ``.data``, ``.residuals``, ``.params``, and methods
         ``.get_data()``, ``.get_params()``, ``.summary()``, ``.plot()``.
+
+    Examples
+    --------
+    Simulate non-seasonal and seasonal specifications with reproducible
+    innovations.
+
+    >>> from Ts.TsSims import simulate_sarima
+    >>> ar1 = simulate_sarima(
+    ...     n=50, order=(1, 0, 0), ar=[0.7], seed=42
+    ... )
+    >>> ar1.data.shape
+    (50,)
+    >>> seasonal = simulate_sarima(
+    ...     n=48,
+    ...     order=(1, 0, 0),
+    ...     seasonal_order=(1, 0, 0, 4),
+    ...     ar=[0.4],
+    ...     seasonal_ar=[0.3],
+    ...     seed=42,
+    ... )
+    >>> seasonal.params["seasonal_order"]
+    (1, 0, 0, 4)
     """
     n, burn = validate_sample(n, burn)
     order = validate_order("order", order, length=3)

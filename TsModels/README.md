@@ -2,6 +2,12 @@
 
 时间序列模型估计工具包。提供 SARIMAX、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsMetrics、TsTests 衔接。
 
+## 交互式帮助
+
+公共模型、结果对象及其 demo 用法的参数、返回值和可执行样例均已写入
+docstring。在 IPython/Jupyter 中输入 `?SARIMAX`（或 `SARIMAX?`），也可在
+Python 中调用 `help(SARIMAX)` 查看完整帮助。
+
 ## Missing-data contract
 
 All public model constructors and the VAR/VECM order-selection helpers accept
@@ -342,8 +348,8 @@ SARIMAX(
 | `enforce_stationarity` | bool | `True` | 强制 AR 多项式平稳性 |
 | `enforce_invertibility` | bool | `True` | 强制 MA 多项式可逆性 |
 | `dates` | datetime-like | `None` | 数组输入的显式日期；`Series` 自动使用其 `DatetimeIndex` |
-| `exog` | array-like/DataFrame | `None` | 普通外生变量；DataFrame 可同时包含历史和未来日期 |
-| `exog_names` | sequence[str] | `None` | 数组外生变量的必填列名；DataFrame 使用自身列名 |
+| `exog` | Series/DataFrame/array-like | `None` | 普通外生变量；命名 Series 或一维数组表示单个输入；带日期的 Series/DataFrame 可同时包含历史和未来行 |
+| `exog_names` | sequence[str] | `None` | 数组和未命名 Series 的必填列名；命名 Series/DataFrame 使用自身名称 |
 | `events` | sequence[EventSpec] | `None` | 脉冲、阶跃或事件窗口设计 |
 | `missing` | `"raise"`/`"drop"` | `"drop"` | 内生和历史外生变量的联合缺失行策略；严格模式显式传入 `"raise"` |
 | `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 以外生列名为键的 RDL/transfer-function 规格；支持多个输入 |
@@ -581,8 +587,8 @@ AutoSARIMAX(
 | `s` | int | `0` | 季节周期（0=无季节性） |
 | `criterion` | str | `"aic"` | 选择准则: `aic`, `bic`, `hqic`, `aicc` |
 | `dates` | datetime-like | `None` | 严格观测日期 |
-| `exog` | array-like/DataFrame | `None` | 每个候选模型共享的普通外生变量及可选未来路径 |
-| `exog_names` | sequence[str] | `None` | 数组外生变量的必填列名 |
+| `exog` | Series/DataFrame/array-like | `None` | 每个候选模型共享的普通外生变量；单输入可直接传命名 Series 或一维数组 |
+| `exog_names` | sequence[str] | `None` | 数组和未命名 Series 的必填列名 |
 | `events` | sequence[EventSpec] | `None` | 每个候选模型共享的事件设计 |
 | `enforce_stationarity` | bool | `True` | 所有候选模型是否强制平稳性 |
 | `enforce_invertibility` | bool | `True` | 所有候选模型是否强制可逆性 |

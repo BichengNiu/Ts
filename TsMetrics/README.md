@@ -6,6 +6,12 @@
 `TsModels` 负责。评估引擎通过 `BaseModel` 协议调用模型，不导入任何具体
 模型类。
 
+## 交互式帮助
+
+公共指标、评估函数及结果对象的参数、返回值和可执行样例均已写入 docstring。
+在 IPython/Jupyter 中输入 `?rmse`（或 `rmse?`），也可在 Python 中调用
+`help(rmse)` 查看完整帮助。
+
 ## 公共接口
 
 ```python

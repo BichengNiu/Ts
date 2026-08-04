@@ -45,6 +45,33 @@ class RDLInputSpec:
 
     Mapping keys are active polynomial lags. Missing lags through the maximum
     key are fixed at zero, matching :class:`RationalLagSpec` in ``TsModels``.
+
+    Parameters
+    ----------
+    numerator : mapping of int to float
+        True numerator coefficients keyed by non-negative active lag.
+    denominator : mapping of int to float, optional
+        True denominator coefficients keyed by positive active lag.
+    delay : int, default 0
+        Pure input delay applied before the numerator polynomial.
+    initialization : {"zero", "steady_state"}, default "zero"
+        Transfer-filter state before the returned sample.
+
+    Attributes
+    ----------
+    model_spec : RationalLagSpec
+        Matching immutable estimator specification.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import RDLInputSpec
+    >>> spec = RDLInputSpec(
+    ...     numerator={0: 0.8, 1: 0.2}, denominator={1: 0.5}, delay=1
+    ... )
+    >>> spec.model_spec.delay
+    1
+    >>> spec.numerator
+    {0: 0.8, 1: 0.2}
     """
 
     numerator: Mapping[int, float]
@@ -90,7 +117,36 @@ class RDLInputSpec:
 
 @dataclass
 class SimRDLResult(BaseSimResult):
-    """Container for a simulated RDL response, inputs, and components."""
+    """Container for a simulated RDL response, inputs, and components.
+
+    Parameters
+    ----------
+    data, residuals : numpy.ndarray
+        Simulated response and SARIMA innovations.
+    params : dict
+        Complete simulation settings.
+    exog : pandas.DataFrame
+        Input paths used by the transfer filters.
+    components : pandas.DataFrame
+        One transfer-effect column per input plus the disturbance column.
+    input_specs : dict of str to RDLInputSpec
+        True coefficient specifications keyed by input name.
+
+    Attributes
+    ----------
+    distributed_lags : dict of str to RationalLagSpec
+        Estimator-ready specifications matching the simulated filters.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import RDLInputSpec, simulate_rdl
+    >>> specs = {"price": RDLInputSpec({0: 0.8}, {1: 0.4})}
+    >>> result = simulate_rdl(n=30, distributed_lags=specs, seed=42)
+    >>> result.get_exog().columns.tolist()
+    ['price']
+    >>> result.get_components().columns.tolist()
+    ['price', 'noise']
+    """
 
     exog: pd.DataFrame = field(default_factory=pd.DataFrame)
     components: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -102,15 +158,54 @@ class SimRDLResult(BaseSimResult):
         return {name: spec.model_spec for name, spec in self.input_specs.items()}
 
     def get_exog(self):
-        """Return a copy of the simulated or supplied input paths."""
+        """Return a copy of the simulated or supplied input paths.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Input paths keyed by their public names.
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_rdl
+        >>> result = simulate_rdl(n=20, seed=42)
+        >>> result.get_exog().shape
+        (20, 1)
+        """
         return self.exog.copy()
 
     def get_components(self):
-        """Return a copy of each transfer effect and the SARIMA disturbance."""
+        """Return a copy of each transfer effect and the SARIMA disturbance.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Transfer effects followed by the ``"noise"`` component.
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_rdl
+        >>> result = simulate_rdl(n=20, seed=42)
+        >>> result.get_components().columns.tolist()
+        ['x', 'noise']
+        """
         return self.components.copy()
 
     def summary(self):
-        """Return the simulation settings and true transfer coefficients."""
+        """Return the simulation settings and true transfer coefficients.
+
+        Returns
+        -------
+        str
+            Noise settings, input names, coefficients, gain, and seed.
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_rdl
+        >>> result = simulate_rdl(n=20, seed=42)
+        >>> "Rational Distributed-Lag" in result.summary()
+        True
+        """
         lines = [
             "Rational Distributed-Lag Simulation Result",
             "=" * 42,
@@ -201,6 +296,47 @@ def simulate_rdl(
     standard-normal input paths are generated. Transfer filters begin at the
     returned sample boundary according to each specification's initialization;
     ``burn`` applies only to the SARIMA disturbance.
+
+    Parameters
+    ----------
+    n : int, default 200
+        Number of returned observations.
+    distributed_lags : mapping of str to RDLInputSpec, optional
+        True transfer functions. The default is one stable input named ``x``.
+    exog : pandas.DataFrame or array-like, optional
+        Complete input paths of shape ``(n, number_of_inputs)``. Independent
+        standard-normal inputs are generated when omitted.
+    order : tuple of int, default (0, 0, 0)
+        Non-seasonal SARIMA disturbance order.
+    seasonal_order : tuple of int, default (0, 0, 0, 0)
+        Seasonal SARIMA disturbance order.
+    ar, ma, seasonal_ar, seasonal_ma : sequence of float, optional
+        Disturbance polynomial coefficients.
+    const : float, default 0.0
+        Disturbance constant or drift.
+    sigma2 : float, default 1.0
+        Disturbance innovation variance.
+    seed : int, optional
+        Seed used to derive independent input and disturbance streams.
+    burn : int, default 100
+        Burn-in applied only to the disturbance process.
+    enforce_stability : bool, default True
+        Reject unstable transfer denominators.
+
+    Returns
+    -------
+    SimRDLResult
+        Response, input paths, component contributions, and true parameters.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import RDLInputSpec, simulate_rdl
+    >>> specs = {"policy": RDLInputSpec({0: 1.0}, {1: 0.5}, delay=1)}
+    >>> result = simulate_rdl(n=40, distributed_lags=specs, seed=42)
+    >>> result.data.shape
+    (40,)
+    >>> result.distributed_lags["policy"].delay
+    1
     """
     n, burn = validate_sample(n, burn)
     specs = _normalise_input_specs(distributed_lags)

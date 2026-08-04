@@ -49,6 +49,24 @@ class EngleLMTestResult(BaseTestResult):
     - ``f_statistic`` — F-statistic from the auxiliary regression.
     - ``f_pvalue`` — p-value from the F distribution.
     - ``rsquared`` — R-squared of the auxiliary regression.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        LM statistic, chi-squared p-value, lag count, auxiliary-regression
+        sample size, and tested residuals.
+    f_statistic, f_pvalue, rsquared : float
+        F form of the test, its p-value, and auxiliary R-squared.
+    individual_lags, individual_stats, individual_pvalues : numpy.ndarray
+        Lag-by-lag diagnostic arrays.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import EngleLMTest
+    >>> result = EngleLMTest(np.random.default_rng(42).normal(size=100), 4).fit()
+    >>> result.lags
+    4
     """
 
     f_statistic: float = 0.0
@@ -119,6 +137,16 @@ class EngleLMTest(BaseTest):
     ----------
     result_ : EngleLMTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import EngleLMTest
+    >>> data = np.random.default_rng(42).normal(size=120)
+    >>> test = EngleLMTest(data, lags=5)
+    >>> result = test.fit()
+    >>> (bool(result.statistic >= 0.0), bool(0.0 <= result.pvalue <= 1.0))
+    (True, True)
     """
 
     def __init__(
@@ -166,6 +194,14 @@ class EngleLMTest(BaseTest):
         Returns
         -------
         EngleLMTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import EngleLMTest
+        >>> result = EngleLMTest(np.random.default_rng(42).normal(size=100), lags=5).fit()
+        >>> result.lags
+        5
         """
         e = self.residuals
         e2 = e**2

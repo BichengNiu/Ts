@@ -96,6 +96,33 @@ def compare_forecasts(results, *, metric="rmse"):
 
     All results must use the same target, target indices, and actual values.
     Lower metric values rank first; non-finite scores rank last.
+
+    Parameters
+    ----------
+    results : mapping or sequence of OOSResult or BacktestResult
+        Comparable evaluation results. Mapping keys become model names.
+    metric : str, default "rmse"
+        Canonical error metric used for ranking.
+
+    Returns
+    -------
+    ComparisonResult
+        Scores, shared target, and ascending ranking.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsMetrics import OOSResult, compare_forecasts
+    >>> def result(mean):
+    ...     return OOSResult(
+    ...         np.array(mean), np.array([1.0, 2.0]), None, None,
+    ...         np.arange(3), np.array([3, 4]), None, None, "Example", "level"
+    ...     )
+    >>> comparison = compare_forecasts(
+    ...     {"perfect": result([1.0, 2.0]), "shifted": result([2.0, 3.0])}
+    ... )
+    >>> comparison.ranking
+    ['perfect', 'shifted']
     """
     items = _comparison_items(results, metric)
     reference = _comparison_reference(items)
@@ -137,6 +164,41 @@ def evaluate_models_oos(
     Every model receives the same inclusive estimation and validation bounds.
     The returned report retains each :class:`OOSResult`, exposes all canonical
     error metrics, and ranks models by ``rank_by``.
+
+    Parameters
+    ----------
+    models : mapping of str to estimator
+        Named unfitted Ts estimators evaluated on the shared split.
+    estimation_period : tuple of int or datetime-like
+        Inclusive shared estimation bounds.
+    validation_period : tuple of int or datetime-like
+        Inclusive shared validation bounds.
+    alpha : float, default 0.05
+        Significance level for each forecast interval.
+    rank_by : str, default "rmse"
+        Canonical error metric used for ordering models.
+
+    Returns
+    -------
+    OOSComparisonResult
+        Individual evaluations plus the complete ranking table.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import evaluate_models_oos
+    >>> from Ts.TsModels import SARIMAX
+    >>> from Ts.TsSims import simulate_sarima
+    >>> data = simulate_sarima(n=60, order=(1, 0, 0), seed=42).data
+    >>> report = evaluate_models_oos(
+    ...     {
+    ...         "mean": SARIMAX(data, order=(0, 0, 0)),
+    ...         "ar1": SARIMAX(data, order=(1, 0, 0)),
+    ...     },
+    ...     estimation_period=(0, 39),
+    ...     validation_period=(40, 49),
+    ... )
+    >>> report.table.shape[0]
+    2
     """
     _validate_metric(rank_by, "rank_by")
     if not isinstance(models, Mapping):

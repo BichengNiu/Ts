@@ -70,6 +70,18 @@ class IRFResult:
         Significance level for confidence bands.
     ci_method : str or None
         CI method: ``"analytic"``, ``"bootstrap"``, or ``None`` (no bands).
+    label : str or None
+        Optional display label, such as ``"Structural IRF"``.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import VAR
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(42)
+    >>> result = VAR(rng.normal(size=(80, 2)), lags=1).fit()
+    >>> irf = result.irf(periods=5)
+    >>> irf.values.shape
+    (6, 2, 2)
     """
 
     values: np.ndarray
@@ -92,6 +104,14 @@ class IRFResult:
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> "IRF Results" in result.irf(periods=3).summary()
+        True
         """
         if self.label is not None:
             irf_type = self.label
@@ -209,6 +229,15 @@ class IRFResult:
         dict
             Keys: ``"step"`` (list of int), ``"value"`` (ndarray),
             ``"lower"`` (ndarray or None), ``"upper"`` (ndarray or None).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> path = result.irf(periods=3).get(response=0, shock=1)
+        >>> path["value"].shape
+        (4,)
         """
         resp_idx = _resolve_name(self.names, response)
         shock_idx = _resolve_name(self.names, shock)
@@ -256,6 +285,15 @@ class FEVDResult:
         Significance level for confidence bands; `None` for point estimates.
     n_draws : int
         Number of Monte Carlo draws.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import VAR
+    >>> import numpy as np
+    >>> data = np.random.default_rng(42).normal(size=(80, 2))
+    >>> fevd = VAR(data, lags=1).fit().fevd(periods=4)
+    >>> fevd.values.shape
+    (4, 2, 2)
     """
 
     values: np.ndarray
@@ -277,6 +315,14 @@ class FEVDResult:
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> "FEVD Results" in result.fevd(periods=3).summary()
+        True
         """
         if self.alpha is None:
             title = "FEVD Results (point estimates)"
@@ -394,6 +440,15 @@ class FEVDResult:
             Keys: ``"step"`` (list of int, horizon 1..periods),
             ``"value"`` (ndarray), ``"lower"`` (ndarray or None),
             ``"upper"`` (ndarray or None).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> share = result.fevd(periods=3).get(response=0, shock=1)
+        >>> share["value"].shape
+        (3,)
         """
         resp_idx = _resolve_name(self.names, response)
         shock_idx = _resolve_name(self.names, shock)
@@ -431,6 +486,17 @@ class VAROrderResult:
         Maximum lags considered.
     nobs : int
         Number of observations used.
+    dropped_positions : tuple of int
+        Zero-based rows removed under ``missing="drop"``.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import VAR
+    >>> import numpy as np
+    >>> data = np.random.default_rng(42).normal(size=(80, 2))
+    >>> order = VAR.select_order(data, max_lags=3, criterion="bic")
+    >>> 1 <= order.selected_lag <= 3
+    True
     """
 
     selected_lag: int
@@ -442,7 +508,21 @@ class VAROrderResult:
     dropped_positions: tuple[int, ...] = ()
 
     def summary(self) -> str:
-        """Return a formatted lag-order selection table."""
+        """Return a formatted lag-order selection table.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> data = np.random.default_rng(42).normal(size=(80, 2))
+        >>> selection = VAR.select_order(data, max_lags=3)
+        >>> "VAR Lag Order Selection" in selection.summary()
+        True
+        """
         max_l = self.max_lags
         table = self.criteria_table
 
@@ -559,6 +639,15 @@ class GrangerCausalityResult:
         Individual test entries.
     kind : str
         Test type: ``"f"`` for F-test, ``"chi2"`` for chi-squared test.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import VAR
+    >>> import numpy as np
+    >>> data = np.random.default_rng(42).normal(size=(100, 2))
+    >>> tests = VAR(data, lags=1).fit().granger_causality()
+    >>> len(tests) > 0
+    True
     """
 
     tests: list
@@ -572,6 +661,20 @@ class GrangerCausalityResult:
         return _format_table(self.tests, self.kind)
 
     def summary(self) -> str:
+        """Return the formatted causality-test table.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> "Granger" in result.granger_causality(caused=0, causing=1).summary()
+        True
+        """
         return str(self)
 
     def __len__(self) -> int:
@@ -736,6 +839,9 @@ class VARResult(BaseModelResult):
 
     Parameters
     ----------
+    model_type, params, std_errors, p_values : see BaseModelResult
+    aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
+        Common fitted-model fields inherited from :class:`BaseModelResult`.
     _lags : int
         Number of lags used in estimation.
     _data_names : list of str
@@ -746,6 +852,15 @@ class VARResult(BaseModelResult):
         Raw statsmodels VARResultsWrapper, stored for internal delegation.
     _var_model : object
         Raw statsmodels VAR model, stored for forecast / IRF.
+
+    Examples
+    --------
+    >>> from Ts.TsModels import VAR
+    >>> import numpy as np
+    >>> data = np.random.default_rng(42).normal(size=(100, 2))
+    >>> result = VAR(data, lags=2, cols=["output", "prices"]).fit()
+    >>> result.model_type
+    'VAR'
     """
 
     _lags: int = 1
@@ -760,6 +875,18 @@ class VARResult(BaseModelResult):
         """Return a formatted multi-equation parameter summary.
 
         Overrides BaseModelResult to display per-equation tables.
+
+        Returns
+        -------
+        str
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> isinstance(result.summary(), str)
+        True
         """
         lines = [
             f"VAR({self._lags}) Model Estimation Result",
@@ -825,6 +952,15 @@ class VARResult(BaseModelResult):
         -------
         fig : matplotlib.figure.Figure
         axes : numpy.ndarray of matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> fig, axes = result.plot_fit()
+        >>> len(axes)
+        2
         """
         import matplotlib.pyplot as plt
 
@@ -871,6 +1007,15 @@ class VARResult(BaseModelResult):
         -------
         fig : matplotlib.figure.Figure
         axes : numpy.ndarray of matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(120, 2))).fit()
+        >>> fig, axes = result.plot_diagnostics()
+        >>> axes.shape
+        (2, 3)
         """
         import matplotlib.pyplot as plt
 
@@ -923,6 +1068,15 @@ class VARResult(BaseModelResult):
         -------
         dict
             Mapping from variable name to :class:`ResidualTestResults`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(100, 2))).fit()
+        >>> diagnostics = result.test_residuals(lags=5)
+        >>> sorted(diagnostics)
+        ['y0', 'y1']
         """
         from Ts.TsTests import LjungBoxTest, EngleLMTest, NormalityTest
         from Ts.TsModels._base import ResidualTestResults
@@ -966,6 +1120,15 @@ class VARResult(BaseModelResult):
         IRFResult
             Container with ``.values``, ``.lower``, ``.upper``,
             ``.summary()``, and ``.get()``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> irf = result.irf(periods=8)
+        >>> irf.get(response=0, shock=1)["value"].shape
+        (9,)
         """
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
@@ -1041,6 +1204,15 @@ class VARResult(BaseModelResult):
         FEVDResult
             Container with ``.values``, ``.lower``, ``.upper``,
             ``.summary()``, and ``.get()``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> fevd = result.fevd(periods=6, n_draws=50, seed=42)
+        >>> fevd.values.shape
+        (6, 2, 2)
         """
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
@@ -1172,6 +1344,15 @@ class VARResult(BaseModelResult):
         -------
         fig : matplotlib.figure.Figure
         axes : numpy.ndarray of matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> fig, axes = result.plot_irf(periods=6)
+        >>> axes.shape
+        (2, 2)
         """
         import matplotlib.pyplot as plt
         from matplotlib.ticker import MaxNLocator
@@ -1274,6 +1455,15 @@ class VARResult(BaseModelResult):
         ------
         ValueError
             If only one of ``caused`` / ``causing`` is specified.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> test = result.granger_causality(caused=0, causing=1)
+        >>> len(test)
+        1
         """
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
@@ -1358,6 +1548,15 @@ class VARResult(BaseModelResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> fig, ax = result.plot_roots()
+        >>> ax.get_title().startswith("VAR")
+        True
         """
         import matplotlib.pyplot as plt
 
@@ -1443,6 +1642,15 @@ class VARResult(BaseModelResult):
         Returns
         -------
         PredictResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
+        >>> forecast = result.predict(start=result.nobs, end=result.nobs + 2)
+        >>> forecast.mean.shape
+        (3, 2)
         """
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
@@ -1562,6 +1770,15 @@ class VARResult(BaseModelResult):
         -------
         np.ndarray or None
             Unconditional mean vector of shape ``(k,)``, or ``None``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> result = VAR(np.random.default_rng(42).normal(size=(100, 2))).fit()
+        >>> equilibrium = result.long_run_equilibrium()
+        >>> equilibrium is None or equilibrium.shape == (2,)
+        True
         """
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
@@ -1623,6 +1840,17 @@ class VAR(BaseModel):
         Non-finite row policy. ``"drop"`` records removed zero-based rows in
         :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"`` to
         reject any sample change.
+
+    Examples
+    --------
+    Fit a two-variable VAR and inspect stability:
+
+    >>> import numpy as np
+    >>> from Ts.TsModels import VAR
+    >>> data = np.random.default_rng(42).normal(size=(100, 2))
+    >>> result = VAR(data, lags=2, cols=["output", "prices"]).fit()
+    >>> isinstance(result.is_stable, bool)
+    True
     """
 
     def __init__(
@@ -1718,6 +1946,15 @@ class VAR(BaseModel):
         -------
         VAROrderResult
             Result object with ``summary()`` for formatted table display.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> data = np.random.default_rng(42).normal(size=(100, 2))
+        >>> selection = VAR.select_order(data, max_lags=4, criterion="bic")
+        >>> selection.criterion
+        'bic'
         """
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
 
@@ -1832,6 +2069,15 @@ class VAR(BaseModel):
         Returns
         -------
         VARResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import VAR
+        >>> model = VAR(np.random.default_rng(42).normal(size=(80, 2)), lags=1)
+        >>> result = model.fit()
+        >>> result.nobs > 0
+        True
         """
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
 

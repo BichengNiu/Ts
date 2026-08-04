@@ -34,6 +34,19 @@ class ADFTestResult(BaseTestResult):
         Maximum lag considered during automatic selection.
     icbest : float or None
         Best information criterion value (if auto-selected).
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Common test statistic, p-value, lag count, effective sample size, and
+        optional regression residuals inherited from ``BaseTestResult``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import ADFTest
+    >>> result = ADFTest(np.random.default_rng(42).normal(size=100)).fit()
+    >>> result.nobs > 0
+    True
+    >>> "ADF Test" in str(result)
+    True
     """
 
     trend: str = "c"
@@ -81,6 +94,13 @@ class ADFTestResult(BaseTestResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ADFTest
+        >>> result = ADFTest(np.cumsum(np.random.default_rng(42).normal(size=80))).fit()
+        >>> fig, ax = result.plot_test()
         """
         return _render_critical_value_plot(self, "ADF", ax)
 
@@ -115,6 +135,19 @@ class ADFTest(BaseTest):
     ----------
     result_ : ADFTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import ADFTest
+    >>> rng = np.random.default_rng(42)
+    >>> stationary = rng.normal(size=100)
+    >>> test = ADFTest(stationary, trend="c", lags=1)
+    >>> result = test.fit()
+    >>> result.pvalue < 0.05
+    True
+    >>> test.result_ is result
+    True
     """
 
     def __init__(
@@ -144,6 +177,14 @@ class ADFTest(BaseTest):
         Returns
         -------
         ADFTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ADFTest
+        >>> result = ADFTest(np.cumsum(np.random.default_rng(42).normal(size=80))).fit()
+        >>> 0.0 <= result.pvalue <= 1.0
+        True
         """
         from statsmodels.tsa.stattools import adfuller
 

@@ -78,7 +78,50 @@ def _format_index_value(value) -> str:
 
 
 class TimeSeriesSummary:
-    """Summarise one numeric time series and draw level/difference diagnostics."""
+    """Summarise one numeric time series and draw level/difference diagnostics.
+
+    Parameters
+    ----------
+    data : array-like, pandas.Series, or pandas.DataFrame
+        One numeric time series. A multi-column DataFrame requires
+        ``variable``.
+    variable : hashable, optional
+        DataFrame column to analyse.
+    nlags : int, optional
+        ACF/PACF lag count. The default is the smaller of 40 and the maximum
+        valid PACF lag.
+    alpha : float, default 0.05
+        Two-sided correlogram significance level.
+
+    Attributes
+    ----------
+    series : pandas.Series
+        Selected numeric observations with their original index.
+    nobs, n_missing : int
+        Total and missing observation counts.
+    missing_ratio : float
+        Missing share of the series.
+    missing_timestamps : tuple
+        Index labels of missing observations.
+    frequency : str
+        Explicit, inferred, or fallback sampling-frequency description.
+    figure_, axes_ : object or None
+        Most recently created diagnostic figure and axes.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsUtils import TimeSeriesSummary
+    >>> series = pd.Series(
+    ...     range(24), index=pd.date_range("2022-01-01", periods=24, freq="MS")
+    ... )
+    >>> analysis = TimeSeriesSummary(series, nlags=4)
+    >>> (analysis.nobs, analysis.n_missing, analysis.frequency)
+    (24, 0, 'MS')
+    >>> text = analysis.summary(plot=False)
+    >>> "Observations       : 24" in text
+    True
+    """
 
     def __init__(self, data, variable=None, *, nlags=None, alpha=0.05):
         self.series = _as_numeric_series(data, variable=variable)
@@ -211,7 +254,23 @@ class TimeSeriesSummary:
         )
 
     def plot(self):
-        """Draw level and first-difference ACF/PACF panels."""
+        """Draw level and first-difference ACF/PACF panels.
+
+        Returns
+        -------
+        figure : matplotlib.figure.Figure
+        axes : numpy.ndarray
+            A 2-by-2 array containing level and differenced ACF/PACF axes.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsUtils import TimeSeriesSummary
+        >>> analysis = TimeSeriesSummary(np.sin(np.arange(30.0)), nlags=5)
+        >>> figure, axes = analysis.plot()
+        >>> axes.shape
+        (2, 2)
+        """
         figure, axes = plt.subplots(2, 2, figsize=FIGSIZE)
         self.figure_ = figure
         self.axes_ = axes
@@ -259,7 +318,26 @@ class TimeSeriesSummary:
         return figure, axes
 
     def summary(self, *, plot=True) -> str:
-        """Return descriptive statistics and, by default, draw diagnostics."""
+        """Return descriptive statistics and optionally draw diagnostics.
+
+        Parameters
+        ----------
+        plot : bool, default True
+            Draw the four diagnostic panels once if they do not exist.
+
+        Returns
+        -------
+        str
+            Metadata, missingness, and pandas descriptive statistics.
+
+        Examples
+        --------
+        >>> from Ts.TsUtils import TimeSeriesSummary
+        >>> analysis = TimeSeriesSummary([1.0, 2.0, 3.0, 4.0, 5.0])
+        >>> text = analysis.summary(plot=False)
+        >>> "Mean               : 3" in text
+        True
+        """
         if plot and self.figure_ is None:
             self.plot()
         return self._summary_text()

@@ -147,6 +147,15 @@ class _BaseVolModel(BaseModel):
         Returns
         -------
         GARCHResult
+
+        Examples
+        --------
+        >>> from Ts.TsModels import GARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> data = simulate_garch(n=120, omega=0.1, alpha=[0.2], beta=[0.7], seed=42).data
+        >>> result = GARCH(data, p=1, q=1).fit()
+        >>> result.nobs
+        120
         """
         if self.igarch:
             return self._fit_igarch()

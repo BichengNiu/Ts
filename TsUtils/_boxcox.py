@@ -24,6 +24,16 @@ class BoxCoxResult:
     lmbda : float or pandas.Series
         The fitted or supplied lambda. DataFrame results use one value per
         column in a Series named ``"lmbda"``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsUtils import boxcox
+    >>> result = boxcox(pd.Series([1.0, 2.0, 4.0], name="sales"), lmbda=0.0)
+    >>> result.data.name
+    'sales'
+    >>> result.lmbda
+    0.0
     """
 
     data: pd.Series | pd.DataFrame
@@ -131,6 +141,24 @@ def boxcox(data, *, lmbda=None):
     The function never shifts non-positive observations automatically. Estimate
     lambda on training data and pass the recorded value to later data when a
     transformation is used in a forecasting workflow.
+
+    Examples
+    --------
+    Estimate lambda from training observations and reuse it for later data.
+
+    >>> import pandas as pd
+    >>> from Ts.TsUtils import boxcox
+    >>> trained = boxcox(pd.Series([1.0, 2.0, 4.0, 8.0]))
+    >>> future = boxcox(pd.Series([10.0, 12.0]), lmbda=trained.lmbda)
+    >>> future.data.shape
+    (2,)
+
+    A DataFrame is transformed column by column.
+
+    >>> frame = pd.DataFrame({"a": [1.0, 2.0], "b": [2.0, 3.0]})
+    >>> result = boxcox(frame, lmbda={"a": 0.0, "b": 1.0})
+    >>> result.lmbda.to_dict()
+    {'a': 0.0, 'b': 1.0}
     """
     converted = _as_float_data(data)
     values = converted.to_numpy(dtype=float, na_value=np.nan)

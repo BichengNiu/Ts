@@ -37,6 +37,15 @@ class SimGARCHResult(BaseSimResult):
         Conditional standard deviations sigma_t.
     params : dict
         All parameters used for simulation.
+
+    Examples
+    --------
+    >>> from Ts.TsSims import simulate_garch
+    >>> result = simulate_garch(n=40, p=1, q=1, seed=42)
+    >>> result.model_type
+    'GARCH'
+    >>> result.to_dataframe().columns.tolist()
+    ['data', 'residuals', 'volatility']
     """
 
     conditional_volatility: np.ndarray = field(default_factory=lambda: np.array([]))
@@ -66,6 +75,13 @@ class SimGARCHResult(BaseSimResult):
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_garch
+        >>> result = simulate_garch(n=40, seed=42)
+        >>> "GARCH Simulation Result" in result.summary()
+        True
         """
         p = self.params
         model_type = self.model_type
@@ -123,6 +139,14 @@ class SimGARCHResult(BaseSimResult):
         -------
         fig : matplotlib.figure.Figure
         ax : numpy.ndarray of matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_garch
+        >>> result = simulate_garch(n=40, seed=42)
+        >>> fig, axes = result.plot()
+        >>> axes.shape
+        (2,)
         """
         import matplotlib.pyplot as plt
 
@@ -169,6 +193,13 @@ class SimGARCHResult(BaseSimResult):
         -------
         pd.DataFrame
             Columns: ``data``, ``residuals``, ``volatility``.
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_garch
+        >>> frame = simulate_garch(n=20, seed=42).to_dataframe()
+        >>> frame.shape
+        (20, 3)
         """
         return pd.DataFrame(
             {

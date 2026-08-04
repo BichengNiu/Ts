@@ -274,6 +274,15 @@ def plot_acf(
     -------
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsPlots import plot_acf
+    >>> rng = np.random.default_rng(42)
+    >>> fig, ax = plot_acf(rng.normal(size=100), nlags=12, zero_lag=False)
+    >>> ax.get_xlabel()
+    '滞后期数'
     """
     _ensure_fonts()
     x = _to_1d(data)
@@ -387,6 +396,15 @@ def plot_pacf(
     -------
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsPlots import plot_pacf
+    >>> rng = np.random.default_rng(42)
+    >>> fig, ax = plot_pacf(rng.normal(size=100), nlags=12, method="ywm")
+    >>> ax.get_xlabel()
+    '滞后期数'
     """
     _ensure_fonts()
     x = _to_1d(data)

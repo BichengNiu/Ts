@@ -33,7 +33,46 @@ from ._unitroot_plot import _render_tstat_plot, _render_ic_plot
 
 @dataclass
 class ZivotAndrewsTestResult(BaseTestResult):
-    """Container for Zivot-Andrews (1992) test results."""
+    """Container for Zivot-Andrews (1992) test results.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Minimum unit-root statistic, optional p-value, selected lag count,
+        effective sample size, and regression residuals.
+    rho_hat, rho_se : float
+        Autoregressive coefficient and standard error at the selected break.
+    break_year : float
+        Selected break label.
+    break_index : int
+        Zero-based selected break position.
+    model : str
+        Deterministic break specification.
+    cv_01, cv_05, cv_10 : float
+        One-, five-, and ten-percent critical values.
+    all_t_stats, all_break_years : numpy.ndarray or None
+        Search-path statistics and candidate break labels.
+    lag_method : str
+        Lag-selection method used.
+    ic_by_lag : numpy.ndarray or None
+        Information-criterion values when applicable.
+    coefficients, pvalues : dict
+        Selected regression estimates and p-values.
+    fitted : numpy.ndarray or None
+        Fitted values at the selected break.
+    rsquared, rmse : float
+        Regression fit diagnostics.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import ZivotAndrewsTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=40), 2 + rng.normal(size=40)]
+    >>> result = ZivotAndrewsTest(data, lags=0).fit()
+    >>> bool(0 < result.break_index < len(data) - 1)
+    True
+    """
 
     rho_hat: float = 0.0  # estimated ρ at optimal break
     rho_se: float = 0.0  # std. error of ρ̂
@@ -91,6 +130,14 @@ class ZivotAndrewsTestResult(BaseTestResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ZivotAndrewsTest
+        >>> data = np.cumsum(np.random.default_rng(42).normal(size=100))
+        >>> result = ZivotAndrewsTest(data, max_lags=4).fit()
+        >>> fig, ax = result.plot_test()
         """
         if self.lag_method == "tstat":
             return _render_tstat_plot(self, ax)
@@ -133,10 +180,27 @@ class ZivotAndrewsTest(BaseTest):
         the first or last ``trim * T`` observations are excluded. Default is
         0.15 (15%).
 
+    y_col : str or int, optional
+        Response column when ``data`` is a DataFrame.
+    time_col : str or int, optional
+        Time-label column when it is stored inside ``data``.
+
     Attributes
     ----------
     result_ : ZivotAndrewsTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import ZivotAndrewsTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=40), 2 + rng.normal(size=40)]
+    >>> result = ZivotAndrewsTest(
+    ...     data, model="intercept", lags=0, trim=0.15
+    ... ).fit()
+    >>> bool(np.isfinite(result.statistic))
+    True
     """
 
     def __init__(
@@ -183,6 +247,15 @@ class ZivotAndrewsTest(BaseTest):
         Returns
         -------
         ZivotAndrewsTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import ZivotAndrewsTest
+        >>> data = np.cumsum(np.random.default_rng(42).normal(size=100))
+        >>> result = ZivotAndrewsTest(data, max_lags=4).fit()
+        >>> bool(0 < result.break_index < len(data) - 1)
+        True
         """
         y = self.data
         T = len(y)

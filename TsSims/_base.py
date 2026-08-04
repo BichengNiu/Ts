@@ -29,6 +29,17 @@ class BaseSimResult:
         Innovations (or residuals) used in generation.
     params : dict
         All parameters used for simulation.
+
+    Examples
+    --------
+    Concrete simulators return subclasses with this shared interface.
+
+    >>> from Ts.TsSims import BaseSimResult, simulate_sarima
+    >>> result = simulate_sarima(n=20, seed=42)
+    >>> isinstance(result, BaseSimResult)
+    True
+    >>> result.get_data().shape
+    (20,)
     """
 
     data: np.ndarray
@@ -49,6 +60,13 @@ class BaseSimResult:
         Returns
         -------
         pd.Series or pd.DataFrame
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_sarima
+        >>> series = simulate_sarima(n=20, seed=42).get_data()
+        >>> (series.name, len(series))
+        ('y', 20)
         """
         if self.data.ndim == 1:
             return pd.Series(self.data, name="y")
@@ -61,6 +79,13 @@ class BaseSimResult:
         Returns
         -------
         dict
+
+        Examples
+        --------
+        >>> from Ts.TsSims import simulate_sarima
+        >>> result = simulate_sarima(n=20, order=(1, 0, 0), seed=42)
+        >>> result.get_params()["order"]
+        (1, 0, 0)
         """
         return copy.deepcopy(self.params)
 
@@ -77,6 +102,13 @@ class BaseSimResult:
         Returns
         -------
         str
+
+        Examples
+        --------
+        >>> from Ts.TsSims import BaseSimResult
+        >>> result = BaseSimResult(data=[1, 2], residuals=[0, 0])
+        >>> result.summary()
+        'BaseSimResult(n=2)'
         """
         return f"{type(self).__name__}(n={len(self.data)})"
 
@@ -97,6 +129,15 @@ class BaseSimResult:
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes or numpy.ndarray of Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsSims import BaseSimResult
+        >>> result = BaseSimResult(np.arange(5.0), np.zeros(5))
+        >>> fig, ax = result.plot(title="Simulation")
+        >>> ax.get_title()
+        'Simulation'
         """
         from Ts.TsPlots import plot_series
 

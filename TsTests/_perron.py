@@ -32,7 +32,42 @@ from ._break_utils import (
 
 @dataclass
 class PerronTestResult(BaseTestResult):
-    """Container for Perron (1989) test results."""
+    """Container for Perron (1989) test results.
+
+    Parameters
+    ----------
+    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
+        Unit-root statistic, optional p-value, selected lag count, effective
+        sample size, and regression residuals.
+    rho_hat, rho_se : float
+        Estimated autoregressive coefficient and standard error.
+    break_year : float
+        Matched known-break label.
+    break_index : int
+        Zero-based position of the matched break observation.
+    break_fraction : float
+        Break position divided by sample length.
+    model : str
+        Deterministic break specification.
+    cv_01, cv_05, cv_10 : float
+        One-, five-, and ten-percent critical values.
+    coefficients, pvalues : dict
+        Regression estimates and p-values by term.
+    fitted : numpy.ndarray or None
+        Fitted test-regression values.
+    rsquared, rmse : float
+        Regression fit diagnostics.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import PerronTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=40), 2 + rng.normal(size=40)]
+    >>> result = PerronTest(data, break_year=39, lags=0).fit()
+    >>> result.break_index
+    39
+    """
 
     rho_hat: float = 0.0  # estimated ρ
     rho_se: float = 0.0  # std. error of ρ̂
@@ -91,6 +126,15 @@ class PerronTestResult(BaseTestResult):
         -------
         fig : matplotlib.figure.Figure
         ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import PerronTest
+        >>> years = np.arange(2000, 2080, dtype=float)
+        >>> data = np.cumsum(np.random.default_rng(42).normal(size=80))
+        >>> result = PerronTest(data, break_year=2040, time_index=years).fit()
+        >>> fig, ax = result.plot_test()
         """
         from ._unitroot_plot import _render_critical_value_plot
 
@@ -127,10 +171,26 @@ class PerronTest(BaseTest):
         ``"aic"`` — minimise AIC over k = 0..max_lags;
         ``"bic"`` — minimise BIC over k = 0..max_lags.
 
+    y_col : str or int, optional
+        Response column when ``data`` is a DataFrame.
+    time_col : str or int, optional
+        Time-label column when it is stored inside ``data``.
+
     Attributes
     ----------
     result_ : PerronTestResult
         Full test results after calling :meth:`fit`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from Ts.TsTests import PerronTest
+    >>> rng = np.random.default_rng(42)
+    >>> data = np.r_[rng.normal(size=40), 2 + rng.normal(size=40)]
+    >>> test = PerronTest(data, break_year=39, model="intercept", lags=0)
+    >>> result = test.fit()
+    >>> result.break_year
+    39.0
     """
 
     def __init__(
@@ -180,6 +240,16 @@ class PerronTest(BaseTest):
         Returns
         -------
         PerronTestResult
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsTests import PerronTest
+        >>> years = np.arange(2000, 2080, dtype=float)
+        >>> data = np.cumsum(np.random.default_rng(42).normal(size=80))
+        >>> result = PerronTest(data, break_year=2040, time_index=years).fit()
+        >>> result.break_year
+        2040.0
         """
         y = self.data
         T = len(y)
