@@ -125,7 +125,10 @@ result.test_residuals(lags=10)
 | | `.feedback_test(lags, inputs)` | 对原始外生输入运行条件反馈 OLS 与因变量滞后联合 F 检验 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
-| | `.long_run_equilibrium()` | 无条件均值 (平稳 ARMA, d=0, trend="c" → float；否则 None) |
+| | `.likelihood_burn` / `.effective_nobs` | 状态/RDL 初始化所丢弃的期数与实际参与似然的样本量 |
+| | `.level_intercept` | `trend="c"` 在原始回归层面的截距 `C`；自动完成状态截距到水平截距的变换 |
+| | `.level_intercept_inference(alpha)` | 原始层面截距 `C` 的 delta-method 标准误、统计量、p 值与区间 |
+| | `.long_run_equilibrium()` | 无外生输入均值贡献时的长期水平；与可定义的 `.level_intercept` 一致 |
 | `GARCH` / `GARCHResult` | `.predict(start, end, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
 | | `.conditional_volatility` | 条件波动率 σ_t |
 | | `.test_persistence()` | IGARCH 持久性 Wald 检验 |
@@ -386,7 +389,6 @@ model = SARIMAX(
             numerator=(0, 2),      # omega.L1 = 0
             denominator=(1, 3),    # delta.L2 = 0
             delay=1,
-            initialization="zero",
         ),
         "income": RationalLagSpec(numerator=1, denominator=1),
     },
@@ -398,6 +400,40 @@ result = model.fit(method="bfgs", maxiter=300, require_convergence=True)
 为 L1–L2。序列表示稀疏活动滞后，遗漏的中间阶严格固定为 0；这些是
 传递多项式约束，不是最终 impulse weights 约束。未列入 `distributed_lags`
 的 `control` 仍作为普通静态外生变量联合估计。
+
+`RationalLagSpec` 默认 `initialization="auto"`。有限分布滞后会自动从似然中
+排除没有完整输入历史的期数，并再留出 ARMA 扰动递推所需的初始化深度；
+回归起点和扰动起点也只使用同一有效样本。含递归分母的无限分布滞后无法由
+样本识别无限期的样本前输入，`auto` 因而采用首期输入水平的稳态假设。
+`summary()` 会明确显示解析后的策略、`Likelihood Burn` 和有效样本量。
+如有明确的样本前知识，仍可显式选择 `initialization="zero"` 或
+`initialization="steady_state"`，其原有数值含义不变。
+
+教材式有限 LTF 不需要自行生成 16 个滞后列或常数列：
+
+```python
+result = SARIMAX(
+    sales.iloc[:140],
+    exog=leading_indicator.iloc[:140].rename("leading_indicator"),
+    order=(1, 0, 0),
+    trend="c",
+    distributed_lags={
+        "leading_indicator": RationalLagSpec(numerator=15, denominator=0)
+    },
+).fit(
+    method="bfgs",
+    maxiter=100,
+    cov_type="oim",  # 教材表格使用的 observed-information 标准误
+    require_convergence=True,
+)
+```
+
+这里 `trend="c"` 就是公共模型设定中的原始层面截距。Statsmodels 底层为了
+状态空间递推估计的是状态截距 `c`；Ts 在 `result.level_intercept` 和
+`summary()` 中自动报告 `C = c / A(1)`，并通过
+`level_intercept_inference()` 对完整协方差矩阵做 delta-method 变换。
+底层原始 `params["intercept"]` 仍保留，便于复核似然、协方差和优化器参数顺序；
+用户不应再向 `exog` 手工加入常数列。
 
 `result.distributed_lags["price"]` 提供结构化单输入结果；
 `distributed_lag_coefficients` 自动列出估计值、标准误、p 值和 fixed 标记；

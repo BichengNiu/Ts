@@ -21,8 +21,17 @@ def test_integer_orders_expand_to_contiguous_active_lags():
 
     assert spec.numerator_lags == (0, 1, 2, 3)
     assert spec.denominator_lags == (1, 2)
+    assert spec.initialization == "auto"
+    assert spec.resolved_initialization == "steady_state"
     assert spec.fixed_numerator_lags == ()
     assert spec.fixed_denominator_lags == ()
+
+
+def test_auto_initialization_resolves_finite_lags_to_conditional_likelihood():
+    spec = RationalLagSpec(numerator=3, denominator=0)
+
+    assert spec.initialization == "auto"
+    assert spec.resolved_initialization == "conditional"
 
 
 def test_sparse_orders_fix_omitted_polynomial_coefficients_at_zero():
@@ -278,6 +287,21 @@ def test_filter_initialization_is_explicit():
     np.testing.assert_allclose(steady, [2.0, 2.0, 2.0, 2.0])
 
 
+def test_auto_filter_uses_steady_state_for_a_rational_denominator():
+    values = np.ones(4)
+    numerator = np.array([1.0])
+    denominator = np.array([1.0, -0.5])
+
+    automatic = _filter_input(
+        values,
+        numerator,
+        denominator,
+        initialization="auto",
+    )
+
+    np.testing.assert_allclose(automatic, [2.0, 2.0, 2.0, 2.0])
+
+
 def test_finite_sparse_rdl_matches_explicit_lagged_regression():
     rng = np.random.default_rng(2301)
     x = rng.normal(size=300)
@@ -290,7 +314,13 @@ def test_finite_sparse_rdl_matches_explicit_lagged_regression():
         exog_names=["x"],
         order=(0, 0, 0),
         trend="n",
-        distributed_lags={"x": RationalLagSpec(numerator=(0, 2), denominator=0)},
+        distributed_lags={
+            "x": RationalLagSpec(
+                numerator=(0, 2),
+                denominator=0,
+                initialization="zero",
+            )
+        },
     ).fit(method="bfgs", maxiter=200, require_convergence=True)
     explicit = SARIMAX(
         y,
@@ -305,6 +335,47 @@ def test_finite_sparse_rdl_matches_explicit_lagged_regression():
     assert "rdl.x.omega.L1" not in rdl.params
     assert rdl.fixed_params["rdl.x.omega.L1"] == 0.0
     assert "rdl.x.omega.L1" in rdl.summary()
+
+
+def test_auto_finite_rdl_uses_complete_history_and_robust_ar_start():
+    rng = np.random.default_rng(2312)
+    nobs = 420
+    x = rng.normal(loc=8.0, scale=1.5, size=nobs)
+    lag1 = np.r_[0.0, x[:-1]]
+    lag2 = np.r_[0.0, 0.0, x[:-2]]
+    disturbance = lfilter([1.0], [1.0, -0.82], rng.normal(scale=0.2, size=nobs))
+    y = 12.0 + 1.1 * x - 0.7 * lag1 + 0.35 * lag2 + disturbance
+
+    rdl = SARIMAX(
+        y,
+        exog=pd.Series(x, name="x"),
+        order=(1, 0, 0),
+        trend="c",
+        distributed_lags={"x": RationalLagSpec(numerator=2, denominator=0)},
+    ).fit(method="bfgs", maxiter=400, require_convergence=True)
+    explicit = SARIMAX(
+        y[2:],
+        exog=np.column_stack([x[2:], lag1[2:], lag2[2:]]),
+        exog_names=["x0", "x1", "x2"],
+        order=(1, 0, 0),
+        trend="c",
+    ).fit(method="bfgs", maxiter=400, require_convergence=True)
+
+    assert rdl.likelihood_burn == 3
+    assert rdl.effective_nobs == nobs - 3
+    assert len(rdl.residuals) == rdl.effective_nobs
+    assert rdl.level_intercept == pytest.approx(explicit.level_intercept, abs=0.12)
+    assert rdl.params["ar.L1"] == pytest.approx(explicit.params["ar.L1"], abs=0.02)
+    assert rdl.params["rdl.x.omega.L0"] == pytest.approx(
+        explicit.params["x0"], abs=0.02
+    )
+    assert rdl.params["rdl.x.omega.L1"] == pytest.approx(
+        explicit.params["x1"], abs=0.02
+    )
+    assert rdl.params["rdl.x.omega.L2"] == pytest.approx(
+        explicit.params["x2"], abs=0.02
+    )
+    assert "initialization auto -> conditional" in rdl.summary()
 
 
 def test_named_series_exog_uses_its_name_for_rdl_mapping():

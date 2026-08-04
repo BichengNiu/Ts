@@ -15,7 +15,7 @@ from statsmodels.tsa.statespace.tools import (
 )
 
 
-_RDL_INITIALIZATIONS = frozenset({"zero", "steady_state"})
+_RDL_INITIALIZATIONS = frozenset({"auto", "zero", "steady_state"})
 
 
 def _normalise_nonnegative_integer(value, name):
@@ -79,8 +79,10 @@ class RationalLagSpec:
         Contiguous denominator order or exact active positive lags.
     delay : int, default 0
         Pure input delay before the numerator polynomial.
-    initialization : {"zero", "steady_state"}, default "zero"
-        Pre-sample transfer-filter state.
+    initialization : {"auto", "zero", "steady_state"}, default "auto"
+        Pre-sample transfer-filter policy. ``"auto"`` uses a conditional
+        likelihood for finite lags and a steady-state pre-sample input level
+        for a rational denominator.
 
     Attributes
     ----------
@@ -102,7 +104,7 @@ class RationalLagSpec:
     numerator: object = 0
     denominator: object = 0
     delay: int = 0
-    initialization: str = "zero"
+    initialization: str = "auto"
     numerator_lags: tuple[int, ...] = field(init=False)
     denominator_lags: tuple[int, ...] = field(init=False)
 
@@ -121,7 +123,9 @@ class RationalLagSpec:
         )
         delay = _normalise_nonnegative_integer(self.delay, "delay")
         if self.initialization not in _RDL_INITIALIZATIONS:
-            raise ValueError("initialization must be 'zero' or 'steady_state'")
+            raise ValueError(
+                "initialization must be 'auto', 'zero', or 'steady_state'"
+            )
 
         object.__setattr__(self, "numerator_lags", numerator_lags)
         object.__setattr__(self, "denominator_lags", denominator_lags)
@@ -140,6 +144,13 @@ class RationalLagSpec:
         maximum = max(self.denominator_lags)
         active = set(self.denominator_lags)
         return tuple(lag for lag in range(1, maximum + 1) if lag not in active)
+
+    @property
+    def resolved_initialization(self):
+        """Return the concrete pre-sample policy used by the estimator."""
+        if self.initialization != "auto":
+            return self.initialization
+        return "steady_state" if self.denominator_lags else "conditional"
 
     def parameter_names(self, input_name):
         """Return fitted parameter names for one distributed-lag input.
@@ -176,10 +187,14 @@ def _filter_input(values, numerator, denominator, *, initialization):
     values = np.asarray(values)
     numerator = np.asarray(numerator)
     denominator = np.asarray(denominator)
+    if initialization == "auto":
+        initialization = "steady_state" if len(denominator) > 1 else "zero"
     if initialization == "zero":
         return lfilter(numerator, denominator, values)
     if initialization != "steady_state":
-        raise ValueError("initialization must be 'zero' or 'steady_state'")
+        raise ValueError(
+            "initialization must be 'auto', 'zero', or 'steady_state'"
+        )
 
     initial_state = lfilter_zi(numerator, denominator) * values[0]
     if initial_state.size == 0:
@@ -541,7 +556,7 @@ def _lagged_values(values, lag, initialization):
     values = np.asarray(values)
     if lag == 0:
         return values.copy()
-    fill = 0.0 if initialization == "zero" else values[0]
+    fill = 0.0 if initialization in {"auto", "zero"} else values[0]
     shifted = np.full(len(values), fill, dtype=values.dtype)
     if lag < len(values):
         shifted[lag:] = values[:-lag]
@@ -558,6 +573,7 @@ class _RationalLagSARIMAX(StatsmodelsSARIMAX):
         distributed_inputs,
         distributed_lags,
         enforce_distributed_lag_stability,
+        rdl_loglikelihood_burn=0,
         **kwargs,
     ):
         input_names = tuple(distributed_lags)
@@ -569,8 +585,13 @@ class _RationalLagSARIMAX(StatsmodelsSARIMAX):
         self._rdl_input_names = ()
         self._rdl_specs = ()
         self._rdl_inputs = input_values
+        self._rdl_loglikelihood_burn = int(rdl_loglikelihood_burn)
         self.enforce_distributed_lag_stability = bool(enforce_distributed_lag_stability)
         super().__init__(endog, **kwargs)
+        self.loglikelihood_burn = max(
+            int(self.loglikelihood_burn),
+            self._rdl_loglikelihood_burn,
+        )
 
         self._base_k_params = self.k_params
         self._base_param_names = tuple(super().param_names)
@@ -601,6 +622,7 @@ class _RationalLagSARIMAX(StatsmodelsSARIMAX):
                 "enforce_distributed_lag_stability": (
                     self.enforce_distributed_lag_stability
                 ),
+                "rdl_loglikelihood_burn": self._rdl_loglikelihood_burn,
             }
         )
         return self._clone_from_init_kwds(endog, exog=exog, **kwargs)
@@ -632,12 +654,17 @@ class _RationalLagSARIMAX(StatsmodelsSARIMAX):
 
         numerator_columns = []
         for values, spec in zip(self._rdl_inputs.T, self._rdl_specs, strict=True):
+            initialization = (
+                spec.resolved_initialization
+                if spec.resolved_initialization != "conditional"
+                else "zero"
+            )
             numerator_columns.extend(
                 [
                     _lagged_values(
                         values,
                         spec.delay + lag,
-                        spec.initialization,
+                        initialization,
                     )
                     for lag in spec.numerator_lags
                 ]
@@ -647,8 +674,61 @@ class _RationalLagSARIMAX(StatsmodelsSARIMAX):
 
         if regressors:
             design = np.column_stack(regressors)
-            estimates = np.linalg.pinv(design).dot(np.asarray(self.endog).squeeze())
+            valid_start = self._rdl_loglikelihood_burn
+            valid_design = design[valid_start:]
+            valid_endog = np.asarray(self.endog).squeeze()[valid_start:]
+            estimates = np.linalg.pinv(valid_design).dot(valid_endog)
             numerator_start = estimates[-len(numerator_columns) :]
+
+            regression_width = design.shape[1] - len(numerator_columns)
+            base[:regression_width] = estimates[:regression_width]
+
+            d = int(self.order[1])
+            D = int(self.seasonal_order[1])
+            if d == 0 and D == 0 and len(valid_endog) >= 10:
+                residuals = valid_endog - valid_design.dot(estimates)
+                disturbance_model = StatsmodelsSARIMAX(
+                    residuals,
+                    order=self.order,
+                    seasonal_order=self.seasonal_order,
+                    trend="n",
+                    enforce_stationarity=self.enforce_stationarity,
+                    enforce_invertibility=self.enforce_invertibility,
+                )
+                disturbance_start = np.asarray(
+                    disturbance_model.start_params,
+                    dtype=float,
+                )
+                disturbance_params = dict(
+                    zip(
+                        disturbance_model.param_names,
+                        disturbance_start,
+                        strict=True,
+                    )
+                )
+                for position, name in enumerate(self._base_param_names):
+                    value = disturbance_params.get(name)
+                    if value is not None and np.isfinite(value):
+                        base[position] = value
+
+                if "intercept" in self._base_param_names:
+                    nonseasonal_ar = sum(
+                        value
+                        for name, value in disturbance_params.items()
+                        if name.startswith("ar.L") and not name.startswith("ar.S")
+                    )
+                    seasonal_ar = sum(
+                        value
+                        for name, value in disturbance_params.items()
+                        if name.startswith("ar.S")
+                    )
+                    reduced_ar_at_one = (1.0 - nonseasonal_ar) * (
+                        1.0 - seasonal_ar
+                    )
+                    intercept_position = self._base_param_names.index("intercept")
+                    base[intercept_position] = (
+                        estimates[intercept_position] * reduced_ar_at_one
+                    )
         else:
             numerator_start = np.zeros(len(numerator_columns))
 

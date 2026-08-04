@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 
 from Ts.TsUtils._validation import (
@@ -50,6 +51,9 @@ _SARIMAX_OPTIMIZERS = frozenset(
         "nm",
         "powell",
     }
+)
+_SARIMAX_COVARIANCE_TYPES = frozenset(
+    {"approx", "oim", "opg", "robust", "robust_approx"}
 )
 
 
@@ -168,6 +172,16 @@ def _normalise_start_params(start_params):
     return values.copy()
 
 
+def _normalise_cov_type(cov_type):
+    if not isinstance(cov_type, str):
+        raise TypeError("cov_type must be a string")
+    cov_type = cov_type.strip().lower()
+    if cov_type not in _SARIMAX_COVARIANCE_TYPES:
+        allowed = ", ".join(sorted(_SARIMAX_COVARIANCE_TYPES))
+        raise ValueError(f"cov_type must be one of: {allowed}")
+    return cov_type
+
+
 def _normalise_require_convergence(require_convergence):
     """Return an explicit boolean convergence requirement."""
     if not isinstance(require_convergence, (bool, np.bool_)):
@@ -201,6 +215,25 @@ def _active_lags(order_component):
 
 def _maximum_lag(order_component):
     return max(_active_lags(order_component), default=0)
+
+
+def _automatic_rdl_likelihood_burn(distributed_lags, order, seasonal_order):
+    """Return burn needed to flush incomplete finite input history."""
+    histories = [
+        spec.delay + max(spec.numerator_lags)
+        for spec in distributed_lags.values()
+        if spec.initialization == "auto" and not spec.denominator_lags
+    ]
+    input_history = max(histories, default=0)
+    if input_history == 0:
+        return 0
+
+    p, d, q = order
+    P, D, Q, s = seasonal_order
+    ar_depth = _maximum_lag(p) + _maximum_lag(P) * s
+    ma_depth = _maximum_lag(q) + _maximum_lag(Q) * s
+    integration_depth = d + D * s
+    return input_history + max(ar_depth, ma_depth, integration_depth)
 
 
 def _display_order(order):
@@ -876,6 +909,18 @@ class SARIMAXResult(BaseModelResult):
         details = getattr(self._statsmodels_result, "mle_retvals", None)
         return {} if details is None else copy.deepcopy(dict(details))
 
+    @property
+    def likelihood_burn(self):
+        """Number of leading observations excluded from the likelihood."""
+        if self._statsmodels_result is None:
+            return 0
+        return int(self._statsmodels_result.loglikelihood_burn)
+
+    @property
+    def effective_nobs(self):
+        """Number of observations contributing to the fitted likelihood."""
+        return self.nobs - self.likelihood_burn
+
     def _mask_state_initialization(self, values):
         """Mask state-space burn-in values that are not valid fitted data."""
         if values is None:
@@ -1254,10 +1299,13 @@ class SARIMAXResult(BaseModelResult):
             denominator = (
                 ", ".join(str(lag) for lag in result.spec.denominator_lags) or "none"
             )
+            initialization = result.spec.initialization
+            if initialization == "auto":
+                initialization += f" -> {result.spec.resolved_initialization}"
             header_lines.append(
                 f"RDL {name}          : numerator [{numerator}]; "
                 f"denominator [{denominator}]; delay {result.spec.delay}; "
-                f"initialization {result.spec.initialization}"
+                f"initialization {initialization}"
             )
             gain = result.steady_state_gain
             gain_text = "undefined" if not np.isfinite(gain) else f"{gain:.4f}"
@@ -1277,6 +1325,22 @@ class SARIMAXResult(BaseModelResult):
         if self.log:
             header_lines.append(
                 "Response Scale     : original (log fit; bias-adjusted mean)"
+            )
+        level_inference = None if self.log else self.level_intercept_inference()
+        if level_inference is not None:
+            header_lines.append(
+                f"Level Intercept C    : {level_inference['estimate']:.4f} "
+                f"(SE={level_inference['standard_error']:.4f}, "
+                f"|t|={abs(level_inference['statistic']):.2f})"
+            )
+            if "intercept" in self.params:
+                header_lines.append(
+                    f"State Intercept c    : {self.params['intercept']:.4f}"
+                )
+        if self.likelihood_burn:
+            header_lines.append(
+                f"Likelihood Burn      : {self.likelihood_burn} "
+                f"(effective n={self.effective_nobs})"
             )
         if self.fixed_params:
             header_lines.append("Fixed at Zero      : " + ", ".join(self.fixed_params))
@@ -1985,6 +2049,43 @@ class SARIMAXResult(BaseModelResult):
         fig.tight_layout(pad=1.5)
         return fig, ax
 
+    @property
+    def level_intercept(self):
+        """Return the constant on the original regression level.
+
+        Statsmodels' SARIMAX ``trend="c"`` parameter is the state-equation
+        intercept.  For an undifferenced stationary model, the corresponding
+        regression-level constant is ``intercept / A(1)``, where ``A`` is the
+        complete reduced AR polynomial.
+        """
+        if self._statsmodels_result is None:
+            raise RuntimeError("No fitted statsmodels result available")
+        if self.log:
+            raise NotImplementedError(
+                "level_intercept is not available for log=True because "
+                "an original-scale constant requires a scale definition"
+            )
+
+        _p, d, _q = self._order
+        _P, D, _Q, _s = self._seasonal_order
+        if (d or 0) + (D or 0) > 0:
+            return None
+        if self._trend in ("t", "ct", "ctt"):
+            return None
+        if not self.is_stationary:
+            return None
+        if self._trend == "n":
+            return 0.0
+
+        reduced_ar = np.asarray(
+            self._statsmodels_result.polynomial_reduced_ar,
+            dtype=float,
+        )
+        denominator = float(np.sum(reduced_ar))
+        if abs(denominator) < 1e-10:
+            return None
+        return self.params.get("intercept", 0.0) / denominator
+
     def long_run_equilibrium(self):
         """Return the unconditional mean (long-run equilibrium) of the
         estimated SARIMAX process.
@@ -2022,43 +2123,93 @@ class SARIMAXResult(BaseModelResult):
         >>> equilibrium is None
         False
         """
-        if self._statsmodels_result is None:
-            raise RuntimeError("No fitted statsmodels result available")
         if self.log:
             raise NotImplementedError(
                 "long_run_equilibrium is not available for log=True because "
                 "an original-scale mean requires the unconditional log variance"
             )
+        return self.level_intercept
 
-        _p, d, _q = self._order
-        _P, D, _Q, _s = self._seasonal_order
+    def level_intercept_inference(self, alpha=0.05):
+        """Return delta-method inference for the original-level constant.
 
-        # Differencing removes the unconditional mean
-        if (d or 0) + (D or 0) > 0:
+        Parameters
+        ----------
+        alpha : float, default 0.05
+            Two-sided significance level for the confidence interval.
+
+        Returns
+        -------
+        dict or None
+            Estimate, standard error, z statistic, p value, and confidence
+            limits, or ``None`` when :attr:`level_intercept` is undefined.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(
+        ...     n=120, order=(1, 0, 0), ar=[0.5], const=2.0, seed=42
+        ... ).data
+        >>> result = SARIMAX(data, order=(1, 0, 0), trend="c").fit()
+        >>> inference = result.level_intercept_inference()
+        >>> inference["standard_error"] > 0.0
+        True
+        """
+        alpha = _validate_prediction_alpha(alpha)
+        estimate = self.level_intercept
+        if estimate is None or self._trend == "n":
             return None
 
-        # Trend-stationary — no constant long-run equilibrium
-        if self._trend in ("t", "ct", "ctt"):
-            return None
-
-        # Check stationarity of the complete reduced AR polynomial.
-        if not self.is_stationary:
-            return None
-
-        # trend="n" — zero-mean process
-        if self._trend == "n":
-            return 0.0
-
-        intercept = self.params.get("intercept", 0.0)
-        reduced_ar = np.asarray(
-            self._statsmodels_result.polynomial_reduced_ar,
-            dtype=float,
+        fitted = self._statsmodels_result
+        names = tuple(fitted.param_names)
+        gradient = np.zeros(len(names), dtype=float)
+        intercept_position = names.index("intercept")
+        raw_intercept = float(fitted.params[intercept_position])
+        nonseasonal_ar = sum(
+            float(fitted.params[position])
+            for position, name in enumerate(names)
+            if name.startswith("ar.L")
         )
-        denom = float(np.sum(reduced_ar))
-        if abs(denom) < 1e-10:
-            return None
+        seasonal_ar = sum(
+            float(fitted.params[position])
+            for position, name in enumerate(names)
+            if name.startswith("ar.S.L")
+        )
+        nonseasonal_at_one = 1.0 - nonseasonal_ar
+        seasonal_at_one = 1.0 - seasonal_ar
+        reduced_at_one = nonseasonal_at_one * seasonal_at_one
+        gradient[intercept_position] = 1.0 / reduced_at_one
+        for position, name in enumerate(names):
+            if name.startswith("ar.L"):
+                gradient[position] = (
+                    raw_intercept * seasonal_at_one / reduced_at_one**2
+                )
+            elif name.startswith("ar.S.L"):
+                gradient[position] = (
+                    raw_intercept * nonseasonal_at_one / reduced_at_one**2
+                )
+        covariance = np.asarray(fitted.cov_params(), dtype=float)
+        variance = float(gradient @ covariance @ gradient)
+        standard_error = np.sqrt(max(variance, 0.0))
 
-        return intercept / denom
+        statistic = (
+            np.nan if standard_error == 0.0 else float(estimate / standard_error)
+        )
+        p_value = (
+            np.nan
+            if not np.isfinite(statistic)
+            else float(2.0 * norm.sf(abs(statistic)))
+        )
+        critical = float(norm.ppf(1.0 - alpha / 2.0))
+        return {
+            "estimate": float(estimate),
+            "standard_error": float(standard_error),
+            "statistic": statistic,
+            "p_value": p_value,
+            "lower": float(estimate - critical * standard_error),
+            "upper": float(estimate + critical * standard_error),
+        }
 
 
 class SARIMAX(BaseModel):
@@ -2272,6 +2423,7 @@ class SARIMAX(BaseModel):
         start_params=None,
         method="lbfgs",
         maxiter=50,
+        cov_type="opg",
         require_convergence=False,
     ):
         """Estimate the SARIMAX model via maximum likelihood.
@@ -2287,6 +2439,10 @@ class SARIMAX(BaseModel):
             ``"ncg"``, and ``"basinhopping"``.
         maxiter : int, default 50
             Strictly positive maximum number of optimizer iterations.
+        cov_type : str, default ``"opg"``
+            Parameter covariance estimator passed to statsmodels. Use
+            ``"oim"`` for observed-information standard errors such as the
+            preliminary LTF table in the textbook.
         require_convergence : bool, default False
             Raise :class:`RuntimeError` instead of returning a result when the
             optimizer does not report convergence.
@@ -2306,6 +2462,7 @@ class SARIMAX(BaseModel):
         """
         method = _normalise_fit_method(method)
         maxiter = _normalise_maxiter(maxiter)
+        cov_type = _normalise_cov_type(cov_type)
         start_params = _normalise_start_params(start_params)
         require_convergence = _normalise_require_convergence(require_convergence)
 
@@ -2338,6 +2495,16 @@ class SARIMAX(BaseModel):
             "enforce_invertibility": self.enforce_invertibility,
         }
         if self.distributed_lags:
+            rdl_likelihood_burn = _automatic_rdl_likelihood_burn(
+                self.distributed_lags,
+                self.order,
+                self.seasonal_order,
+            )
+            if rdl_likelihood_burn >= len(self._model_data):
+                raise ValueError(
+                    "automatic RDL initialization leaves no observations for "
+                    "likelihood estimation"
+                )
             model = _RationalLagSARIMAX(
                 self._model_data,
                 distributed_inputs=self.distributed_inputs,
@@ -2345,6 +2512,7 @@ class SARIMAX(BaseModel):
                 enforce_distributed_lag_stability=(
                     self.enforce_distributed_lag_stability
                 ),
+                rdl_loglikelihood_burn=rdl_likelihood_burn,
                 **model_kwargs,
             )
         else:
@@ -2358,6 +2526,7 @@ class SARIMAX(BaseModel):
             start_params=start_params,
             method=method,
             maxiter=maxiter,
+            cov_type=cov_type,
             disp=False,
         )
         converged = bool(fitted.mle_retvals.get("converged", False))

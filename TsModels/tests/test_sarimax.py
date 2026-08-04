@@ -147,11 +147,13 @@ class TestSARIMAX:
                 start_params=start_params,
                 method="powell",
                 maxiter=250,
+                cov_type="oim",
             )
 
         start_params[:] = -1.0
         assert captured["method"] == "powell"
         assert captured["maxiter"] == 250
+        assert captured["cov_type"] == "oim"
         assert captured["disp"] is False
         np.testing.assert_array_equal(
             captured["start_params"],
@@ -166,6 +168,8 @@ class TestSARIMAX:
             ({"method": "unknown"}, ValueError, "method"),
             ({"maxiter": 0}, ValueError, "maxiter"),
             ({"maxiter": True}, TypeError, "maxiter"),
+            ({"cov_type": 1}, TypeError, "cov_type"),
+            ({"cov_type": "unknown"}, ValueError, "cov_type"),
             ({"start_params": [1.0, np.nan, 2.0]}, ValueError, "finite"),
             ({"start_params": [[1.0, 2.0, 3.0]]}, ValueError, "one-dimensional"),
             ({"start_params": [1.0, 2.0]}, ValueError, "3 parameters"),
@@ -898,7 +902,20 @@ class TestSARIMAXSparseLags:
         expected = sparse_ar_result.params["intercept"] / (
             1.0 - sparse_ar_result.params["ar.L1"] - sparse_ar_result.params["ar.L3"]
         )
+        inference = sparse_ar_result.level_intercept_inference()
+        assert sparse_ar_result.level_intercept == pytest.approx(expected)
+        assert inference["estimate"] == pytest.approx(expected)
+        assert inference["standard_error"] > 0.0
+        assert inference["lower"] < expected < inference["upper"]
         assert sparse_ar_result.long_run_equilibrium() == pytest.approx(expected)
+        assert f"Level Intercept C    : {expected:.4f}" in sparse_ar_result.summary()
+
+    def test_level_intercept_is_not_available_after_differencing(self, ar1_data):
+        from Ts.TsModels._sarimax import SARIMAX
+
+        result = SARIMAX(np.cumsum(ar1_data), order=(0, 1, 0), trend="c").fit()
+
+        assert result.level_intercept is None
 
     def test_sparse_lags_are_sorted_and_immutable(self, ar1_data):
         from Ts.TsModels._sarimax import SARIMAX
