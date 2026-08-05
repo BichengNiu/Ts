@@ -34,6 +34,11 @@ This package implements statistical tests for time series analysis:
 - :class:`FeedbackTest` — conditional predictive-feedback F tests for
   stochastic distributed-lag inputs.
 
+**Transfer-function diagnostics**
+
+- :class:`ResidualCCFTest` — residual cross-correlations and the joint
+  Box-Jenkins S* adequacy test for prewhitened transfer inputs.
+
 Quick start
 -----------
 >>> from Ts.TsTests import (
@@ -60,6 +65,11 @@ from ._ljungbox import LjungBoxTest, LjungBoxTestResult
 from ._normality import NormalityTest, NormalityTestResult
 from ._perron import PerronTest, PerronTestResult
 from ._phillips_perron import PhillipsPerronTest, PhillipsPerronTestResult
+from ._residual_ccf import (
+    ResidualCCFInputResult,
+    ResidualCCFTest,
+    ResidualCCFTestResult,
+)
 from ._toda_yamamoto import TodaYamamotoTest, TodaYamamotoTestResult
 from ._zivot import ZivotAndrewsTest, ZivotAndrewsTestResult
 
@@ -94,6 +104,9 @@ __all__ = [
     "PerronTestResult",
     "PhillipsPerronTest",
     "PhillipsPerronTestResult",
+    "ResidualCCFInputResult",
+    "ResidualCCFTest",
+    "ResidualCCFTestResult",
     "TodaYamamotoTest",
     "TodaYamamotoTestResult",
     "ZivotAndrewsTest",

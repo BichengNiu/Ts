@@ -9,6 +9,8 @@ from scipy.signal import lfilter
 import matplotlib.pyplot as plt
 
 from Ts.TsModels import AutoSARIMAX, SARIMAX, SARIMAXResult
+from Ts.TsSims import RDLInputSpec, simulate_rdl
+from Ts.TsTests import ResidualCCFTestResult
 from Ts.TsModels._distributed_lag import (
     RationalLagResult,
     RationalLagSpec,
@@ -707,3 +709,239 @@ def test_intervention_bootstrap_refit_preserves_rdl_backend():
 
     assert names == tuple(fitted.params)
     assert parameters.shape == (len(fitted.params),)
+
+
+def _fitted_rdl_and_input_model(*, dates=None):
+    rng = np.random.default_rng(2410)
+    innovations = rng.normal(size=180)
+    x = lfilter([1.0], [1.0, -0.55], innovations)
+    y = lfilter([0.0, 0.0, 1.25], [1.0], x) + rng.normal(scale=0.25, size=180)
+    if dates is None:
+        response = y
+        input_data = pd.Series(x, name="x")
+    else:
+        response = pd.Series(y, index=dates, name="sales")
+        input_data = pd.Series(x, index=dates, name="x")
+    fitted = SARIMAX(
+        response,
+        exog=input_data,
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={
+            "x": RationalLagSpec(numerator=0, denominator=0, delay=2)
+        },
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+    input_model = SARIMAX(
+        input_data,
+        order=(1, 0, 0),
+        trend="n",
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+    return fitted, input_model, x
+
+
+def test_rdl_result_runs_residual_ccf_with_fitted_input_model():
+    fitted, input_model, _ = _fitted_rdl_and_input_model()
+
+    diagnostic = fitted.residual_ccf_test(
+        {"x": input_model},
+        lags=6,
+    )
+
+    assert isinstance(diagnostic, ResidualCCFTestResult)
+    item = diagnostic.get("x")
+    assert item.transfer_params == 1
+    assert item.df == 6
+    assert item.nobs == min(len(fitted.residuals), len(input_model.residuals))
+
+
+def test_rdl_residual_ccf_counts_only_active_sparse_transfer_parameters():
+    rng = np.random.default_rng(2411)
+    x = rng.normal(size=190)
+    y = lfilter([1.0, 0.0, -0.35], [1.0], x) + rng.normal(scale=0.2, size=190)
+    fitted = SARIMAX(
+        y,
+        exog=pd.Series(x, name="x"),
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x": RationalLagSpec(numerator=(0, 2), denominator=0)},
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+    input_model = SARIMAX(x, order=(0, 0, 0), trend="n").fit()
+
+    item = fitted.residual_ccf_test({"x": input_model}, lags=6).get("x")
+
+    assert item.transfer_params == 2
+    assert item.df == 5
+
+
+def test_rdl_residual_ccf_validates_models_inputs_and_convergence():
+    fitted, input_model, x = _fitted_rdl_and_input_model()
+
+    with pytest.raises(TypeError, match="mapping"):
+        fitted.residual_ccf_test(input_model, lags=4)
+    with pytest.raises(ValueError, match="missing fitted input model"):
+        fitted.residual_ccf_test({}, lags=4)
+    with pytest.raises(ValueError, match="input_models contains unknown"):
+        fitted.residual_ccf_test({"x": input_model, "z": input_model}, lags=4)
+    with pytest.raises(ValueError, match="unknown RDL input"):
+        fitted.residual_ccf_test({"x": input_model}, lags=4, inputs="z")
+    with pytest.raises(TypeError, match="SARIMAXResult"):
+        fitted.residual_ccf_test({"x": object()}, lags=4)
+
+    wrong_data_model = SARIMAX(x + 0.01, order=(1, 0, 0), trend="n").fit()
+    with pytest.raises(ValueError, match="exact historical input"):
+        fitted.residual_ccf_test({"x": wrong_data_model}, lags=4)
+
+    controlled_input_model = SARIMAX(
+        x,
+        exog=np.arange(len(x), dtype=float),
+        exog_names=["trend_proxy"],
+        order=(1, 0, 0),
+        trend="n",
+    ).fit()
+    with pytest.raises(ValueError, match="input-only"):
+        fitted.residual_ccf_test({"x": controlled_input_model}, lags=4)
+
+    original = input_model._statsmodels_result.mle_retvals["converged"]
+    input_model._statsmodels_result.mle_retvals["converged"] = False
+    try:
+        with pytest.raises(RuntimeError, match="did not converge"):
+            fitted.residual_ccf_test({"x": input_model}, lags=4)
+    finally:
+        input_model._statsmodels_result.mle_retvals["converged"] = original
+
+
+def test_rdl_residual_ccf_requires_matching_calendar_metadata():
+    dates = pd.date_range("2000-01-01", periods=180, freq="MS")
+    fitted, dated_input_model, x = _fitted_rdl_and_input_model(dates=dates)
+
+    diagnostic = fitted.residual_ccf_test({"x": dated_input_model}, lags=4)
+    assert diagnostic.input_names == ("x",)
+
+    undated_input_model = SARIMAX(x, order=(1, 0, 0), trend="n").fit()
+    with pytest.raises(ValueError, match="calendar"):
+        fitted.residual_ccf_test({"x": undated_input_model}, lags=4)
+
+
+def test_residual_ccf_requires_a_converged_rdl_model():
+    fitted, input_model, _ = _fitted_rdl_and_input_model()
+    original = fitted._statsmodels_result.mle_retvals["converged"]
+    fitted._statsmodels_result.mle_retvals["converged"] = False
+    try:
+        with pytest.raises(RuntimeError, match="RDL model did not converge"):
+            fitted.residual_ccf_test({"x": input_model}, lags=4)
+    finally:
+        fitted._statsmodels_result.mle_retvals["converged"] = original
+
+
+def test_residual_ccf_is_only_available_for_rdl_results():
+    rng = np.random.default_rng(2412)
+    x = rng.normal(size=80)
+    fitted = SARIMAX(
+        rng.normal(size=80),
+        exog=pd.Series(x, name="x"),
+        order=(0, 0, 0),
+        trend="n",
+    ).fit()
+    input_model = SARIMAX(x, order=(0, 0, 0), trend="n").fit()
+
+    with pytest.raises(ValueError, match="rational distributed-lag"):
+        fitted.residual_ccf_test({"x": input_model}, lags=4)
+
+
+def test_residual_ccf_identifies_an_omitted_finite_transfer_lag():
+    simulated = simulate_rdl(
+        n=600,
+        distributed_lags={
+            "x": RDLInputSpec(
+                numerator={0: 0.7, 1: -0.25, 2: 1.1},
+                denominator={},
+            )
+        },
+        sigma2=0.09,
+        seed=2413,
+    )
+    input_model = SARIMAX(
+        simulated.exog["x"],
+        order=(0, 0, 0),
+        trend="n",
+    ).fit()
+    omitted = SARIMAX(
+        simulated.data,
+        exog=simulated.exog,
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x": RationalLagSpec(numerator=1, denominator=0)},
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+    correct = SARIMAX(
+        simulated.data,
+        exog=simulated.exog,
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x": RationalLagSpec(numerator=2, denominator=0)},
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+
+    omitted_ccf = omitted.residual_ccf_test({"x": input_model}, lags=6).get("x")
+    correct_ccf = correct.residual_ccf_test({"x": input_model}, lags=6).get("x")
+
+    assert 2 in omitted_ccf.significant_lags
+    assert omitted_ccf.correlations.loc[2] > 0.75
+    assert omitted_ccf.reject
+    assert 2 not in correct_ccf.significant_lags
+    assert abs(correct_ccf.correlations.loc[2]) < 0.10
+
+
+def test_rdl_residual_ccf_supports_multiple_inputs_subsets_and_auto_models():
+    rng = np.random.default_rng(2414)
+    x1 = lfilter([1.0], [1.0, -0.4], rng.normal(size=220))
+    x2 = lfilter([1.0], [1.0, -0.25], rng.normal(size=220))
+    exog = pd.DataFrame({"x1": x1, "x2": x2})
+    y = 0.8 * x1 - 0.55 * x2 + rng.normal(scale=0.25, size=220)
+    fitted = SARIMAX(
+        y,
+        exog=exog,
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x1": RationalLagSpec(), "x2": RationalLagSpec()},
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+    x1_model = AutoSARIMAX(
+        exog["x1"],
+        p=(1, 1),
+        d=(0, 0),
+        q=(0, 0),
+        P=(0, 0),
+        D=(0, 0),
+        Q=(0, 0),
+        trend="n",
+    ).fit()
+    x2_model = SARIMAX(exog["x2"], order=(1, 0, 0), trend="n").fit()
+    models = {"x1": x1_model, "x2": x2_model}
+
+    all_inputs = fitted.residual_ccf_test(models, lags=5)
+    subset = fitted.residual_ccf_test(models, lags=5, inputs="x2")
+
+    assert all_inputs.input_names == ("x1", "x2")
+    assert subset.input_names == ("x2",)
+    assert all_inputs.tests["transfer_params"].tolist() == [1, 1]
+
+
+def test_rdl_residual_ccf_rejects_a_hidden_log_prewhitening_transform():
+    rng = np.random.default_rng(2415)
+    x = np.exp(rng.normal(scale=0.3, size=120))
+    input_data = pd.Series(x, name="x")
+    y = 0.7 * x + rng.normal(scale=0.2, size=120)
+    fitted = SARIMAX(
+        y,
+        exog=input_data,
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x": RationalLagSpec()},
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+    logged_input_model = SARIMAX(
+        input_data,
+        order=(0, 0, 0),
+        trend="n",
+        log=True,
+    ).fit()
+
+    with pytest.raises(ValueError, match="untransformed input scale"):
+        fitted.residual_ccf_test({"x": logged_input_model}, lags=4)

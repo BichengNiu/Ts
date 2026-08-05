@@ -1,7 +1,7 @@
 # `TsTests` — 时间序列统计检验包
 
 提供时间序列分析中常用的统计检验，涵盖标准单位根检验、结构突变单位根检验、
-回归参数稳定性检验、ARCH 效应检验、正态性检验、协整与因果检验。
+回归参数稳定性检验、ARCH 效应检验、正态性检验、协整、因果检验与传递函数诊断。
 
 ## 交互式帮助
 
@@ -35,6 +35,7 @@ TsTests/
 ├── _johansen.py          # JohansenTest + JohansenTestResult
 ├── _toda_yamamoto.py     # TodaYamamotoTest + TodaYamamotoTestResult
 ├── _feedback.py          # FeedbackTest + per-input OLS/F-test results
+├── _residual_ccf.py      # ResidualCCFTest + 逐输入 CCF/S* 结果
 ├── tests/                # 单元测试
 │   ├── test_adf.py
 │   ├── test_phillips_perron.py
@@ -71,6 +72,7 @@ from Ts.TsTests import (
     EngleLMTest,
     NormalityTest,
     FeedbackTest,
+    ResidualCCFTest,
 )
 
 # ADF 检验
@@ -141,6 +143,16 @@ print(ty.summary())
 feedback = FeedbackTest(y, X, lags=4).fit()
 print(feedback.summary())       # 每个输入的完整 OLS + 联合 F 检验
 print(feedback.tests)           # 紧凑的逐输入检验表
+
+# 传递函数残差 CCF：output_residuals 为最终模型残差，input_innovations 为输入新息
+ccf_result = ResidualCCFTest(
+    output_residuals,
+    {"price": input_innovations},
+    lags=12,
+    transfer_params={"price": 2},
+).fit()
+print(ccf_result.tests)
+ccf_result.plot_test()
 ```
 
 ## 统一接口
@@ -184,6 +196,7 @@ print(feedback.tests)           # 紧凑的逐输入检验表
 | Johansen 最大特征根 | `JohansenTest` | 协整秩 = r | 协整 | Osterwald-Lenum (1992) |
 | Toda-Yamamoto | `TodaYamamotoTest` | 无格兰杰因果 | 因果检验 | chi-squared（Wald 检验） |
 | Conditional feedback | `FeedbackTest` | 因变量的 K 阶滞后系数联合为 0 | 输入外生性诊断 | 经典 OLS F 检验 |
+| Residual CCF | `ResidualCCFTest` | 0–K 阶残差互相关联合为 0 | 传递函数充分性 | Box–Jenkins S* 的 chi-squared 近似 |
 
 ## 结构突变方法选择
 
@@ -469,6 +482,46 @@ FeedbackTest(
 
 `missing="drop"` 在构造滞后矩阵之后删除不完整行，不会先压缩原序列并把
 缺口两侧错误地当作相邻观测。
+
+### ResidualCCFTest
+
+该检验用于传递函数估计后的诊断阶段。它把最终 DR/RDL 模型残差
+\(a_t\) 与输入单变量 ARIMA 的新息 \(\hat a_t\) 进行交叉相关：正滞后
+\(k>0\) 表示当前输出残差 \(a_t\) 与过去输入新息
+\(\hat a_{t-k}\) 的相关。识别阶段则是将输入 ARIMA 滤波器同时作用于
+原始 X 和 Y；两者不能混为同一步骤。
+
+```python
+ResidualCCFTest(
+    output_residuals,
+    input_residuals,
+    lags=12,
+    input_names=None,
+    transfer_params=0,
+    alpha=0.05,
+)
+```
+
+实现使用 Box–Jenkins 的固定 \(n\) 分母样本 CCF。单阶近似标准误为
+\(1/\sqrt n\)，置信带为
+\(\pm z_{1-\alpha/2}/\sqrt n\)；教材常写的 95% `±2/sqrt(n)` 是其近似。
+联合检验为
+
+\[
+S^*=n^2\sum_{k=0}^{K}\frac{r_k^2}{n-k},
+\qquad df=K+1-m,
+\]
+
+其中 \(m\) 只包含该输入传递函数中实际估计的 numerator/denominator
+参数，不包括扰动 ARIMA 参数、固定 delay 或稀疏规格中固定为零的系数。
+`result.tests` 汇总每个输入的 S*、自由度、p 值与结论；`get(name)` 返回
+逐阶相关、标准误、置信限与显著峰值；`plot_test()` 使用 TsPlots 统一样式。
+
+显著峰值是遗漏动态的定位线索，不是机械增加同阶 numerator 参数的命令。
+输入之间的相关、反馈、错误的输入预白化或 denominator 设定也可能造成峰值。
+短滞后的 `1/sqrt(n)` 近似通常偏保守。方法依据 Box 与 Jenkins（1976，
+pp. 395–396）；[SAS ARIMA Procedure 官方说明](https://documentation.sas.com/api/collections/pgmsascdc/v_016/docsets/etsug/content/arima.pdf?locale=en)
+将同一方法称为 “Cross-correlation Check of Residuals”。
 
 ## 与 TsPlots 的衔接
 

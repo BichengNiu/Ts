@@ -16,6 +16,8 @@ plot_acf
     Sample autocorrelation function bar chart with confidence band.
 plot_pacf
     Sample partial autocorrelation function bar chart with confidence band.
+plot_correlogram
+    Precomputed lag correlations with supplied null confidence bands.
 plot_lag_response
     Lag-indexed impulse-response bar chart with optional facets.
 
@@ -32,11 +34,12 @@ Advanced usage — style constants and helpers
 
 from .ts_plot import plot_series
 from .sc_plot import plot_scatter
-from .acf_plot import plot_acf, plot_pacf
+from .acf_plot import plot_acf, plot_correlogram, plot_pacf
 from .lag_plot import plot_lag_response
 
 __all__ = [
     "plot_acf",
+    "plot_correlogram",
     "plot_lag_response",
     "plot_pacf",
     "plot_scatter",

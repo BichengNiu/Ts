@@ -123,6 +123,7 @@ result.test_residuals(lags=10)
 | | `.weights(steps)` | 各输入的前 `steps` 个递归 impulse weights |
 | | `.plot_impulse_response(steps, inputs)` | 将 RDL weights 按 time lag 绘制为单图或多输入分面柱状图 |
 | | `.feedback_test(lags, inputs)` | 对原始外生输入运行条件反馈 OLS 与因变量滞后联合 F 检验 |
+| | `.residual_ccf_test(input_models, lags, inputs)` | 用显式输入 ARIMA 新息运行逐阶残差 CCF 与联合 S* 充分性检验 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
 | | `.likelihood_burn` / `.effective_nobs` | 状态/RDL 初始化所丢弃的期数与实际参与似然的样本量 |
@@ -317,8 +318,8 @@ print(backcast.mean)
 
 | 方向 | 衔接方式 |
 |------|----------|
-| TsModels -> TsPlots | `.plot_fit()`/`.plot_diagnostics()` 复用序列与 ACF/PACF 图；RDL `.plot_impulse_response()` 复用 `plot_lag_response()` |
-| TsModels -> TsTests | `test_residuals()` 运行残差诊断；SARIMAX `.feedback_test()` 组合独立的 `FeedbackTest` |
+| TsModels -> TsPlots | `.plot_fit()`/`.plot_diagnostics()` 复用序列与 ACF/PACF 图；RDL impulse response 复用 `plot_lag_response()`，残差 CCF 复用 `plot_correlogram()` |
+| TsModels -> TsTests | `test_residuals()` 运行残差诊断；SARIMAX 组合独立的 `FeedbackTest` 与 `ResidualCCFTest` |
 | TsSims -> TsModels | 验证脚本：TsSims 生成数据 -> TsModels 估计 -> 比较真实参数 |
 
 ## 模型参数
@@ -462,6 +463,24 @@ print(feedback.tests)
 
 每个输入方程控制自身及其他全部输入的 1–K 阶滞后，并对 `y.L1`–`y.LK`
 执行联合 F 检验。显著结果是条件预测反馈证据，不等同于结构性因果证明。
+
+传递函数估计后，用显式拟合的输入 ARIMA 模型检查是否仍有遗漏的输入动态：
+
+```python
+input_models = {
+    "price": SARIMAX(price, order=(1, 0, 0), trend="c").fit(),
+    "income": AutoSARIMAX(income).fit(),
+}
+residual_ccf = result.residual_ccf_test(input_models, lags=12)
+print(residual_ccf.tests)
+print(residual_ccf.get("price").correlations)
+fig, axes = residual_ccf.plot_test()
+```
+
+输入模型必须是对当前 RDL 同一历史输入和同一日历拟合的、已收敛的单变量
+input-only `SARIMAXResult`，或其 `AutoModelResult`。接口不在诊断内部猜测
+ARIMA 阶数。不同模型 burn 后的新息按共同样本末端对齐；每个输入的
+`df = K + 1 - m` 自动从其活动 RDL numerator/denominator 参数计算。
 
 ### GARCH
 

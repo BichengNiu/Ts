@@ -412,6 +412,59 @@ class AutoModelResult(BaseModelResult):
             raise TypeError("selected model does not support feedback testing")
         return method(lags, inputs=inputs, **kwargs)
 
+    def residual_ccf_test(
+        self,
+        input_models,
+        lags=12,
+        inputs=None,
+        **kwargs,
+    ):
+        """Delegate RDL residual cross-correlation testing to the best model.
+
+        Parameters
+        ----------
+        input_models : mapping
+            Explicit fitted input prewhitening models keyed by RDL input.
+        lags : int, default 12
+            Positive maximum residual cross-correlation lag.
+        inputs : str or sequence of str, optional
+            RDL inputs to test.
+        **kwargs
+            Additional options forwarded to the selected model's
+            :meth:`residual_ccf_test` method.
+
+        Returns
+        -------
+        ResidualCCFTestResult
+            Per-input residual CCFs and joint S* tests.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from Ts.TsModels import AutoSARIMAX, RationalLagSpec, SARIMAX
+        >>> rng = np.random.default_rng(42)
+        >>> x = pd.Series(rng.normal(size=60), name="x")
+        >>> y = x.to_numpy() + rng.normal(scale=0.2, size=60)
+        >>> result = AutoSARIMAX(y, exog=x, p=(0, 0), d=(0, 0), q=(0, 0), P=(0, 0), D=(0, 0), Q=(0, 0), trend="n", distributed_lags={"x": RationalLagSpec()}).fit()
+        >>> input_model = SARIMAX(x, trend="n").fit()
+        >>> result.residual_ccf_test({"x": input_model}, lags=3).input_names
+        ('x',)
+        """
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        method = getattr(self.best_result, "residual_ccf_test", None)
+        if method is None:
+            raise TypeError(
+                "residual_ccf_test is only available for AutoSARIMAX RDL results"
+            )
+        return method(
+            input_models,
+            lags=lags,
+            inputs=inputs,
+            **kwargs,
+        )
+
     def plot_impulse_response(self, steps=20, inputs=None, **kwargs):
         """Delegate RDL impulse-response plotting to the selected model.
 

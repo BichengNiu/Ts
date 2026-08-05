@@ -1117,6 +1117,148 @@ class SARIMAXResult(BaseModelResult):
             alpha=alpha,
         ).fit()
 
+    def residual_ccf_test(
+        self,
+        input_models,
+        lags=12,
+        inputs=None,
+        *,
+        alpha=0.05,
+    ):
+        """Test RDL residuals against explicitly prewhitened input innovations.
+
+        Each input model must be a converged, univariate, input-only
+        :class:`SARIMAXResult` (or an :class:`AutoModelResult` whose best model
+        is such a result) fitted to the exact historical RDL input path. The
+        method aligns post-burn innovations at the common sample end and
+        deducts only that input's fitted transfer-polynomial parameters from
+        the joint S* degrees of freedom.
+
+        Parameters
+        ----------
+        input_models : mapping of str to SARIMAXResult or AutoModelResult
+            Explicit prewhitening model for every selected RDL input.
+        lags : int, default 12
+            Positive maximum lag K; the test includes lags 0 through K.
+        inputs : str or sequence of str, optional
+            RDL inputs to test. The default tests every fitted RDL input.
+        alpha : float, default 0.05
+            Significance level for pointwise bands and joint decisions.
+
+        Returns
+        -------
+        ResidualCCFTestResult
+            Per-input residual CCFs and joint Box-Jenkins S* tests.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from Ts.TsModels import RationalLagSpec, SARIMAX
+        >>> rng = np.random.default_rng(42)
+        >>> x = pd.Series(rng.normal(size=80), name="x")
+        >>> y = 0.8 * x.to_numpy() + rng.normal(scale=0.3, size=80)
+        >>> fitted = SARIMAX(y, exog=x, trend="n", distributed_lags={"x": RationalLagSpec()}).fit()
+        >>> input_model = SARIMAX(x, trend="n").fit()
+        >>> fitted.residual_ccf_test({"x": input_model}, lags=4).input_names
+        ('x',)
+        """
+        results = self._distributed_lag_results or {}
+        if not results:
+            raise ValueError(
+                "residual_ccf_test requires a fitted rational distributed-lag model"
+            )
+        if not self.converged:
+            raise RuntimeError("fitted RDL model did not converge")
+        if not isinstance(input_models, Mapping):
+            raise TypeError("input_models must be a mapping keyed by RDL input name")
+
+        if inputs is None:
+            selected = tuple(results)
+        elif isinstance(inputs, str):
+            selected = (inputs,)
+        else:
+            try:
+                selected = tuple(inputs)
+            except TypeError as error:
+                raise TypeError(
+                    "inputs must be a name or an iterable of names"
+                ) from error
+        if not selected:
+            raise ValueError("inputs must contain at least one RDL input")
+        if len(set(selected)) != len(selected):
+            raise ValueError("inputs must be unique")
+        unknown = [name for name in selected if name not in results]
+        if unknown:
+            raise ValueError(f"inputs contains unknown RDL input {unknown[0]!r}")
+        unknown_models = [name for name in input_models if name not in results]
+        if unknown_models:
+            raise ValueError(
+                f"input_models contains unknown RDL input {unknown_models[0]!r}"
+            )
+        missing_models = [name for name in selected if name not in input_models]
+        if missing_models:
+            raise ValueError(
+                f"missing fitted input model for {missing_models[0]!r}"
+            )
+
+        innovations = {}
+        parameter_counts = {}
+        for name in selected:
+            supplied = input_models[name]
+            candidate = getattr(supplied, "best_result", supplied)
+            if not isinstance(candidate, SARIMAXResult):
+                raise TypeError(
+                    f"input_models[{name!r}] must be a SARIMAXResult or an "
+                    "AutoModelResult with a SARIMAXResult best model"
+                )
+            if not candidate.converged:
+                raise RuntimeError(f"input prewhitening model for {name!r} did not converge")
+            if (
+                candidate._ordinary_exog is not None
+                or candidate._event_specs
+                or candidate.distributed_lag_names
+            ):
+                raise ValueError(
+                    f"input prewhitening model for {name!r} must be an input-only "
+                    "univariate SARIMAX without exog, events, or distributed lags"
+                )
+            if candidate.log:
+                raise ValueError(
+                    f"input prewhitening model for {name!r} must use the same "
+                    "untransformed input scale as the fitted RDL model"
+                )
+
+            position = self._ordinary_exog_names.index(name)
+            expected = np.asarray(self._ordinary_exog[:, position], dtype=float)
+            observed = np.asarray(candidate.data, dtype=float)
+            if observed.ndim != 1 or not np.array_equal(observed, expected):
+                raise ValueError(
+                    f"input prewhitening model for {name!r} was not fitted to "
+                    "the exact historical input used by this RDL model"
+                )
+            target_dates = self._dates
+            input_dates = candidate._dates
+            if (target_dates is None) != (input_dates is None) or (
+                target_dates is not None and not target_dates.equals(input_dates)
+            ):
+                raise ValueError(
+                    f"input prewhitening model for {name!r} must use the exact "
+                    "RDL observation calendar"
+                )
+            innovations[name] = np.asarray(candidate.residuals, dtype=float)
+            parameter_counts[name] = len(results[name].spec.parameter_names(name))
+
+        from Ts.TsTests import ResidualCCFTest
+
+        return ResidualCCFTest(
+            self.residuals,
+            innovations,
+            lags,
+            transfer_params=parameter_counts,
+            alpha=alpha,
+        ).fit()
+
     def plot_impulse_response(self, steps=20, inputs=None, **kwargs):
         """Plot RDL impulse weights against time lag as bars.
 

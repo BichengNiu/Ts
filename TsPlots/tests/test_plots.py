@@ -5,7 +5,13 @@ import matplotlib
 
 matplotlib.use("Agg")  # Non-interactive backend
 import matplotlib.pyplot as plt
-from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
+from Ts.TsPlots import (
+    plot_acf,
+    plot_correlogram,
+    plot_pacf,
+    plot_scatter,
+    plot_series,
+)
 from Ts.TsPlots.style import (
     DEFAULT_LINESTYLES,
     DEFAULT_MARKERS,
@@ -332,3 +338,62 @@ class TestStyleConstants:
 
     def test_markers_has_eight(self):
         assert len(DEFAULT_MARKERS) == 8
+class TestPlotCorrelogram:
+    def test_precomputed_series_uses_supplied_values_and_band(self):
+        values = pd.Series([0.1, -0.3, 0.5], index=[0, 1, 2], name="price")
+
+        fig, ax = plot_correlogram(values, confidence_band=0.2)
+
+        np.testing.assert_allclose(
+            [patch.get_height() for patch in ax.patches], values.to_numpy()
+        )
+        assert ax.get_title() == "price"
+        assert len(ax.collections) == 1
+        plt.close(fig)
+
+    def test_precomputed_correlogram_accepts_external_axis_and_varying_band(self):
+        fig, ax = plt.subplots()
+        returned_fig, returned_ax = plot_correlogram(
+            [0.1, 0.2, -0.1],
+            confidence_band=[0.3, 0.25, 0.2],
+            ax=ax,
+            title="Residual CCF",
+        )
+
+        assert returned_fig is fig
+        assert returned_ax is ax
+        assert ax.get_title() == "Residual CCF"
+        plt.close(fig)
+
+    def test_precomputed_multicolumn_correlogram_creates_facets(self):
+        values = pd.DataFrame(
+            {"price": [0.2, 0.1, -0.1], "income": [-0.2, 0.3, 0.1]},
+            index=pd.RangeIndex(3, name="lag"),
+        )
+        bands = pd.DataFrame(0.18, index=values.index, columns=values.columns)
+
+        fig, axes = plot_correlogram(
+            values,
+            confidence_band=bands,
+            title="Residual cross-correlations",
+        )
+
+        assert isinstance(axes, np.ndarray)
+        assert axes.shape == (2,)
+        assert [axis.get_title() for axis in axes] == ["price", "income"]
+        assert fig._suptitle.get_text() == "Residual cross-correlations"
+        plt.close(fig)
+
+    @pytest.mark.parametrize(
+        ("values", "band", "match"),
+        [
+            ([0.1, 0.2], [-0.1, 0.2], "non-negative"),
+            ([0.1, 0.2], [0.1], "match"),
+            (pd.Series([0.1, 0.2], index=[1, 0]), 0.2, "increasing"),
+        ],
+    )
+    def test_precomputed_correlogram_validates_lags_and_bands(
+        self, values, band, match
+    ):
+        with pytest.raises(ValueError, match=match):
+            plot_correlogram(values, confidence_band=band)

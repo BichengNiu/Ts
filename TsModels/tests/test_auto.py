@@ -245,6 +245,30 @@ class TestAutoModelResult:
         )
         assert calls == [(2, "price", {"trend": "ct", "alpha": 0.1})]
 
+    def test_residual_ccf_test_delegates_to_best_result(
+        self, auto_result, base_result
+    ):
+        expected = object()
+        input_models = {"price": object()}
+        calls = []
+
+        def residual_ccf_test(models, lags=12, inputs=None, **kwargs):
+            calls.append((models, lags, inputs, kwargs))
+            return expected
+
+        base_result.residual_ccf_test = residual_ccf_test
+
+        assert (
+            auto_result.residual_ccf_test(
+                input_models,
+                lags=8,
+                inputs="price",
+                alpha=0.10,
+            )
+            is expected
+        )
+        assert calls == [(input_models, 8, "price", {"alpha": 0.10})]
+
     def test_plot_impulse_response_delegates_to_best_result(
         self, auto_result, base_result
     ):

@@ -1,7 +1,7 @@
 # Ts/TsPlots
 
 适用于时间序列计量经济学学习的 Python 绘图工具包。提供统一的字体、配色和坐标轴风格，
-支持时间序列折线图、散点图和自相关函数图。
+支持时间序列折线图、散点图、自相关函数图和预计算相关图。
 
 ## 交互式帮助
 
@@ -17,7 +17,7 @@ TsPlots/
 ├── style.py      # 共享样式：字体、调色板、辅助函数
 ├── ts_plot.py    # 时间序列绘图：plot_series
 ├── sc_plot.py    # 散点图绘图：plot_scatter
-├── acf_plot.py   # 自相关函数绘图：plot_acf, plot_pacf
+├── acf_plot.py   # 相关图：plot_acf, plot_pacf, plot_correlogram
 └── lag_plot.py   # 滞后响应柱状图：plot_lag_response
 ```
 
@@ -27,7 +27,8 @@ TsPlots/
 
 ```python
 from Ts.TsPlots import (
-    plot_series, plot_scatter, plot_acf, plot_pacf, plot_lag_response
+    plot_series, plot_scatter, plot_acf, plot_pacf,
+    plot_correlogram, plot_lag_response,
 )
 ```
 
@@ -331,6 +332,23 @@ import matplotlib.pyplot as plt
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 plot_acf(series, ax=ax1)
 plot_pacf(series, ax=ax2)
+```
+
+### `plot_correlogram` — 绘制预计算相关系数
+
+`plot_correlogram(data, confidence_band, ...)` 不重新计算统计量，只负责按
+TsPlots 样式绘制调用方提供的 lag-indexed 相关系数和零假设置信带。Series
+返回单轴；DataFrame 按列生成分面，适合 `ResidualCCFTestResult.plot_test()`
+等统计结果复用。
+
+```python
+from Ts.TsPlots import plot_correlogram
+
+fig, ax = plot_correlogram(
+    residual_ccf,
+    confidence_band=1.96 / np.sqrt(nobs),
+    ytitle="Residual CCF",
+)
 ```
 
 ---

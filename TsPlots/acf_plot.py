@@ -31,7 +31,10 @@ Examples
 
 from __future__ import annotations
 
+import math
+
 import matplotlib.pyplot as plt
+from matplotlib.colors import is_color_like
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
@@ -47,6 +50,7 @@ from .style import (
     draw_note_and_bottom_title,
     style_axes,
 )
+from .lag_plot import _normalise_lag_response
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +210,193 @@ def _draw_correlogram(
 # ---------------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------------
+
+
+def _normalise_correlogram_band(confidence_band, frame):
+    if isinstance(confidence_band, pd.DataFrame):
+        if not confidence_band.index.equals(frame.index):
+            raise ValueError("confidence-band index must match correlation lags")
+        if tuple(confidence_band.columns) != tuple(frame.columns):
+            raise ValueError("confidence-band columns must match correlation names")
+        values = confidence_band.to_numpy(dtype=float)
+    elif np.isscalar(confidence_band):
+        values = np.full(frame.shape, float(confidence_band))
+    else:
+        values = np.asarray(confidence_band, dtype=float)
+        if values.ndim == 1 and len(values) == len(frame):
+            values = np.repeat(values[:, None], frame.shape[1], axis=1)
+        elif values.shape != frame.shape:
+            raise ValueError("confidence_band shape must match the correlation data")
+    if values.shape != frame.shape:
+        raise ValueError("confidence_band shape must match the correlation data")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("confidence_band must contain only finite values")
+    if np.any(values < 0):
+        raise ValueError("confidence_band must be non-negative")
+    return values
+
+
+def plot_correlogram(
+    data,
+    confidence_band,
+    *,
+    ax=None,
+    title=None,
+    xtitle="Lag",
+    ytitle="Correlation",
+    bar_color=None,
+    band_color="#d0d0d0",
+    band_alpha=0.4,
+    max_ticks=12,
+    grid=False,
+    note=None,
+    title_position="top",
+    figsize=None,
+):
+    """Plot precomputed lag correlations with null confidence bands.
+
+    Series and one-dimensional inputs produce one axis. DataFrames and
+    two-dimensional arrays produce one facet per column. This renderer does
+    not calculate correlations; statistical packages supply both ``data`` and
+    ``confidence_band``.
+
+    Parameters
+    ----------
+    data : Series, DataFrame, or array-like
+        Precomputed correlation values indexed by increasing non-negative lag.
+    confidence_band : float, array-like, or DataFrame
+        Non-negative confidence-band half-widths. A scalar is shared by every
+        lag and response; a one-dimensional array is shared across responses.
+    ax : matplotlib.axes.Axes, optional
+        Existing axis for a single response. Multi-response data create facets.
+    title : str, optional
+        Axis title for one response or figure title for multiple responses.
+    xtitle, ytitle : str
+        Axis labels.
+    bar_color : color or sequence of colors, optional
+        One shared bar color or one color per response.
+    band_color : color, default "#d0d0d0"
+        Confidence-region color.
+    band_alpha : float, default 0.4
+        Confidence-region opacity.
+    max_ticks : int, default 12
+        Maximum labeled lag ticks before integer thinning.
+    grid : bool, default False
+        Whether to draw the shared dashed grid.
+    note : str, optional
+        Figure-level note below the plot.
+    title_position : {"top", "bottom"}, default "top"
+        Figure-title position.
+    figsize : tuple, optional
+        Figure size; facet height expands with the row count by default.
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` for one response or ``(fig, axes)`` for facets.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsPlots import plot_correlogram
+    >>> values = pd.Series([0.1, -0.2, 0.05], name="input")
+    >>> fig, ax = plot_correlogram(values, confidence_band=0.15)
+    >>> len(ax.patches)
+    3
+    """
+    _ensure_fonts()
+    if (
+        isinstance(max_ticks, (bool, np.bool_))
+        or not isinstance(max_ticks, (int, np.integer))
+        or int(max_ticks) < 1
+    ):
+        raise ValueError("max_ticks must be a positive integer")
+    frame = _normalise_lag_response(data)
+    if not isinstance(data, (pd.Series, pd.DataFrame)):
+        frame.columns = [
+            "correlation" if frame.shape[1] == 1 else f"correlation_{index + 1}"
+            for index in range(frame.shape[1])
+        ]
+    bands = _normalise_correlogram_band(confidence_band, frame)
+    count = frame.shape[1]
+    if count > 1 and ax is not None:
+        raise ValueError("ax cannot be supplied for multiple correlation sequences")
+
+    if bar_color is None or is_color_like(bar_color):
+        colors = [bar_color or DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)] for index in range(count)]
+    else:
+        colors = list(bar_color)
+        if len(colors) != count:
+            raise ValueError("bar_color must contain one value per response")
+
+    if count == 1:
+        if ax is None:
+            fig, axis = plt.subplots(figsize=figsize or FIGSIZE)
+        else:
+            axis = ax
+            fig = ax.figure
+        panel_title = title
+        if panel_title is None and frame.columns[0] != "correlation":
+            panel_title = str(frame.columns[0])
+        _draw_correlogram(
+            axis,
+            frame.index.to_numpy(dtype=int),
+            frame.iloc[:, 0].to_numpy(),
+            bands[:, 0],
+            bar_color=colors[0],
+            band_color=band_color,
+            band_alpha=band_alpha,
+            xtitle=xtitle,
+            ytitle=ytitle,
+            title=panel_title,
+            title_position=title_position,
+            max_ticks=int(max_ticks),
+            grid=grid,
+            note=note,
+            fig=fig,
+        )
+        return fig, axis
+
+    ncols = min(2, count)
+    nrows = math.ceil(count / ncols)
+    if figsize is None:
+        figsize = (FIGSIZE[0], FIGSIZE[1] * nrows)
+    fig, grid_axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+    flattened = list(grid_axes.ravel())
+    axes = flattened[:count]
+    for unused in flattened[count:]:
+        unused.set_visible(False)
+    lags = frame.index.to_numpy(dtype=int)
+    for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
+        _draw_correlogram(
+            axis,
+            lags,
+            frame[name].to_numpy(),
+            bands[:, position],
+            bar_color=colors[position],
+            band_color=band_color,
+            band_alpha=band_alpha,
+            xtitle=xtitle,
+            ytitle=ytitle,
+            title=str(name),
+            title_position="top",
+            max_ticks=int(max_ticks),
+            grid=grid,
+            note=None,
+            fig=fig,
+        )
+    if title is not None and title_position == "top":
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96), pad=1.5)
+    else:
+        fig.tight_layout(pad=1.5)
+    draw_note_and_bottom_title(
+        fig,
+        note=note,
+        title=title,
+        title_position=title_position,
+    )
+    return fig, np.asarray(axes, dtype=object)
 
 
 def plot_acf(
