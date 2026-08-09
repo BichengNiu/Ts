@@ -681,7 +681,9 @@ def test_one_step_rdl_forecast_preserves_the_horizon_axis():
     assert np.isfinite(forecast.mean).all()
 
 
-def test_one_step_rdl_backtest_matches_the_shared_evaluation_shape():
+def test_one_step_rdl_rolling_evaluation_matches_the_shared_shape():
+    from Ts.TsMetrics import RollingOrigin, evaluate_forecasts
+
     rng = np.random.default_rng(2610)
     x = rng.normal(size=100)
     y = lfilter([1.0], [1.0, -0.35], x) + rng.normal(scale=0.2, size=100)
@@ -694,7 +696,11 @@ def test_one_step_rdl_backtest_matches_the_shared_evaluation_shape():
         distributed_lags={"x": RationalLagSpec(numerator=0, denominator=1)},
     )
 
-    result = model.backtest(initial_window=80, horizon=1, step=10)
+    result = evaluate_forecasts(
+        {"rdl": model},
+        scheme=RollingOrigin(initial_window=80, horizon=1, step=10),
+        future_exog="observed",
+    ).results["rdl"]
 
     assert result.mean.shape == (2, 1)
     assert np.isfinite(result.mean).all()
@@ -773,24 +779,28 @@ def test_future_rdl_scenarios_use_each_complete_input_path():
     assert not np.allclose(scenarios["zero"].mean, scenarios["one"].mean)
 
 
-def test_rdl_oos_clone_preserves_specification():
+def test_rdl_holdout_clone_preserves_specification():
+    from Ts.TsMetrics import Holdout, evaluate_forecasts
+
     rng = np.random.default_rng(2307)
     x = rng.normal(size=180)
     y = lfilter([1.0], [1.0, -0.35], x) + rng.normal(scale=0.25, size=180)
 
-    evaluation = SARIMAX(
+    model = SARIMAX(
         y,
         exog=x[:, None],
         exog_names=["x"],
         order=(0, 0, 0),
         trend="n",
         distributed_lags={"x": RationalLagSpec(numerator=0, denominator=1)},
-    ).oos(
-        estimation_period=(0, 139),
-        validation_period=(140, 179),
     )
+    evaluation = evaluate_forecasts(
+        {"rdl": model},
+        scheme=Holdout(train=(0, 139), test=(140, 179)),
+        future_exog="observed",
+    ).results["rdl"]
 
-    assert len(evaluation.mean) == 40
+    assert evaluation.mean.shape == (1, 40)
     assert np.isfinite(evaluation.metrics["rmse"])
 
 

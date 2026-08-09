@@ -2,41 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 import pandas as pd
-
-
-@dataclass(frozen=True)
-class EvaluationPeriods:
-    """Resolved half-open estimation and validation positions."""
-
-    estimation_start: int
-    estimation_stop: int
-    validation_start: int
-    validation_stop: int
-    dates: pd.DatetimeIndex | None
-
-    @property
-    def estimation_indices(self):
-        return np.arange(self.estimation_start, self.estimation_stop, dtype=int)
-
-    @property
-    def validation_indices(self):
-        return np.arange(self.validation_start, self.validation_stop, dtype=int)
-
-    @property
-    def estimation_dates(self):
-        if self.dates is None:
-            return None
-        return self.dates[self.estimation_start : self.estimation_stop].copy()
-
-    @property
-    def validation_dates(self):
-        if self.dates is None:
-            return None
-        return self.dates[self.validation_start : self.validation_stop].copy()
 
 
 def validated_model_dates(model, data):
@@ -107,38 +74,3 @@ def _resolve_period(name, period, data, dates):
     if start > end:
         raise ValueError(f"{name} start must not be later than its end")
     return start, end + 1
-
-
-def resolve_evaluation_periods(
-    model,
-    data,
-    estimation_period,
-    validation_period,
-):
-    """Validate and resolve inclusive public period bounds."""
-    dates = validated_model_dates(model, data)
-    estimation_start, estimation_stop = _resolve_period(
-        "estimation_period",
-        estimation_period,
-        data,
-        dates,
-    )
-    validation_start, validation_stop = _resolve_period(
-        "validation_period",
-        validation_period,
-        data,
-        dates,
-    )
-    if estimation_stop - estimation_start < 10:
-        raise ValueError("estimation_period must contain at least 10 observations")
-    if validation_start < estimation_stop:
-        raise ValueError(
-            "validation_period must start strictly later than estimation_period ends"
-        )
-    return EvaluationPeriods(
-        estimation_start=estimation_start,
-        estimation_stop=estimation_stop,
-        validation_start=validation_start,
-        validation_stop=validation_stop,
-        dates=dates,
-    )

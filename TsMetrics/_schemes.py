@@ -94,13 +94,44 @@ class ForecastSplit:
 
 @dataclass(frozen=True)
 class Holdout:
-    """One explicit closed training period followed by one test period."""
+    """One explicit closed training period followed by one test period.
+
+    Parameters
+    ----------
+    train : tuple
+        Inclusive positional or date bounds for model estimation.
+    test : tuple
+        Inclusive later bounds for forecast scoring.
+
+    Examples
+    --------
+    >>> Holdout(train=(0, 19), test=(20, 24)).split(25)[0].gap
+    0
+    """
 
     train: tuple
     test: tuple
 
     def split(self, nobs, dates=None):
-        """Resolve the public bounds into one immutable forecast split."""
+        """Resolve the public bounds into one immutable forecast split.
+
+        Parameters
+        ----------
+        nobs : int
+            Total number of observations.
+        dates : sequence of datetime-like, optional
+            Strict calendar aligned with the observations.
+
+        Returns
+        -------
+        tuple of ForecastSplit
+            The single resolved holdout split.
+
+        Examples
+        --------
+        >>> Holdout((0, 9), (10, 11)).split(12)[0].target_indices.tolist()
+        [10, 11]
+        """
         nobs, dates = _validated_split_inputs(nobs, dates)
         data = np.empty(nobs)
         train_start, train_stop = _resolve_period("train", self.train, data, dates)
@@ -126,7 +157,29 @@ class Holdout:
 
 @dataclass(frozen=True)
 class RollingOrigin:
-    """Regular expanding- or fixed-window historical forecast origins."""
+    """Regular expanding- or fixed-window historical forecast origins.
+
+    Parameters
+    ----------
+    initial_window : int
+        Observations available at the first training cutoff.
+    horizon : int, default 1
+        Forecast periods scored at each origin.
+    step : int, default 1
+        Distance between consecutive forecast origins.
+    window : {"expanding", "rolling"}, default "expanding"
+        Training-window update rule.
+    window_size : int, optional
+        Fixed training length when ``window="rolling"``.
+    gap : int, default 0
+        Unscored periods between the training cutoff and first target.
+
+    Examples
+    --------
+    >>> scheme = RollingOrigin(initial_window=10, horizon=2, step=2)
+    >>> len(scheme.split(16))
+    3
+    """
 
     initial_window: int
     horizon: int = 1
@@ -168,7 +221,26 @@ class RollingOrigin:
         object.__setattr__(self, "window_size", window_size)
 
     def split(self, nobs, dates=None):
-        """Generate every complete historical forecast split."""
+        """Generate every complete historical forecast split.
+
+        Parameters
+        ----------
+        nobs : int
+            Total number of observations.
+        dates : sequence of datetime-like, optional
+            Strict calendar aligned with the observations.
+
+        Returns
+        -------
+        tuple of ForecastSplit
+            Complete splits in increasing forecast-origin order.
+
+        Examples
+        --------
+        >>> splits = RollingOrigin(10, horizon=2).split(13)
+        >>> splits[0].target_indices.tolist()
+        [10, 11]
+        """
         nobs, dates = _validated_split_inputs(nobs, dates)
         first_target = self.initial_window + self.gap
         origins = np.arange(

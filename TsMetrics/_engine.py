@@ -215,6 +215,38 @@ def evaluate_forecasts(
     Every estimator is cloned and re-fitted independently on every training
     split. Fixed holdout and rolling-origin evaluation use the same execution,
     result, metric, and ranking contracts.
+
+    Parameters
+    ----------
+    models : mapping of str to estimator
+        Named unfitted estimators sharing target values and calendar metadata.
+    scheme : Holdout or RollingOrigin
+        Time-ordered training and scoring design.
+    rank_by : str, default "rmse"
+        Canonical error metric used for ascending model ranking.
+    alpha : float, default 0.05
+        Significance level requested for forecast intervals.
+    fit_kwargs : mapping, optional
+        Keywords forwarded to every estimator ``fit()`` call.
+    on_error : {"raise", "record"}, default "raise"
+        Whether a failed split raises or is retained as an all-NaN row.
+    future_exog : {"observed"}, optional
+        Explicit conditional-evaluation policy required by exogenous models.
+
+    Returns
+    -------
+    ForecastComparisonResult
+        Aligned forecasts, common-sample metrics, rankings, and metadata.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import Holdout, evaluate_forecasts
+    >>> report = evaluate_forecasts(
+    ...     {"model": estimator},
+    ...     scheme=Holdout(train=(0, 19), test=(20, 24)),
+    ... )
+    >>> report.table.index.tolist()
+    ['model']
     """
     items, metadata, reference_data, reference_dates = _validated_models(models)
     alpha, fit_kwargs_by_model, exogenous = _validated_request(

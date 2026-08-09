@@ -572,24 +572,31 @@ class TestVARPredict:
         with pytest.raises(TypeError, match="dynamic"):
             fitted_var.predict(dynamic=True)
 
-    def test_oos_uses_separate_evaluation_result(self, fitted_var):
+    def test_holdout_uses_separate_evaluation_result(self, fitted_var):
         """VAR holdout scoring is owned by TsMetrics."""
+        from Ts.TsMetrics import Holdout, evaluate_forecasts
         from Ts.TsModels import VAR
 
         split = int(len(fitted_var.data) * 0.7)
-        evaluation = VAR(
+        model = VAR(
             fitted_var.data,
             lags=fitted_var._lags,
-        ).oos(
-            estimation_period=(0, split - 1),
-            validation_period=(split, len(fitted_var.data) - 1),
         )
+        report = evaluate_forecasts(
+            {"var": model},
+            scheme=Holdout(
+                train=(0, split - 1),
+                test=(split, len(fitted_var.data) - 1),
+            ),
+        )
+        evaluation = report.results["var"]
 
         assert evaluation.mean.shape == (
+            1,
             len(fitted_var.data) - split,
             fitted_var.data.shape[1],
         )
-        assert len(evaluation.metrics_by_series) == fitted_var.data.shape[1]
+        assert len(report.metric_table(by="series")) == fitted_var.data.shape[1]
         assert evaluation.metrics["rmse"] > 0
 
     def test_predict_has_no_evaluation_fields(self, fitted_var):

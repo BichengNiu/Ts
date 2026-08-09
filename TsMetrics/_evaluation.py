@@ -45,15 +45,6 @@ def validate_fit_kwargs(model, fit_kwargs, *, model_name=None):
     return dict(fit_kwargs)
 
 
-def validate_fit_method(model, method, *, model_name=None):
-    """Validate the legacy optimizer option through general fit keywords."""
-    if method is None:
-        return {}
-    if not isinstance(method, str):
-        raise TypeError("method must be a string or None")
-    return validate_fit_kwargs(model, {"method": method}, model_name=model_name)
-
-
 def model_data(model):
     """Return validated one- or two-dimensional model data."""
     if not hasattr(model, "data"):

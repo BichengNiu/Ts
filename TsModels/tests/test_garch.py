@@ -830,26 +830,31 @@ class TestGARCHPredict:
         assert result.is_oos.tolist() == [True, True, True]
         np.testing.assert_allclose(result.mean, full_result.mean[2:])
 
-    def test_oos_uses_observable_volatility_proxy(self, garch_result):
-        """GARCH OOS scores one documented observable proxy."""
+    def test_holdout_uses_observable_volatility_proxy(self, garch_result):
+        """GARCH holdout scores one documented observable proxy."""
+        from Ts.TsMetrics import Holdout, evaluate_forecasts
         from Ts.TsModels import GARCH
 
         split = int(garch_result.nobs * 0.7)
-        evaluation = GARCH(
+        model = GARCH(
             garch_result.data,
             p=garch_result._p,
             q=garch_result._q,
             o=garch_result._o,
             compare_lags=False,
-        ).oos(
-            estimation_period=(0, split - 1),
-            validation_period=(split, len(garch_result.data) - 1),
         )
+        evaluation = evaluate_forecasts(
+            {"garch": model},
+            scheme=Holdout(
+                train=(0, split - 1),
+                test=(split, len(garch_result.data) - 1),
+            ),
+        ).results["garch"]
 
         expected = np.abs(
             garch_result.data[split:] - np.mean(garch_result.data[:split])
         )
-        np.testing.assert_allclose(evaluation.actual, expected)
+        np.testing.assert_allclose(evaluation.actual[0], expected)
         assert evaluation.target == "absolute_demeaned_return_proxy"
         assert evaluation.metrics["rmse"] > 0
 

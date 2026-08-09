@@ -38,7 +38,7 @@ class EvaluationCloneProtocol(Protocol):
 
 
 class EvaluationModelProtocol(Protocol):
-    """Complete structural contract accepted by OOS and backtest."""
+    """Structural estimator contract accepted by unified forecast evaluation."""
 
     data: Any
     _evaluation_target_name: str

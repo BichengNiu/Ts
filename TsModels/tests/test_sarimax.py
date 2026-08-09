@@ -1192,22 +1192,24 @@ class TestSARIMAXPredict:
         with pytest.raises(error_type):
             result.predict(**kwargs)
 
-    def test_oos_uses_separate_evaluation_result(self, result):
+    def test_holdout_uses_separate_evaluation_result(self, result):
         """SARIMAX holdout scoring is owned by TsMetrics."""
+        from Ts.TsMetrics import Holdout, evaluate_forecasts
         from Ts.TsModels import SARIMAX
 
         split = int(result.nobs * 0.7)
-        evaluation = SARIMAX(
+        model = SARIMAX(
             result.data,
             order=result._order,
-        ).oos(
-            estimation_period=(0, split - 1),
-            validation_period=(split, result.nobs - 1),
         )
+        evaluation = evaluate_forecasts(
+            {"sarimax": model},
+            scheme=Holdout(train=(0, split - 1), test=(split, result.nobs - 1)),
+        ).results["sarimax"]
 
         assert evaluation.metrics["rmse"] > 0
-        assert len(evaluation.mean) == result.nobs - split
-        assert evaluation.validation_indices[0] == split
+        assert evaluation.mean.shape == (1, result.nobs - split)
+        assert evaluation.splits[0].target_indices[0] == split
 
     def test_predict_rejects_removed_oos_start(self, result):
         """The leaked pseudo-OOS argument is no longer accepted."""

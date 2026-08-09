@@ -92,7 +92,6 @@ result.test_residuals(lags=10)
 | `fit()` | 执行分解或估计，返回 Result 对象 |
 | `summary()` | 返回格式化的字符串报告（自动调用 fit） |
 | `result_` | 存储 `fit()` 执行后的结果对象 |
-| `backtest(initial_window, ...)` | 逐预测起点重新拟合的滚动/扩展窗口历史回测 |
 | `backcast(steps, alpha)` | 反转时间后重新拟合并估计样本前数值 |
 
 估计模型的 Result 类继承 `BaseModelResult`，共享方法和字段：
@@ -201,165 +200,67 @@ if diagnostic.identified:
     print(diagnostic.period)
 ```
 
-## 性能评估与期间接口
+## 统一预测评估
 
-预测性能指标、显式期间 OOS、滚动历史回测和模型性能排序统一由
-`TsMetrics` 定义。`BaseModel.oos()` 与 `BaseModel.backtest()` 只是指向
-`TsMetrics` 规范实现的便利方法；`PredictResult` 不保存实际值或性能指标。
-
-位置型数据使用零基、闭区间位置：
+预测性能评估统一由 `TsMetrics.evaluate_forecasts()` 完成。模型对象只负责配置、拟合和预测，
+不再提供 `.oos()` 或 `.backtest()` 便利方法。固定留出与滚动起点评估只更换 `scheme`：
 
 ```python
-evaluation = model.oos(
-    estimation_period=(0, 79),
-    validation_period=(80, 99),
-    method="lbfgs",
+from Ts.TsMetrics import Holdout, RollingOrigin, evaluate_forecasts
+
+holdout = evaluate_forecasts(
+    {"ARIMA": arima_model, "RDL": rdl_model},
+    scheme=Holdout(train=(0, 399), test=(400, 404)),
+    fit_kwargs={"method": "lbfgs", "maxiter": 500},
+    future_exog="observed",
 )
-print(evaluation.metrics)
-```
 
-`method` 仅在显式指定时转交给模型的 `fit()`；省略或设为 `None` 会保留该模型
-自己的默认拟合行为。不接受 `fit(method=...)` 的模型会明确报错，不静默忽略。
-
-带日期索引的数据使用精确日期边界：
-
-```python
-evaluation = model.oos(
-    estimation_period=("2018-01-01", "2022-12-01"),
-    validation_period=("2023-03-01", "2023-12-01"),
-    alpha=0.05,
+rolling = evaluate_forecasts(
+    {"ARIMA": arima_model, "RDL": rdl_model},
+    scheme=RollingOrigin(
+        initial_window=400,
+        horizon=2,
+        step=1,
+        window="expanding",
+    ),
+    fit_kwargs={"method": "lbfgs", "maxiter": 500},
+    future_exog="observed",
 )
 ```
 
-验证期必须严格晚于估计期。两者可以不相邻；模型会连续预测中间间隔，
-但只对验证期评分。日期必须唯一、严格递增且边界真实存在。越界、逆序、
-重叠、估计样本不足或外生变量未覆盖预测桥接区间都会直接失败。
+日期模型可以在 `Holdout(train=..., test=...)` 中使用真实存在的闭区间日期边界。
+`RollingOrigin` 支持 `window="expanding"`、固定长度 `window="rolling"`、`window_size`
+以及训练期和计分期之间的 `gap`。每个拆分都克隆并重新拟合模型，原模型和已有
+`result_` 不会被修改。
 
-`OOSResult` 保存 `estimation_indices`、`validation_indices`，日期模型还保存
-`estimation_dates`、`validation_dates`。旧 `split` 参数和结果字段已经删除，
-不存在弃用期或兼容路径。`predict(oos_start=...)` 伪样本外路径同样不存在。
+`fit_kwargs` 会在第一次拟合前对所有模型统一校验，并在每个拆分中完整传给 `fit()`。
+因此优化器不再需要通过子类固定。使用外生变量时必须显式传入
+`future_exog="observed"`，表示这是使用已实现外生变量路径的条件预测比较；若部署时
+这些变量未知，需要先预测外生变量或提供情景路径。
 
-所有继承 `BaseModel` 的预测模型（SARIMAX、GARCH、VAR、VECM、SVAR 及 Auto 模型）
-共享该接口。
+两种方案返回同一个 `ForecastComparisonResult`：
 
-### 多模型统一窗口 OOS 比较
+- `table`：共同有限样本上的全部误差指标、覆盖率、失败数和排名；
+- `ranking` / `best_model`：按 `rank_by` 排序；
+- `results[name]`：单个模型的 `ForecastEvaluationResult`；
+- `predictions`：模型、拆分、起点、目标期、预测步长和变量维度的长表；
+- `splits` / `failures`：训练窗口元数据和失败记录；
+- `metric_table(by="origin"|"horizon"|"series")`：分组误差；
+- `plot_forecasts(horizon=..., series=...)` 与
+  `plot_metric("rmse", by="origin")`：复用 `TsPlots.plot_series()` 的统一样式。
 
-多个模型需要在相同估计期和验证期比较全部误差指标时，使用 `TsMetrics`
-提供的批量入口：
+结果数组始终保留拆分维和预测步长维：单变量为
+`(n_splits, horizon)`，多变量为 `(n_splits, horizon, n_series)`。
+`on_error="raise"` 立即抛出失败；`on_error="record"` 将整个失败拆分原子化地保留为
+NaN，并只在所有模型共同具有有限预测与实际值的样本上比较，避免覆盖率不同造成不公平排名。
 
-```python
-from Ts.TsMetrics import evaluate_models_oos
+GARCH 的评价目标仍是以当前训练窗口均值中心化后的绝对收益代理，
+结果通过 `target="absolute_demeaned_return_proxy"` 明确标记；这不等于可观测的真实条件波动率。
 
-report = evaluate_models_oos(
-    {
-        "AR(1)": ar1_model,
-        "AR(2)": ar2_model,
-    },
-    estimation_period=(0, 79),
-    validation_period=(80, 99),
-    method="lbfgs",
-    rank_by="rmse",
-)
+### Backcasting
 
-print(report.table)
-print(report.ranking)
-print(report.best_model)
-```
-
-`report.table` 包含 MAE、MSE、RMSE、MAPE、sMAPE、Theil U1、有效配对数
-`n` 和排名；`report.evaluations` 保留每个模型的完整 `OOSResult`。批量比较
-强制检查预测目标、估计期、验证期和实际观测一致，并拒绝验证期内的非有限
-实际值或预测值，避免模型使用不同有效样本获得不公平排名。
-
-批量 `method` 省略或设为 `None` 时，每个模型保持自己的默认值。显式指定时，
-所有命名模型必须接受 `fit(method=...)`，否则在任何拟合开始前失败。SARIMAX
-可选 `newton`、`nm`、`bfgs`、`lbfgs`、`powell`、`cg`、`ncg` 和
-`basinhopping`。AutoSARIMAX 构造器的同名参数是模型搜索策略，不是似然优化器。
-
-```python
-model.oos(estimation_period, validation_period, alpha=0.05, method=None)
-
-model.backtest(
-    initial_window,
-    horizon=1,
-    step=1,
-    window="expanding",
-    window_size=None,
-    alpha=0.05,
-    on_error="raise",
-)
-
-model.backcast(steps, alpha=0.05)
-```
-### Backtesting：无未来信息泄漏的滚动起点回测
-
-`backtest()` 在每个预测起点重新拟合模型。扩展窗口使用起点前的全部历史；滚动窗口仅使用最近 `window_size` 个观测。原模型及其已有 `result_` 不会被修改。
-`window_size` 仅适用于 `window='rolling'`；扩展窗口传入该参数会明确报错，不会静默忽略。
-
-```python
-from Ts.TsModels import SARIMAX
-
-model = SARIMAX(y, order=(1, 0, 0))
-
-# 扩展窗口：每次加入新观测
-expanding = model.backtest(
-    initial_window=80,
-    horizon=4,
-    step=1,
-)
-
-# 固定长度滚动窗口
-rolling = model.backtest(
-    initial_window=80,
-    horizon=4,
-    step=4,
-    window="rolling",
-    window_size=80,
-    on_error="record",
-)
-```
-
-`BacktestResult.mean` 和 `.actual` 的形状为：
-
-- 单变量：`(n_origins, horizon)`；
-- 多变量：`(n_origins, horizon, n_series)`。
-
-结果同时提供总体 `metrics`、逐预测期 `metrics_by_horizon`、逐变量 `metrics_by_series`。规范指标为 MAE、MSE、RMSE、MAPE、sMAPE、Theil U1 和有效配对数 `n`。`on_error='record'` 会将失败窗口保留为 NaN，并把起点和异常写入 `failures`；默认 `on_error='raise'` 会立即抛出异常。完整契约见 `TsMetrics/README.md`。
-
-动态评估模型在连续 `N` 期预测窗口上的可靠性时，设置 `horizon=N`、
-`step=1`，然后读取 `metrics_by_window`：
-
-```python
-expanding = model.backtest(
-    initial_window=80,
-    horizon=4,
-    step=1,
-    window="expanding",
-)
-
-dynamic = expanding.metrics_by_window
-print(dynamic[["window_start", "window_end", "rmse", "mape", "n"]])
-```
-
-每行指标只评价该起点向前预测的完整 `N` 期；训练样本随后增加一期，预测
-起点也前移一期。最后一个窗口结束于最新观测。对于 VAR、VECM 和 SVAR，
-结果增加 `series` 列并逐变量计算，避免把不同量纲混成一个动态 RMSE。
-
-GARCH 的预测对象是条件波动率，无法直接与原始收益比较。回测使用当前训练窗口均值中心化后的绝对收益 `abs(y_future - mean(y_train))` 作为可观测代理，并通过 `target='absolute_demeaned_return_proxy'` 明确标记；该代理不等于真实观测波动率。
-
-### Backcasting：反向时间估计样本前数值
-
-`backcast()` 将观测序列反转，使用相同配置重新拟合，向反转序列的未来预测，再把结果还原为 `[-steps, ..., -1]` 的历史顺序：
-
-```python
-backcast = model.backcast(steps=12)
-print(backcast.indices)  # [-12, ..., -2, -1]
-print(backcast.mean)
-```
-
-这是反向时间统计估计，不是对未观测历史的因果重建。带线性时间趋势的模型会在反向时间上重新估计趋势，因此解释时必须保留这一限制。GARCH 返回条件波动率并标记 `target='conditional_volatility'`。
-
-当前 GARCH/AutoGARCH 的 `predict()` 尚不能显式接收样本外或样本前外生变量，因此设置 `exog` 时，`backtest()` 与 `backcast()` 会明确抛出 `NotImplementedError`，不会静默猜测外生变量。
+`model.backcast(steps, alpha=0.05)` 仍属于模型侧能力。它将序列反转后重新拟合并预测样本前
+数值，是反向时间统计估计，不是对未观测历史的因果重建。
 
 ## 接口衔接
 
@@ -420,182 +321,7 @@ result = model.fit(
 ```
 
 因此默认最多进行 500 次迭代、使用 observed-information covariance，并在
-优化器未报告收敛时抛出 `RuntimeError`。调用者仍可显式覆盖任一参数；如需检查
-未收敛结果，必须明确传入 `require_convergence=False`。优化器只控制似然函数的
-数值搜索，不会改变模型规格。
-
-稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
-
-```python
-# AR(3)，但固定 ar.L2 = 0
-ar_result = SARIMAX(data, order=([1, 3], 0, 0)).fit()
-
-# ARMA(1,3)，但固定 ma.L2 = 0
-arma_result = SARIMAX(data, order=(1, 0, [1, 3])).fit()
-```
-
-`summary()` 会报告实际 AR/MA 滞后、固定为 0 的系数、根的最小模、
-AR 多项式平稳性、MA 多项式可逆性，以及估计时是否强制这些条件。
-对于 `d > 0` 或 `D > 0` 的模型，平稳性结论针对差分后的 AR 多项式，
-不表示原始水平序列平稳。
-
-### Rational distributed lags
-
-```python
-from Ts.TsModels import RationalLagSpec, SARIMAX
-
-model = SARIMAX(
-    y,
-    exog=X,  # DataFrame columns: price, income, control
-    order=(1, 0, 0),
-    distributed_lags={
-        "price": RationalLagSpec(
-            numerator=(0, 2),      # omega.L1 = 0
-            denominator=(1, 3),    # delta.L2 = 0
-            delay=1,
-        ),
-        "income": RationalLagSpec(numerator=1, denominator=1),
-    },
-)
-result = model.fit(maxiter=300)
-```
-
-整数阶数表示连续活动滞后：`numerator=2` 为 L0–L2，`denominator=2`
-为 L1–L2。序列表示稀疏活动滞后，遗漏的中间阶严格固定为 0；这些是
-传递多项式约束，不是最终 impulse weights 约束。未列入 `distributed_lags`
-的 `control` 仍作为普通静态外生变量联合估计。
-
-`RationalLagSpec` 默认 `initialization="auto"`。有限分布滞后会自动从似然中
-排除没有完整输入历史的期数，并再留出 ARMA 扰动递推所需的初始化深度；
-回归起点和扰动起点也只使用同一有效样本。含递归分母的无限分布滞后无法由
-样本识别无限期的样本前输入，`auto` 因而采用首期输入水平的稳态假设。
-`summary()` 会明确显示解析后的策略、`Likelihood Burn` 和有效样本量。
-如有明确的样本前知识，仍可显式选择 `initialization="zero"` 或
-`initialization="steady_state"`，其原有数值含义不变。
-
-教材式有限 LTF 不需要自行生成 16 个滞后列或常数列：
-
-```python
-result = SARIMAX(
-    sales.iloc[:140],
-    exog=leading_indicator.iloc[:140].rename("leading_indicator"),
-    order=(1, 0, 0),
-    trend="c",
-    distributed_lags={
-        "leading_indicator": RationalLagSpec(numerator=15, denominator=0)
-    },
-).fit()
-```
-
-这里无需重复传入拟合控制：默认的 `cov_type="oim"` 与教材表格的
-observed-information 标准误口径一致，并默认要求优化器收敛。
-
-这里 `trend="c"` 对应拟合响应尺度上的水平截距。Statsmodels 底层为了
-状态空间递推估计的是状态截距 `c`；Ts 在 `result.level_intercept` 和
-`summary()` 中自动报告 `C = c / A(1)`，并通过
-`level_intercept_inference()` 对完整协方差矩阵做 delta-method 变换。
-当模型使用 `log=True` 时，`C` 及其推断保留在自然对数响应尺度，摘要标记为
-`Log-response Intercept C`。`exp(C)` 是原始尺度中位数，不是均值；
-`unconditional_log_variance` 通过拟合状态空间的离散 Lyapunov 方程精确求得
-对数响应的平稳方差，`long_run_equilibrium()` 返回
-`exp(C + 0.5 * unconditional_log_variance)`。普通外生变量、事件和 RDL 输入
-均按零输入基线解释；逐期预测仍使用各预测期自己的方差修正。
-底层原始 `params["intercept"]` 仍保留，便于复核似然、协方差和优化器参数顺序；
-用户不应再向 `exog` 手工加入常数列。
-
-`result.distributed_lags["price"]` 提供结构化单输入结果；
-`distributed_lag_coefficients` 自动列出估计值、标准误、p 值和 fixed 标记；
-`steady_state_gains` 自动计算 `sum(omega) / (1 - sum(delta))` 及区间；
-`weights(steps)` 返回递归权重。未来预测必须为每个原始外生列提供连续路径，
-日期模型可传带相同未来日期的 DataFrame，无日期模型可按位置传二维数组。
-
-RDL 的 impulse response 就是 `weights(steps)`：传递函数对单位脉冲在各个
-time lag 上的响应。绘图不重新计算权重。默认将当前模型 weights 画成柱；若提供
-preliminary finite-lag 模型的 `sample_weights`，则 sample weights 为柱，当前
-rational transfer-function weights 为实线：
-
-```python
-# 所有 RDL 输入按拟合顺序分面
-fig, axes = result.plot_impulse_response(steps=20)
-
-# 仅绘制 price；等价于绘制 result.distributed_lags["price"].weights(20)
-fig, ax = result.plot_impulse_response(20, inputs="price")
-
-# Figure C5.14/C5.15 风格：基础 LTF weights 为柱，最终 RDL weights 为线
-fig, axes = final_result.plot_impulse_response(
-    steps=16,
-    sample_weights=preliminary_result.weights(16),
-)
-```
-
-对随机性输入，还可检查过去的模型输出是否反馈到当前输入：
-
-```python
-feedback = result.feedback_test(lags=4)
-print(feedback.summary())
-print(feedback.tests)
-```
-
-每个输入方程控制自身及其他全部输入的 1–K 阶滞后，并对 `y.L1`–`y.LK`
-执行联合 F 检验。显著结果是条件预测反馈证据，不等同于结构性因果证明。
-
-传递函数估计后，用显式拟合的输入 ARIMA 模型检查是否仍有遗漏的输入动态：
-
-```python
-input_models = {
-    "price": SARIMAX(price, order=(1, 0, 0), trend="c").fit(),
-    "income": AutoSARIMAX(income).fit(),
-}
-residual_ccf = result.residual_ccf_test(input_models, lags=12)
-print(residual_ccf.tests)
-print(residual_ccf.get("price").correlations)
-fig, axes = residual_ccf.plot_test()
-```
-
-输入模型必须是对当前 RDL 同一历史输入和同一日历拟合的、已收敛的单变量
-input-only `SARIMAXResult`，或其 `AutoModelResult`。接口不在诊断内部猜测
-ARIMA 阶数。不同模型 burn 后的新息按共同样本末端对齐；每个输入的
-`df = K + 1 - m` 自动从其活动 RDL numerator/denominator 参数计算。
-
-### GARCH
-
-```python
-GARCH(
-    data,
-    p=1,
-    q=1,
-    o=0,
-    vol="GARCH",
-    mean="Constant",
-    dist="normal",
-    garch_m=False,
-    garch_m_form="vol",
-    ar_lags=None,
-    exog=None,
-    dates=None,
-    missing="drop",
-    distributed_lags=None,
-    enforce_distributed_lag_stability=True,
-)
-```
-
-纯 ARCH(p) 模型通过 `q=0` 实现：`GARCH(data, p=2, q=0)` 等价于原 ARCH(2)。
-
-GJR-GARCH（非对称 GARCH）通过 `o>=1` 实现：`GARCH(data, p=1, o=1, q=1)`。
-
-EGARCH（指数 GARCH）通过 `vol="EGARCH"` 实现：`GARCH(data, p=1, o=1, q=1, vol="EGARCH")`。
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `data` | array-like | — | 时间序列 |
-| `p` | int | `1` | ARCH 阶数 |
-| `q` | int | `1` | GARCH 阶数（0 = 纯 ARCH） |
-| `o` | int | `0` | 非对称 (GJR) 阶数（>=1 = GJR-GARCH / 非对称 EGARCH） |
-| `vol` | str | `"GARCH"` | 波动率模型类型：`"GARCH"`（含 ARCH/GARCH/GJR-GARCH）或 `"EGARCH"` |
-| `mean` | str | `"Constant"` | 均值方程类型：`"Constant"`, `"Zero"`, `"AR"` 等 |
-| `dist` | str | `"normal"` | 新息分布：`"normal"`, `"t"`, `"skewt"`, `"ged"` |
-| `garch_m` | bool | `False` | 启用 GARCH-M，条件波动率进入均值方程（不支持 EGARCH） |
-| `garch_m_form` | str | `"vol"` | GARCH-M 中 sigma 形式：`"vol"` (sigma), `"var"` (sigma^2), `"log"` (log sigma^2) |
+优化器未报告收敛时抛出 `Runtim…1877 tokens truncated…form` | str | `"vol"` | GARCH-M 中 sigma 形式：`"vol"` (sigma), `"var"` (sigma^2), `"log"` (log sigma^2) |
 | `ar_lags` | int/list | `None` | 均值方程 AR 滞后阶数（仅 garch_m=True 时有效） |
 | `exog` | array-like | `None` | 外生解释变量 (nobs,) 或 (nobs, k) |
 | `igarch` | bool | `False` | IGARCH 约束估计，强制 sum(alpha)+sum(beta)=1 |
@@ -682,7 +408,7 @@ mu/_cons、kappa/sigma2、alpha[1]/L.arch、beta[1]/L.garch
 自动映射为 Stata 命名，显示 t 统计量和显著性星号。
 
 `compare_models()` 比较已拟合模型的参数和显著性，不衡量样本外预测性能。
-比较统一窗口下的预测误差应使用 `TsMetrics.evaluate_models_oos()`。
+比较统一窗口下的预测误差应使用 `TsMetrics.evaluate_forecasts()`。
 
 ## 自动最优参数选择
 

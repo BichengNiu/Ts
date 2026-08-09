@@ -206,7 +206,7 @@ DEMO_METHODS = {
     TsSims.SimRDLResult: ("get_exog", "get_components", "summary"),
     TsSims.SimCointegratedResult: ("summary", "plot"),
     TsSims.SimTSDSResult: ("summary", "plot"),
-    TsModels.BaseModel: ("summary", "oos", "backtest", "backcast"),
+    TsModels.BaseModel: ("summary", "backcast"),
     TsModels.BaseModelResult: (
         "summary",
         "plot_fit",

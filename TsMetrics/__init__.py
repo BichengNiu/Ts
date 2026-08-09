@@ -1,12 +1,6 @@
-"""Forecast performance metrics and leakage-free evaluation tools.
+"""Forecast metrics and unified leakage-free historical evaluation."""
 
-``TsMetrics`` owns point-forecast metrics, honest holdout evaluation,
-rolling-origin backtesting, and comparison of evaluation results. Model
-estimation and forecast generation remain in :mod:`Ts.TsModels`.
-"""
-
-from ._backtest import backtest
-from ._compare import compare_forecasts, evaluate_models_oos
+from ._engine import evaluate_forecasts
 from ._metrics import (
     compute_metrics,
     mae,
@@ -16,22 +10,19 @@ from ._metrics import (
     smape,
     theil_u1,
 )
-from ._oos import oos
-from ._results import BacktestResult, ComparisonResult, OOSComparisonResult, OOSResult
+from ._results import ForecastComparisonResult, ForecastEvaluationResult
+from ._schemes import Holdout, RollingOrigin
 
 __all__ = [
-    "BacktestResult",
-    "ComparisonResult",
-    "OOSComparisonResult",
-    "OOSResult",
-    "backtest",
-    "compare_forecasts",
+    "ForecastComparisonResult",
+    "ForecastEvaluationResult",
+    "Holdout",
+    "RollingOrigin",
     "compute_metrics",
-    "evaluate_models_oos",
+    "evaluate_forecasts",
     "mae",
     "mape",
     "mse",
-    "oos",
     "rmse",
     "smape",
     "theil_u1",

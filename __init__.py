@@ -23,9 +23,7 @@ Quick start
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
 >>> from Ts.TsUtils import STL, interpolate_missing, eacf, seasonal_dummies
 >>> from Ts.TsModels import SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
->>> from Ts.TsMetrics import (
-...     rmse, oos, backtest, compare_forecasts, evaluate_models_oos
-... )
+>>> from Ts.TsMetrics import Holdout, RollingOrigin, evaluate_forecasts, rmse
 >>> from Ts.TsTests import ADFTest, KPSSTest, LjungBoxTest
 """
 
@@ -94,18 +92,15 @@ from .TsModels import (
 )
 
 from .TsMetrics import (
-    BacktestResult,
-    ComparisonResult,
-    OOSComparisonResult,
-    OOSResult,
-    backtest,
-    compare_forecasts,
+    ForecastComparisonResult,
+    ForecastEvaluationResult,
+    Holdout,
+    RollingOrigin,
     compute_metrics,
-    evaluate_models_oos,
+    evaluate_forecasts,
     mae,
     mape,
     mse,
-    oos,
     rmse,
     smape,
     theil_u1,
@@ -213,14 +208,11 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "smape",
     "theil_u1",
     "compute_metrics",
-    "oos",
-    "backtest",
-    "compare_forecasts",
-    "evaluate_models_oos",
-    "OOSResult",
-    "BacktestResult",
-    "ComparisonResult",
-    "OOSComparisonResult",
+    "Holdout",
+    "RollingOrigin",
+    "evaluate_forecasts",
+    "ForecastEvaluationResult",
+    "ForecastComparisonResult",
     # TsTests — base
     "BaseTest",
     "BaseTestResult",
