@@ -33,7 +33,7 @@ class FittedModelProtocol(Protocol):
 class EvaluationCloneProtocol(Protocol):
     """Isolated model clone that can be fitted."""
 
-    def fit(self) -> FittedModelProtocol:
+    def fit(self, **kwargs: Any) -> FittedModelProtocol:
         """Fit the isolated evaluation window."""
 
 

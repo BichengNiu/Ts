@@ -894,6 +894,7 @@ class BaseModel(ABC):
         validation_period,
         *,
         alpha=0.05,
+        method=None,
     ):
         """Evaluate an explicit validation period after isolated estimation.
 
@@ -905,6 +906,9 @@ class BaseModel(ABC):
             Inclusive later bounds used only for scoring.
         alpha : float, default 0.05
             Significance level for forecast intervals.
+        method : str, optional
+            Optimizer forwarded to this model's ``fit()`` method. ``None``
+            preserves the model's default fitting behavior.
 
         Returns
         -------
@@ -927,6 +931,7 @@ class BaseModel(ABC):
             estimation_period=estimation_period,
             validation_period=validation_period,
             alpha=alpha,
+            method=method,
         )
 
     def backtest(

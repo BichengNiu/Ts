@@ -2,10 +2,40 @@
 
 from __future__ import annotations
 
+from inspect import Parameter, signature
+
 import numpy as np
 
 
 from ._protocols import EvaluationModelProtocol
+
+
+def validate_fit_method(model, method, *, model_name=None):
+    """Return fit kwargs after validating explicit optimizer support."""
+    if method is None:
+        return {}
+    if not isinstance(method, str):
+        raise TypeError("method must be a string or None")
+
+    fit = getattr(model, "fit", None)
+    if not callable(fit):
+        raise TypeError("model must provide fit()")
+    try:
+        parameters = signature(fit).parameters.values()
+    except (TypeError, ValueError) as error:
+        label = type(model).__name__ if model_name is None else repr(model_name)
+        raise TypeError(
+            f"model {label} does not expose an inspectable fit() supporting method"
+        ) from error
+
+    accepts_method = any(
+        parameter.name == "method" or parameter.kind == Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+    if not accepts_method:
+        label = type(model).__name__ if model_name is None else repr(model_name)
+        raise TypeError(f"model {label} does not support fit(method=...)")
+    return {"method": method}
 
 
 def model_data(model):
@@ -90,6 +120,7 @@ def fit_and_forecast(
     horizon,
     alpha,
     expected_shape,
+    fit_kwargs=None,
 ):
     """Fit an isolated model window and return metadata and forecasts."""
     cloned = model._clone_for_evaluation(
@@ -100,7 +131,7 @@ def fit_and_forecast(
     fit = getattr(cloned, "fit", None)
     if not callable(fit):
         raise TypeError("_clone_for_evaluation() must return an object with fit()")
-    fitted = fit()
+    fitted = fit(**({} if fit_kwargs is None else fit_kwargs))
     nobs = getattr(fitted, "nobs", None)
     if (
         isinstance(nobs, (bool, np.bool_))

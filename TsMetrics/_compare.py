@@ -6,6 +6,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from ._evaluation import validate_fit_method
 from ._metrics import ERROR_METRIC_NAMES
 from ._oos import oos
 from ._results import (
@@ -158,6 +159,7 @@ def evaluate_models_oos(
     *,
     alpha=0.05,
     rank_by="rmse",
+    method=None,
 ):
     """Evaluate multiple models on one explicit, complete OOS sample.
 
@@ -177,6 +179,9 @@ def evaluate_models_oos(
         Significance level for each forecast interval.
     rank_by : str, default "rmse"
         Canonical error metric used for ordering models.
+    method : str, optional
+        Optimizer forwarded to every model's ``fit()`` method. ``None`` keeps
+        each model's default. Every named model must support this argument.
 
     Returns
     -------
@@ -208,12 +213,16 @@ def evaluate_models_oos(
     if not all(isinstance(name, str) for name in models):
         raise TypeError("model names must be strings")
 
+    for name, model in models.items():
+        validate_fit_method(model, method, model_name=name)
+
     evaluations = {
         name: oos(
             model,
             estimation_period=estimation_period,
             validation_period=validation_period,
             alpha=alpha,
+            method=method,
         )
         for name, model in models.items()
     }

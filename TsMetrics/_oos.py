@@ -14,6 +14,7 @@ from ._evaluation import (
     model_series_names,
     training_dates,
     training_exog,
+    validate_fit_method,
     validate_model_protocol,
 )
 from ._periods import resolve_evaluation_periods
@@ -27,7 +28,14 @@ def _validation_slice(values, offset):
     return np.array(values[offset:], dtype=float, copy=True)
 
 
-def oos(model, estimation_period, validation_period, *, alpha=0.05):
+def oos(
+    model,
+    estimation_period,
+    validation_period,
+    *,
+    alpha=0.05,
+    method=None,
+):
     """Evaluate a model without exposing validation targets to estimation.
 
     Both public periods use inclusive bounds. Date-aware models require exact
@@ -47,6 +55,9 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
         Inclusive scored bounds strictly after the estimation period.
     alpha : float, default 0.05
         Significance level for forecast intervals.
+    method : str, optional
+        Optimizer forwarded to the cloned model's ``fit()`` method. ``None``
+        preserves that model's default fitting behavior.
 
     Returns
     -------
@@ -68,6 +79,7 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
     data = model_data(model)
     series_names = model_series_names(model, data)
     target = validate_model_protocol(model, "oos")
+    fit_kwargs = validate_fit_method(model, method)
     periods = resolve_evaluation_periods(
         model,
         data,
@@ -99,6 +111,7 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
         bridge_horizon,
         alpha,
         bridge_shape,
+        fit_kwargs,
     )
 
     validation_offset = periods.validation_start - periods.estimation_stop
