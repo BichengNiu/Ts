@@ -88,6 +88,19 @@ class _MeanModel(BaseModel):
         return result
 
 
+class _OptimizerMeanModel(_MeanModel):
+    """Mean model that records the optimizer selected for its clone."""
+
+    def __init__(self, data, dates=None, *, methods=None, **kwargs):
+        super().__init__(data, dates=dates, **kwargs)
+        self.methods = [] if methods is None else methods
+
+    def fit(self, *, method="bfgs"):
+        """Record the requested optimizer before fitting the mean model."""
+        self.methods.append(method)
+        return super().fit()
+
+
 class _InvalidTargetModel(_MeanModel):
     """Model double whose target validation fails after forecasting."""
 
@@ -514,6 +527,57 @@ def test_evaluate_models_oos_returns_all_metrics_and_shared_periods():
             np.arange(10, 15),
         )
     assert all(model.result_ is None for model in models.values())
+
+
+def test_oos_forwards_explicit_fit_method():
+    """Direct OOS evaluation forwards an explicit optimizer to the clone."""
+    model = _OptimizerMeanModel(np.arange(15.0))
+
+    result = oos(
+        model,
+        estimation_period=(0, 9),
+        validation_period=(10, 14),
+        method="lbfgs",
+    )
+
+    assert result.mean.shape == (5,)
+    assert model.methods == ["lbfgs"]
+
+
+def test_evaluate_models_oos_forwards_method_to_every_model():
+    """Batch OOS evaluation applies one explicit optimizer to every model."""
+    data = np.arange(15.0)
+    first = _OptimizerMeanModel(data)
+    second = _OptimizerMeanModel(data, forecast_bias=6.5)
+
+    report = evaluate_models_oos(
+        {"first": first, "second": second},
+        estimation_period=(0, 9),
+        validation_period=(10, 14),
+        method="powell",
+    )
+
+    assert report.table.shape[0] == 2
+    assert first.methods == ["powell"]
+    assert second.methods == ["powell"]
+
+
+def test_evaluate_models_oos_rejects_unsupported_method_before_fitting():
+    """An incompatible named model prevents every fit in the batch."""
+    data = np.arange(15.0)
+    supported = _OptimizerMeanModel(data)
+    unsupported = _MeanModel(data)
+
+    with pytest.raises(TypeError, match=r"unsupported.*method"):
+        evaluate_models_oos(
+            {"supported": supported, "unsupported": unsupported},
+            estimation_period=(0, 9),
+            validation_period=(10, 14),
+            method="lbfgs",
+        )
+
+    assert supported.methods == []
+    assert unsupported.fit_windows == []
 
 
 def test_oos_records_requested_alpha_even_without_intervals():
