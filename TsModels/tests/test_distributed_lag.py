@@ -655,6 +655,51 @@ def test_future_forecast_continues_filter_over_full_input_history():
     assert np.all(forecast.is_oos)
 
 
+def test_one_step_rdl_forecast_preserves_the_horizon_axis():
+    rng = np.random.default_rng(2609)
+    nobs = 100
+    dates = pd.date_range("2015-01-01", periods=nobs + 1, freq="MS")
+    x = rng.normal(size=nobs + 1)
+    effect = lfilter([0.9], [1.0, -0.4], x)
+    y = pd.Series(
+        effect[:nobs] + rng.normal(scale=0.15, size=nobs),
+        index=dates[:nobs],
+    )
+    fitted = SARIMAX(
+        y,
+        exog=pd.DataFrame({"x": x}, index=dates),
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x": RationalLagSpec(numerator=0, denominator=1)},
+    ).fit(method="bfgs", maxiter=300, require_convergence=True)
+
+    forecast = fitted.predict(start=nobs, end=nobs)
+
+    assert forecast.mean.shape == (1,)
+    assert forecast.lower.shape == (1,)
+    assert forecast.upper.shape == (1,)
+    assert np.isfinite(forecast.mean).all()
+
+
+def test_one_step_rdl_backtest_matches_the_shared_evaluation_shape():
+    rng = np.random.default_rng(2610)
+    x = rng.normal(size=100)
+    y = lfilter([1.0], [1.0, -0.35], x) + rng.normal(scale=0.2, size=100)
+    model = SARIMAX(
+        y,
+        exog=x[:, None],
+        exog_names=["x"],
+        order=(0, 0, 0),
+        trend="n",
+        distributed_lags={"x": RationalLagSpec(numerator=0, denominator=1)},
+    )
+
+    result = model.backtest(initial_window=80, horizon=1, step=10)
+
+    assert result.mean.shape == (2, 1)
+    assert np.isfinite(result.mean).all()
+
+
 def test_future_forecast_combines_rdl_and_static_exog_once():
     rng = np.random.default_rng(2309)
     nobs = 250

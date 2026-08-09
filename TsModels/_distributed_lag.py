@@ -864,8 +864,11 @@ class _RationalLagSARIMAX(StatsmodelsSARIMAX):
             includes_fixed=False,
             complex_step=complex_step,
         )
-        base_intercept = np.asarray(self.ssm["obs_intercept"])
-        if base_intercept.shape[-1] == 1:
+        base_intercept = np.asarray(self.ssm["obs_intercept"]).reshape(
+            self.k_endog,
+            -1,
+        )
+        if base_intercept.shape[1] == 1 and self.nobs > 1:
             base_intercept = np.repeat(base_intercept, self.nobs, axis=1)
         self.ssm["obs_intercept"] = (
             base_intercept + self._transfer_effect(params)[None, :]
