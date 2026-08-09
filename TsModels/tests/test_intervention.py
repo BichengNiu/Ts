@@ -469,7 +469,7 @@ def _fitted_window_model(seed=47):
         events=[event],
         order=(0, 0, 0),
         trend="n",
-    ).fit()
+    ).fit(cov_type="oim")
 
 
 def test_delta_interval_uses_full_event_covariance():

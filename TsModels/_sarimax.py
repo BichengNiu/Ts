@@ -2563,7 +2563,7 @@ class SARIMAX(BaseModel):
         self,
         *,
         start_params=None,
-        method="lbfgs",
+        method="bfgs",
         maxiter=50,
         cov_type="opg",
         require_convergence=False,
@@ -2575,7 +2575,7 @@ class SARIMAX(BaseModel):
         start_params : array-like, optional
             Finite initial parameter vector in statsmodels parameter order.
             It must contain exactly one value per fitted parameter.
-        method : str, default ``"lbfgs"``
+        method : str, default ``"bfgs"``
             Optimizer passed to statsmodels. Supported values are ``"newton"``,
             ``"nm"``, ``"bfgs"``, ``"lbfgs"``, ``"powell"``, ``"cg"``,
             ``"ncg"``, and ``"basinhopping"``.

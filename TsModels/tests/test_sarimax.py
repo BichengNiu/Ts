@@ -298,7 +298,7 @@ class TestSARIMAXResult:
     ):
         """Callers can inspect convergence without mutating raw fit state."""
         assert fitted_result.converged
-        assert fitted_result.optimizer == "lbfgs"
+        assert fitted_result.optimizer == "bfgs"
 
         details = fitted_result.optimization_details
         original_gradient = np.asarray(

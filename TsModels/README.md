@@ -397,6 +397,10 @@ SARIMAX(
 | `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 以外生列名为键的 RDL/transfer-function 规格；支持多个输入 |
 | `enforce_distributed_lag_stability` | bool | `True` | 约束并复核完整分母多项式稳定性 |
 
+`fit()` 默认使用 `method="bfgs"` 进行极大似然估计；仍可通过 `method`
+显式选择其他 statsmodels 优化器。优化器只控制似然函数的数值搜索，
+不会改变模型规格。
+
 稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
 
 ```python
