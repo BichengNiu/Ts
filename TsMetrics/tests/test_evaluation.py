@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import pytest
+import matplotlib.pyplot as plt
 
 from Ts.TsMetrics import (
     BacktestResult,
@@ -1308,3 +1309,63 @@ def test_evaluate_forecasts_rejects_different_targets_before_fitting():
 
     assert first.fit_windows == []
     assert second.fit_windows == []
+
+
+def test_unified_forecast_plot_uses_one_selected_rolling_horizon():
+    result = _unified_result(
+        [[10.0, 11.0], [12.0, 13.0]],
+        [[10.5, 10.5], [12.5, 12.5]],
+    )
+    report = ForecastComparisonResult({"model": result})
+
+    with pytest.raises(ValueError, match="horizon is required"):
+        report.plot_forecasts()
+
+    fig, ax = report.plot_forecasts(
+        horizon=1,
+        title="Rolling forecasts",
+        grid=True,
+    )
+
+    assert ax.get_title() == "Rolling forecasts"
+    assert len(ax.lines) == 2
+    assert len(ax.collections) == 1
+    plt.close(fig)
+
+
+def test_unified_metric_plot_composes_the_shared_plot_series_style():
+    result = _unified_result(
+        [[10.0, 11.0], [12.0, 13.0]],
+        [[11.0, 10.0], [12.0, 14.0]],
+    )
+    report = ForecastComparisonResult({"model": result})
+
+    fig, ax = report.plot_metric(
+        "rmse",
+        by="origin",
+        title="Rolling RMSE",
+        ytitle="RMSE",
+        grid=True,
+    )
+
+    assert ax.get_title() == "Rolling RMSE"
+    assert ax.get_ylabel() == "RMSE"
+    assert len(ax.lines) == 1
+    plt.close(fig)
+
+
+def test_unified_forecast_plot_requires_a_multivariate_series():
+    mean = np.arange(8.0).reshape(2, 2, 2)
+    result = _unified_result(
+        mean,
+        mean + 1.0,
+        series_names=("output", "prices"),
+    )
+    report = ForecastComparisonResult({"vector": result})
+
+    with pytest.raises(ValueError, match="series is required"):
+        report.plot_forecasts(horizon=1)
+
+    fig, ax = report.plot_forecasts(horizon=1, series="output")
+    assert len(ax.lines) == 2
+    plt.close(fig)

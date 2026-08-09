@@ -1304,3 +1304,162 @@ class ForecastComparisonResult:
             rows,
             columns=["model", by, *ERROR_METRIC_NAMES, "n"],
         )
+
+    def _selected_series_label(self, series):
+        """Resolve one series label for forecast plotting."""
+        reference = next(iter(self.results.values()))
+        if reference.mean.ndim == 2:
+            if series not in {None, 0}:
+                raise ValueError("series must be None or 0 for univariate results")
+            return None
+        labels = reference.series_names or tuple(
+            f"series_{index}" for index in range(reference.mean.shape[2])
+        )
+        if series is None:
+            raise ValueError("series is required for multivariate forecasts")
+        if isinstance(series, (bool, np.bool_)):
+            raise TypeError("series must be an integer position or name")
+        if isinstance(series, (int, np.integer)):
+            position = int(series)
+            if not 0 <= position < len(labels):
+                raise IndexError(f"series position {position} is out of range")
+            return labels[position]
+        if not isinstance(series, str) or not series:
+            raise TypeError("series must be an integer position or name")
+        if series not in labels:
+            raise ValueError(f"unknown series {series!r}")
+        return series
+
+    def plot_forecasts(
+        self,
+        *,
+        horizon=None,
+        series=None,
+        title=None,
+        xtitle=None,
+        ytitle=None,
+        freq=None,
+        note=None,
+        grid=False,
+        show_intervals=True,
+        interval_alpha=0.12,
+        ax=None,
+    ):
+        """Plot aligned actual values and one forecast path per model."""
+        from Ts.TsPlots import plot_series
+
+        reference = next(iter(self.results.values()))
+        max_horizon = reference.mean.shape[1]
+        if horizon is None:
+            if len(reference.splits) > 1 and max_horizon > 1:
+                raise ValueError(
+                    "horizon is required when rolling forecasts overlap"
+                )
+            horizon = 1 if max_horizon == 1 else None
+        elif (
+            isinstance(horizon, (bool, np.bool_))
+            or not isinstance(horizon, (int, np.integer))
+        ):
+            raise TypeError("horizon must be an integer")
+        else:
+            horizon = int(horizon)
+            if not 1 <= horizon <= max_horizon:
+                raise ValueError(f"horizon must be between 1 and {max_horizon}")
+        series_label = self._selected_series_label(series)
+        show_intervals = _validate_bool("show_intervals", show_intervals)
+        interval_alpha = _validate_interval_alpha(interval_alpha)
+
+        values = self.predictions
+        if horizon is not None:
+            values = values.loc[values["horizon"] == horizon]
+        if reference.mean.ndim == 3:
+            values = values.loc[values["series"] == series_label]
+
+        def first_finite(series_values):
+            finite = series_values[np.isfinite(series_values)]
+            return float("nan") if finite.empty else float(finite.iloc[0])
+
+        actual = values.groupby("target_time", sort=True)["actual"].agg(first_finite)
+        forecasts = values.pivot(
+            index="target_time",
+            columns="model",
+            values="forecast",
+        ).reindex(columns=list(self.results))
+        frame = pd.concat([actual.rename("actual"), forecasts], axis=1)
+        existing_line_count = 0 if ax is None else len(ax.lines)
+        fig, ax = plot_series(
+            frame,
+            facet=False,
+            auto_dual_y=False,
+            title=title,
+            xtitle=xtitle,
+            ytitle=ytitle,
+            freq=freq,
+            note=note,
+            grid=grid,
+            show_legend=False,
+            ax=ax,
+        )
+        lines = ax.lines[
+            existing_line_count : existing_line_count + len(frame.columns)
+        ]
+        if show_intervals:
+            for line, (name, result) in zip(
+                lines[1:],
+                self.results.items(),
+                strict=True,
+            ):
+                if result.lower is None:
+                    continue
+                model_rows = values.loc[values["model"] == name].sort_values(
+                    "target_time"
+                )
+                ax.fill_between(
+                    model_rows["target_time"],
+                    model_rows["lower"],
+                    model_rows["upper"],
+                    color=line.get_color(),
+                    alpha=interval_alpha,
+                    label=_interval_label(name, result.alpha),
+                )
+        ax.legend(frameon=False, ncol=2)
+        return fig, ax
+
+    def plot_metric(
+        self,
+        metric="rmse",
+        *,
+        by="origin",
+        title=None,
+        xtitle=None,
+        ytitle=None,
+        freq=None,
+        note=None,
+        grid=False,
+        ax=None,
+    ):
+        """Plot one canonical error metric by origin or forecast horizon."""
+        from Ts.TsPlots import plot_series
+
+        if metric not in ERROR_METRIC_NAMES:
+            raise ValueError(
+                f"metric must be one of {list(ERROR_METRIC_NAMES)}, got {metric!r}"
+            )
+        if by not in {"origin", "horizon"}:
+            raise ValueError("by must be 'origin' or 'horizon' for metric plots")
+        table = self.metric_table(by=by)
+        frame = table.pivot(index=by, columns="model", values=metric).reindex(
+            columns=list(self.results)
+        )
+        return plot_series(
+            frame,
+            facet=False,
+            auto_dual_y=False,
+            title=title,
+            xtitle=xtitle,
+            ytitle=metric.upper() if ytitle is None else ytitle,
+            freq=freq,
+            note=note,
+            grid=grid,
+            ax=ax,
+        )
