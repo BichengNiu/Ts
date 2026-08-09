@@ -18,7 +18,7 @@ TsPlots/
 ├── ts_plot.py    # 时间序列绘图：plot_series
 ├── sc_plot.py    # 散点图绘图：plot_scatter
 ├── acf_plot.py   # 相关图：plot_acf, plot_pacf, plot_correlogram
-└── lag_plot.py   # 滞后响应柱状图：plot_lag_response
+└── lag_plot.py   # 滞后柱线响应图：plot_lag_response
 ```
 
 ## 安装 / 导入
@@ -353,26 +353,36 @@ fig, ax = plot_correlogram(
 
 ---
 
-## `plot_lag_response` — 滞后响应柱状图
+## `plot_lag_response` — 滞后柱线响应图
 
 ```python
 from Ts.TsPlots import plot_lag_response
 
 fig, ax = plot_lag_response(rdl_result.weights(20))
 fig, axes = plot_lag_response(sarimax_result.weights(20))
+
+# preliminary sample weights 为柱，最终传递函数隐含 weights 为线
+fig, axes = plot_lag_response(
+    preliminary_result.weights(16),
+    line_data=final_result.weights(16),
+)
 ```
 
 横轴为非负整数 time lag，纵轴为 impulse-response weight。Series 或一维数组
 返回单轴；多列 DataFrame 或二维数组按列生成分面，并保持输入顺序。函数统一
 使用 TsPlots 的字体、色板、零参考线、网格和注释样式，也支持单响应外部 `ax`。
+传入 `line_data` 时，`data` 绘制为 sample impulse-response 柱，`line_data`
+绘制为 transfer-function weights 实线；两者的 lag 索引和响应名称必须完全一致。
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `data` | — | lag-indexed Series/DataFrame 或一/二维数组 |
+| `line_data` | `None` | 与 `data` 对齐的可选实线响应数据 |
 | `title` | `None` | 单图标题或多图总标题 |
 | `xtitle` | `"Time lag"` | 横轴标题 |
 | `ytitle` | `"Impulse response"` | 纵轴标题 |
 | `color` | TsPlots 色板 | 单色或每响应一种颜色 |
+| `line_color` | `"black"` | 可选响应线颜色 |
 | `zero_line` | `True` | 绘制零响应参考线 |
 | `grid` | `True` | 显示共享虚线网格 |
 | `max_ticks` | `15` | 刻度过密时的最大整数刻度数 |

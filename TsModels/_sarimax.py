@@ -1257,12 +1257,20 @@ class SARIMAXResult(BaseModelResult):
             alpha=alpha,
         ).fit()
 
-    def plot_impulse_response(self, steps=20, inputs=None, **kwargs):
-        """Plot RDL impulse weights against time lag as bars.
+    def plot_impulse_response(
+        self,
+        steps=20,
+        inputs=None,
+        sample_weights=None,
+        **kwargs,
+    ):
+        """Plot fitted RDL weights, optionally over sample weights.
 
         Multiple selected inputs are shown as facets in fitted input order.
-        The bars reuse :meth:`weights` and therefore represent the fitted
-        transfer function's response to a one-unit impulse.
+        Without ``sample_weights``, bars reuse :meth:`weights`. When sample
+        weights from a preliminary finite-lag model are supplied, those values
+        are plotted as bars and the fitted rational transfer-function weights
+        are overlaid as solid lines.
 
         Parameters
         ----------
@@ -1270,6 +1278,9 @@ class SARIMAXResult(BaseModelResult):
             Strictly positive response horizon.
         inputs : str or sequence of str, optional
             RDL inputs to plot. The default plots every fitted RDL input.
+        sample_weights : pandas.Series or pandas.DataFrame, optional
+            Preliminary finite-lag estimates to plot as bars. Their lag index
+            and selected response names must match the fitted weights.
         **kwargs
             Additional options forwarded to
             :func:`Ts.TsPlots.plot_lag_response`.
@@ -1314,7 +1325,20 @@ class SARIMAXResult(BaseModelResult):
         from Ts.TsPlots import plot_lag_response
 
         weights = pd.concat([results[name].weights(steps) for name in selected], axis=1)
-        return plot_lag_response(weights, **kwargs)
+        if sample_weights is None:
+            return plot_lag_response(weights, **kwargs)
+        if isinstance(sample_weights, pd.DataFrame):
+            missing = [name for name in selected if name not in sample_weights.columns]
+            if missing:
+                raise ValueError(
+                    "sample_weights is missing selected input " f"{missing[0]!r}"
+                )
+            sample_weights = sample_weights.loc[:, list(selected)]
+        return plot_lag_response(
+            sample_weights,
+            line_data=weights,
+            **kwargs,
+        )
 
     @property
     def dates(self):

@@ -122,7 +122,7 @@ result.test_residuals(lags=10)
 | | `.distributed_lag_coefficients` | 所有 RDL 多项式系数，包括固定为 0 的缺省阶 |
 | | `.steady_state_gains` | 各输入长期增益及 delta-method 区间 |
 | | `.weights(steps)` | 各输入的前 `steps` 个递归 impulse weights |
-| | `.plot_impulse_response(steps, inputs)` | 将 RDL weights 按 time lag 绘制为单图或多输入分面柱状图 |
+| | `.plot_impulse_response(steps, inputs, sample_weights)` | 绘制 RDL weights；传入基础模型 weights 时以柱表示 sample response、以线表示最终传递函数响应 |
 | | `.feedback_test(lags, inputs)` | 对原始外生输入运行条件反馈 OLS 与因变量滞后联合 F 检验 |
 | | `.residual_ccf_test(input_models, lags, inputs)` | 用显式输入 ARIMA 新息运行逐阶残差 CCF 与联合 S* 充分性检验 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
@@ -500,7 +500,9 @@ observed-information 标准误口径一致，并默认要求优化器收敛。
 日期模型可传带相同未来日期的 DataFrame，无日期模型可按位置传二维数组。
 
 RDL 的 impulse response 就是 `weights(steps)`：传递函数对单位脉冲在各个
-time lag 上的响应。绘图不重新计算权重：
+time lag 上的响应。绘图不重新计算权重。默认将当前模型 weights 画成柱；若提供
+preliminary finite-lag 模型的 `sample_weights`，则 sample weights 为柱，当前
+rational transfer-function weights 为实线：
 
 ```python
 # 所有 RDL 输入按拟合顺序分面
@@ -508,6 +510,12 @@ fig, axes = result.plot_impulse_response(steps=20)
 
 # 仅绘制 price；等价于绘制 result.distributed_lags["price"].weights(20)
 fig, ax = result.plot_impulse_response(20, inputs="price")
+
+# Figure C5.14/C5.15 风格：基础 LTF weights 为柱，最终 RDL weights 为线
+fig, axes = final_result.plot_impulse_response(
+    steps=16,
+    sample_weights=preliminary_result.weights(16),
+)
 ```
 
 对随机性输入，还可检查过去的模型输出是否反馈到当前输入：

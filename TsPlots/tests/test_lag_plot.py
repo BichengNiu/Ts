@@ -69,6 +69,46 @@ def test_custom_labels_note_color_and_grid_follow_contract():
     plt.close(fig)
 
 
+def test_optional_line_overlays_transfer_function_weights():
+    sample = pd.Series(
+        [0.0, 0.1, 0.3, 0.15],
+        index=pd.RangeIndex(4, name="lag"),
+        name="price",
+    )
+    implied = pd.Series(
+        [0.0, 0.0, 0.25, 0.125],
+        index=pd.RangeIndex(4, name="lag"),
+        name="price",
+    )
+
+    fig, ax = plot_lag_response(sample, line_data=implied)
+
+    assert [bar.get_height() for bar in ax.patches] == pytest.approx(sample)
+    transfer_line = next(
+        line for line in ax.lines if line.get_label() == "Transfer-function weights"
+    )
+    np.testing.assert_allclose(transfer_line.get_ydata(), implied)
+    assert [text.get_text() for text in ax.get_legend().get_texts()] == [
+        "Sample impulse response",
+        "Transfer-function weights",
+    ]
+    plt.close(fig)
+
+
+@pytest.mark.parametrize(
+    ("line_data", "match"),
+    [
+        (pd.Series([0.2], index=[1], name="price"), "time lags"),
+        (pd.Series([0.2, 0.1], name="income"), "response names"),
+    ],
+)
+def test_optional_line_requires_matching_lags_and_response_names(line_data, match):
+    sample = pd.Series([0.3, 0.2], name="price")
+
+    with pytest.raises(ValueError, match=match):
+        plot_lag_response(sample, line_data=line_data)
+
+
 def test_rgb_tuple_is_accepted_as_one_matplotlib_color():
     fig, ax = plot_lag_response([1.0, 0.5], color=(1.0, 0.0, 0.0))
 

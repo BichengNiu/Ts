@@ -413,12 +413,19 @@ class RationalLagResult:
         values = lfilter(numerator, denominator, impulse)
         return pd.Series(values, index=pd.RangeIndex(steps, name="lag"), name=self.name)
 
-    def plot_impulse_response(self, steps=20, ax=None, **kwargs):
-        """Plot fitted impulse weights against time lag as bars.
+    def plot_impulse_response(
+        self,
+        steps=20,
+        ax=None,
+        sample_weights=None,
+        **kwargs,
+    ):
+        """Plot fitted impulse weights, optionally over sample weights.
 
-        The plotted values are exactly those returned by :meth:`weights`;
-        no second transfer-function calculation or implicit confidence
-        interval is introduced.
+        Without ``sample_weights``, the fitted transfer-function weights are
+        plotted as bars. When sample weights are supplied, they are plotted as
+        bars and the fitted transfer-function weights are overlaid as a solid
+        line.
 
         Parameters
         ----------
@@ -426,6 +433,9 @@ class RationalLagResult:
             Strictly positive response horizon.
         ax : matplotlib.axes.Axes, optional
             Existing axis to reuse.
+        sample_weights : pandas.Series, optional
+            Preliminary finite-lag estimates to plot as bars. Their lag index
+            and response name must match the fitted weights.
         **kwargs
             Additional options forwarded to
             :func:`Ts.TsPlots.plot_lag_response`.
@@ -445,7 +455,15 @@ class RationalLagResult:
         """
         from Ts.TsPlots import plot_lag_response
 
-        return plot_lag_response(self.weights(steps), ax=ax, **kwargs)
+        fitted_weights = self.weights(steps)
+        if sample_weights is None:
+            return plot_lag_response(fitted_weights, ax=ax, **kwargs)
+        return plot_lag_response(
+            sample_weights,
+            line_data=fitted_weights,
+            ax=ax,
+            **kwargs,
+        )
 
     def filter(self, values):
         """Apply the fitted rational filter to one complete input path.

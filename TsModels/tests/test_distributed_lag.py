@@ -179,6 +179,29 @@ def test_rational_lag_result_plots_existing_impulse_weights_as_bars():
     plt.close(fig)
 
 
+def test_rational_lag_result_overlays_fitted_weights_on_sample_bars():
+    result = RationalLagResult(
+        name="price",
+        spec=RationalLagSpec(numerator=0, denominator=1),
+        numerator={0: 2.0},
+        denominator={1: 0.5},
+    )
+    sample = pd.Series(
+        [1.8, 1.2, 0.4, 0.3],
+        index=pd.RangeIndex(4, name="lag"),
+        name="price",
+    )
+
+    fig, ax = result.plot_impulse_response(4, sample_weights=sample)
+
+    assert [bar.get_height() for bar in ax.patches] == pytest.approx(sample)
+    transfer_line = next(
+        line for line in ax.lines if line.get_label() == "Transfer-function weights"
+    )
+    np.testing.assert_allclose(transfer_line.get_ydata(), result.weights(4))
+    plt.close(fig)
+
+
 def test_rational_lag_plot_reuses_external_axis():
     result = RationalLagResult(
         name="x",
@@ -249,6 +272,66 @@ def test_sarimax_result_can_select_one_rdl_impulse_response():
         result.weights(3)["income"].tolist()
     )
     plt.close(fig)
+
+
+def test_sarimax_result_overlays_selected_fitted_weights_on_sample_bars():
+    result = _result_with_structured_lags()
+    sample = pd.DataFrame(
+        {
+            "price": [0.8, 0.6, 0.3, 0.2],
+            "income": [-0.5, -0.3, -0.1, 0.0],
+        },
+        index=pd.RangeIndex(4, name="lag"),
+    )
+
+    fig, ax = result.plot_impulse_response(
+        4,
+        inputs="income",
+        sample_weights=sample,
+    )
+
+    assert [bar.get_height() for bar in ax.patches] == pytest.approx(sample["income"])
+    transfer_line = next(
+        line for line in ax.lines if line.get_label() == "Transfer-function weights"
+    )
+    np.testing.assert_allclose(transfer_line.get_ydata(), result.weights(4)["income"])
+    plt.close(fig)
+
+
+def test_sarimax_result_overlays_all_sample_weight_facets():
+    result = _result_with_structured_lags()
+    sample = pd.DataFrame(
+        {
+            "price": [0.8, 0.6, 0.3],
+            "income": [-0.5, -0.3, -0.1],
+        },
+        index=pd.RangeIndex(3, name="lag"),
+    )
+
+    fig, axes = result.plot_impulse_response(3, sample_weights=sample)
+
+    for axis, name in zip(axes, sample.columns, strict=True):
+        assert [bar.get_height() for bar in axis.patches] == pytest.approx(
+            sample[name]
+        )
+        transfer_line = next(
+            line
+            for line in axis.lines
+            if line.get_label() == "Transfer-function weights"
+        )
+        np.testing.assert_allclose(transfer_line.get_ydata(), result.weights(3)[name])
+    plt.close(fig)
+
+
+def test_sarimax_sample_weights_require_selected_input():
+    sample = pd.DataFrame({"price": [0.8, 0.6, 0.3]})
+
+    with pytest.raises(ValueError, match="income"):
+        _result_with_structured_lags().plot_impulse_response(
+            3,
+            inputs="income",
+            sample_weights=sample,
+        )
 
 
 def test_sarimax_impulse_plot_rejects_missing_or_unknown_rdl_inputs():

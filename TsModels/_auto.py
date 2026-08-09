@@ -527,7 +527,13 @@ class AutoModelResult(BaseModelResult):
             **kwargs,
         )
 
-    def plot_impulse_response(self, steps=20, inputs=None, **kwargs):
+    def plot_impulse_response(
+        self,
+        steps=20,
+        inputs=None,
+        sample_weights=None,
+        **kwargs,
+    ):
         """Delegate RDL impulse-response plotting to the selected model.
 
         Parameters
@@ -536,6 +542,9 @@ class AutoModelResult(BaseModelResult):
             Strictly positive response horizon.
         inputs : str or sequence of str, optional
             RDL inputs to plot.
+        sample_weights : pandas.Series or pandas.DataFrame, optional
+            Preliminary finite-lag estimates to plot as bars beneath the
+            selected model's transfer-function weight lines.
         **kwargs
             Additional options forwarded to the selected model's
             :meth:`plot_impulse_response` method.
@@ -559,7 +568,12 @@ class AutoModelResult(BaseModelResult):
         method = getattr(self.best_result, "plot_impulse_response", None)
         if method is None:
             raise TypeError("selected model does not support RDL impulse responses")
-        return method(steps, inputs=inputs, **kwargs)
+        return method(
+            steps,
+            inputs=inputs,
+            sample_weights=sample_weights,
+            **kwargs,
+        )
 
     def long_run_equilibrium(self):
         """Return the long-run equilibrium of the best model.

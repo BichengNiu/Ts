@@ -275,17 +275,28 @@ class TestAutoModelResult:
         expected = object()
         calls = []
 
-        def plot_impulse_response(steps=20, inputs=None, **kwargs):
-            calls.append((steps, inputs, kwargs))
+        def plot_impulse_response(
+            steps=20,
+            inputs=None,
+            sample_weights=None,
+            **kwargs,
+        ):
+            calls.append((steps, inputs, sample_weights, kwargs))
             return expected
 
         base_result.plot_impulse_response = plot_impulse_response
+        sample_weights = object()
 
         assert (
-            auto_result.plot_impulse_response(12, inputs="price", grid=False)
+            auto_result.plot_impulse_response(
+                12,
+                inputs="price",
+                sample_weights=sample_weights,
+                grid=False,
+            )
             is expected
         )
-        assert calls == [(12, "price", {"grid": False})]
+        assert calls == [(12, "price", sample_weights, {"grid": False})]
 
 
 # ============================================================

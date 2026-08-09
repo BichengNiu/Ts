@@ -1,4 +1,4 @@
-"""Lag-indexed bar charts for impulse responses and dynamic multipliers."""
+"""Lag-indexed plots for impulse responses and dynamic multipliers."""
 
 from __future__ import annotations
 
@@ -84,18 +84,20 @@ def _resolve_colors(color, count):
 def plot_lag_response(
     data,
     *,
+    line_data=None,
     ax=None,
     title=None,
     xtitle="Time lag",
     ytitle="Impulse response",
     color=None,
+    line_color="black",
     zero_line=True,
     grid=True,
     max_ticks=15,
     note=None,
     figsize=None,
 ):
-    """Plot lag-indexed response weights as bars.
+    """Plot lag-indexed response weights as bars with an optional line.
 
     A Series or one-dimensional input produces one axis. A multi-column
     DataFrame or two-dimensional array produces one facet per response in
@@ -106,6 +108,9 @@ def plot_lag_response(
     ----------
     data : Series, DataFrame, or array-like
         Response weights indexed by time lag.
+    line_data : Series, DataFrame, or array-like, optional
+        Response weights to overlay as solid lines. The lag index and response
+        names must exactly match ``data``.
     ax : matplotlib.axes.Axes, optional
         Existing axis for a single response. Multi-response inputs create
         their own facets.
@@ -115,6 +120,8 @@ def plot_lag_response(
         Axis labels.
     color : color or sequence of colors, optional
         Bar color shared by all responses or one color per response.
+    line_color : color, default ``"black"``
+        Color of the optional response line.
     zero_line : bool, default True
         Whether to draw the zero-response reference line.
     grid : bool, default True
@@ -150,6 +157,15 @@ def plot_lag_response(
         raise ValueError("max_ticks must be a positive integer")
     max_ticks = int(max_ticks)
     frame = _normalise_lag_response(data)
+    line_frame = None
+    if line_data is not None:
+        line_frame = _normalise_lag_response(line_data)
+        if not frame.index.equals(line_frame.index):
+            raise ValueError("line_data time lags must exactly match data")
+        if not frame.columns.equals(line_frame.columns):
+            raise ValueError("line_data response names must exactly match data")
+        if not is_color_like(line_color):
+            raise ValueError("line_color must be a valid matplotlib color")
     count = frame.shape[1]
     colors = _resolve_colors(color, count)
 
@@ -178,13 +194,24 @@ def plot_lag_response(
     for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
         if zero_line:
             axis.axhline(0.0, color="black", linewidth=0.8, zorder=1)
-        axis.bar(
+        bars = axis.bar(
             lags,
             frame[name].to_numpy(),
             width=0.65,
             color=colors[position],
+            label=("Sample impulse response" if line_frame is not None else None),
             zorder=2,
         )
+        if line_frame is not None:
+            transfer_line = axis.plot(
+                lags,
+                line_frame[name].to_numpy(),
+                color=line_color,
+                linewidth=2.0,
+                label="Transfer-function weights",
+                zorder=3,
+            )[0]
+            axis.legend(handles=[bars, transfer_line], frameon=False)
         axis.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)
         axis.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
         if len(lags) <= max_ticks:
