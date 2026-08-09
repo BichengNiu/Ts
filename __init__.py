@@ -9,6 +9,10 @@ This package consolidates six sub-packages under a unified namespace.
 - :mod:`Ts.TsMetrics` — forecast metrics and leakage-free evaluation
 - :mod:`Ts.TsTests`  — statistical tests (unit root, breaks, ARCH, feedback)
 
+The top-level namespace is a curated convenience API, not the union of every
+subpackage export. Import the complete model, simulation, plotting, and test
+APIs from their corresponding subpackages.
+
 Quick start
 -----------
 >>> from Ts import (

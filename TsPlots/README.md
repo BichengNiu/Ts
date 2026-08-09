@@ -38,7 +38,7 @@ from Ts.TsPlots import (
 
 ## `plot_series` — 时间序列折线图
 
-```python
+```text
 from Ts.TsPlots import plot_series
 
 fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
@@ -181,7 +181,7 @@ fig, ax = plot_series(
 
 ## `plot_scatter` — 散点图
 
-```python
+```text
 from Ts.TsPlots import plot_scatter
 
 fig, ax = plot_scatter(data=None, x=None, y=None, *, ...)
@@ -279,7 +279,7 @@ fig, ax = plot_scatter(
 
 ## `plot_acf` 和 `plot_pacf` — 自相关函数图
 
-```python
+```text
 from Ts.TsPlots import plot_acf, plot_pacf
 
 fig, ax = plot_acf(data, nlags=40, *, ...)

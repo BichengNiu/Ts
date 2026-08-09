@@ -158,6 +158,19 @@ result.test_residuals(lags=10)
 | | `.is_stable` | 基于 companion matrix 的稳定性检查 (bool) |
 | | `.plot_roots(title)` | VECM 逆特征根单位圆图 |
 
+### 公共结果对象索引
+
+下列结果类也是 `TsModels.__all__` 的正式公共接口。它们通常由模型方法返回，
+不需要用户直接构造：
+
+| 结果类 | 来源 | 说明 |
+|--------|------|------|
+| `BackcastResult` | `model.backcast()` | 样本前预测值、区间和负位置索引 |
+| `ScenarioForecastResult` | `SARIMAXResult.predict()` | 多个未来外生变量情境的命名预测结果 |
+| `RationalLagResult` | SARIMAX 的 RDL 派生结果 | 单个输入的多项式系数、权重、根与长期增益 |
+| `VAROrderResult` | `VAR.select_order()` | VAR 滞后阶数选择指标与推荐阶数 |
+| `VECMOrderResult` | `VECM.select_order()` | VECM 滞后阶数选择指标与推荐阶数 |
+
 当前 GARCH 结果的 `.standardized_residuals` 也遵循共享定义，即除以残差的
 整体标准差；逐期除以 `.conditional_volatility` 的条件标准化不在本次接口内。
 
@@ -349,7 +362,7 @@ print(backcast.mean)
 
 ### SARIMAX
 
-```python
+```text
 SARIMAX(
     data,
     order=(0, 0, 0),
@@ -658,7 +671,7 @@ best = result.best_result  # SARIMAXResult 或 GARCHResult
 
 ### AutoSARIMAX
 
-```python
+```text
 AutoSARIMAX(
     data,
     p=(0, 3),

@@ -89,7 +89,7 @@ quarterly_yoy_log = difference(frame, log=True, lag=4)
 
 公共签名：
 
-```python
+```text
 difference(data, *, order=1, log=False, lag=1)
 ```
 
@@ -166,7 +166,7 @@ future_transformed = boxcox(future_series, lmbda=estimated_lmbda).data
 
 公共签名：
 
-```python
+```text
 boxcox(data, *, lmbda=None)
 ```
 

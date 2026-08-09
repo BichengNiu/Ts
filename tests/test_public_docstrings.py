@@ -2,15 +2,98 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
+from pathlib import Path
+import re
 
 import pytest
 
+import Ts
 from Ts import TsMetrics, TsModels, TsPlots, TsSims, TsTests, TsUtils
 from Ts.TsPlots.style import apply_fonts, style_axes
 
 
 PUBLIC_MODULES = (TsPlots, TsUtils, TsSims, TsModels, TsMetrics, TsTests)
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+README_MODULES = {
+    "TsPlots": TsPlots,
+    "TsUtils": TsUtils,
+    "TsSims": TsSims,
+    "TsModels": TsModels,
+    "TsMetrics": TsMetrics,
+    "TsTests": TsTests,
+}
+
+
+def _readme_text(package_name: str) -> str:
+    """Return one package README as UTF-8 text."""
+    return (REPOSITORY_ROOT / package_name / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def _python_blocks(markdown: str) -> list[str]:
+    """Extract fenced blocks explicitly labelled as executable Python."""
+    return re.findall(r"```python\s*\n(.*?)```", markdown, flags=re.DOTALL)
+
+
+@pytest.mark.parametrize(("package_name", "module"), README_MODULES.items())
+def test_readme_mentions_every_public_export(package_name, module):
+    """Every exported public name is discoverable in its package README."""
+    readme = _readme_text(package_name)
+    missing = [
+        name
+        for name in module.__all__
+        if re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])",
+            readme,
+        )
+        is None
+    ]
+    assert not missing, f"{package_name}/README.md omits public API: {missing}"
+
+
+@pytest.mark.parametrize(("package_name", "module"), README_MODULES.items())
+def test_readme_python_blocks_are_syntactically_valid(package_name, module):
+    """Blocks labelled as Python are executable syntax, not signatures."""
+    del module
+    for number, block in enumerate(_python_blocks(_readme_text(package_name)), 1):
+        try:
+            ast.parse(block)
+        except SyntaxError as error:
+            pytest.fail(
+                f"{package_name}/README.md Python block {number} is invalid: "
+                f"line {error.lineno}: {error.msg}"
+            )
+
+
+@pytest.mark.parametrize(("package_name", "module"), README_MODULES.items())
+def test_readme_public_imports_resolve(package_name, module):
+    """Every package import shown in executable README blocks still exists."""
+    stale = []
+    for number, block in enumerate(_python_blocks(_readme_text(package_name)), 1):
+        try:
+            tree = ast.parse(block)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != f"Ts.{package_name}":
+                continue
+            stale.extend(
+                (number, alias.name)
+                for alias in node.names
+                if alias.name != "*" and not hasattr(module, alias.name)
+            )
+    assert not stale, f"{package_name}/README.md has stale imports: {stale}"
+
+
+def test_top_level_exports_resolve():
+    """The curated top-level namespace never advertises missing objects."""
+    missing = [name for name in Ts.__all__ if not hasattr(Ts, name)]
+    assert not missing, f"Ts.__all__ contains missing objects: {missing}"
 
 
 def _public_objects():

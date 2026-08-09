@@ -176,6 +176,20 @@ ccf_result.plot_test()
 | `nobs` | `int` | 有效观测数 |
 | `residuals` | `ndarray \| None` | 残差序列 |
 
+### 公共复合结果对象
+
+部分检验包含多个方程或多个输入，因此使用分层结果对象。以下类型均属于
+`TsTests.__all__` 的正式公共接口：
+
+| 结果类 | 说明 |
+|--------|------|
+| `BaseMultiTestResult` | 多方程、多输入检验结果的公共基类 |
+| `LeeStrazicichTwoBreakTestResult` | 两个未知结构突变的单位根检验结果 |
+| `FeedbackEquationResult` | 单个输入对应的完整条件反馈 OLS 方程和联合检验 |
+| `FeedbackTestResult` | 汇总全部输入条件反馈方程的结果容器 |
+| `ResidualCCFInputResult` | 单个输入的逐阶残差 CCF 与联合 S* 检验 |
+| `ResidualCCFTestResult` | 汇总全部输入残差 CCF 诊断的结果容器 |
+
 ## 检验对照
 
 | 检验 | 类名 | H0 | 类型 | 临界值来源 |

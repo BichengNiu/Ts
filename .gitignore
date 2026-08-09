@@ -18,3 +18,11 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local agent workflow state
+.agents/
+.codex/
+.claude/state.json
+.claude/test-audit.json
+.claude/test-audit.json.log
+.claude/.feature-dev-backup/

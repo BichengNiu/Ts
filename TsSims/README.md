@@ -37,6 +37,8 @@ from Ts.TsSims import (
     simulate_gjr_garch,
     simulate_egarch,
     simulate_garch_m,
+    simulate_trend_stationary,
+    simulate_difference_stationary,
 )
 from Ts.TsSims import simulate_cointegrated
 
@@ -112,9 +114,36 @@ r = simulate_garch_m(
 |------|------|------|
 | `.to_dataframe()` | `pd.DataFrame` | data, errors, volatility 三列 |
 
-## `simulate_sarima` — SARIMA 过程
+## TS/DS 过程
+
+`simulate_trend_stationary()` 生成围绕确定性线性趋势波动的趋势平稳过程，
+冲击是暂时的；`simulate_difference_stationary()` 生成带漂移的随机游走，
+一阶差分平稳，冲击具有永久影响。二者均返回 `SimTSDSResult`：
 
 ```python
+from Ts.TsSims import (
+    simulate_difference_stationary,
+    simulate_trend_stationary,
+)
+
+ts = simulate_trend_stationary(
+    n=100,
+    intercept=2.0,
+    slope=0.1,
+    sigma=0.5,
+    seed=42,
+)
+ds = simulate_difference_stationary(
+    n=100,
+    drift=0.2,
+    sigma=0.5,
+    seed=42,
+)
+```
+
+## `simulate_sarima` — SARIMA 过程
+
+```text
 simulate_sarima(
     n=200,
     order=(1, 0, 0),              # (p, d, q)
@@ -153,7 +182,7 @@ simulate_sarima(
 严格固定为 0；`denominator={1: 0.5, 3: -0.1}` 同理将分母 L2 固定为 0。
 这些限制作用于多项式系数，不会把递归产生的最终 impulse weights 设为 0。
 
-```python
+```text
 simulate_rdl(
     n=200,
     distributed_lags=None,  # dict[str, RDLInputSpec]；None 使用一个 Koyck 输入
@@ -194,7 +223,7 @@ print(fitted.weights(12))
 
 处理纯 ARCH（q = 0）和 GARCH（q >= 1）两种过程。
 
-```python
+```text
 simulate_garch(
     n=200, p=1, q=1,
     omega=0.4, alpha=None, beta=None,  # 方差方程参数
@@ -228,7 +257,7 @@ simulate_garch(
 生成满足 sum(alpha) + sum(beta) = 1 约束的 IGARCH 数据。约束通过
 自动调整最后一个 beta 系数实现。
 
-```python
+```text
 simulate_igarch(
     n=200, p=1, q=1,
     omega=0.10, alpha=None, beta=None,
@@ -268,7 +297,7 @@ r.plot()
 
 生成带有杠杆效应的非对称 GARCH 数据。负面冲击对波动率的影响大于正面冲击。
 
-```python
+```text
 simulate_gjr_garch(
     n=200, p=1, q=1, o=1,
     omega=0.10, alpha=None, gamma=None, beta=None,
@@ -301,7 +330,7 @@ simulate_gjr_garch(
 
 生成指数 GARCH 数据，通过对数方差建模天然保证方差为正。
 
-```python
+```text
 simulate_egarch(
     n=200, p=1, q=1, o=1,
     omega=0.0, alpha=None, gamma=None, beta=None,
@@ -334,7 +363,7 @@ simulate_egarch(
 
 生成 GARCH-in-Mean 数据，条件波动率进入均值方程。
 
-```python
+```text
 simulate_garch_m(
     n=200, p=1, q=1,
     omega=0.10, alpha=None, beta=None,
@@ -382,7 +411,7 @@ simulate_garch_m(
 Delta Y_t = alpha @ beta.T @ Y_{t-1} + epsilon_t
 ```
 
-```python
+```text
 simulate_cointegrated(
     n=200, k=2, coint_rank=1,
     alpha=None, beta=None,
