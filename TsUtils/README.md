@@ -1,10 +1,11 @@
 # Ts/TsUtils
 
-时间序列预处理与识别诊断工具包。当前提供六类能力：
+时间序列预处理与识别诊断工具包。当前提供七类能力：
 
 - STL（Seasonal-Trend decomposition using LOESS）分解；
 - 缺失值内插及可审计的填补结果；
 - 普通、对数及显式周期的差分；
+- 根据规则日期索引自动生成季节虚拟变量；
 - 可审计、可复用参数的 Box-Cox 幂变换；
 - 时间序列统计摘要与诊断图；
 - 用于非季节 ARMA 阶数识别的扩展自相关函数（EACF）。
@@ -25,6 +26,7 @@ from Ts.TsUtils import (
     eacf,
     interpolate_missing,
     InterpolationResult,
+    seasonal_dummies,
 )
 ```
 
@@ -118,6 +120,33 @@ difference(data, *, order=1, log=False, lag=1)
 计算；返回值保持原容器类型、索引、Series 名称、DataFrame 列名和行数，不修改
 调用方数据。差分产生的前置缺失值不会被删除，输入中的缺失值按 pandas 的标准
 差分规则传播；正负无穷、布尔值、复数和非数值列会被拒绝。
+
+## 季节虚拟变量
+
+`seasonal_dummies()` 从规则的 `DatetimeIndex` 或 `PeriodIndex` 自动识别频率，
+生成可直接并入模型外生变量的周期位置虚拟变量：
+
+```python
+import pandas as pd
+
+from Ts.TsUtils import seasonal_dummies
+
+monthly_index = pd.date_range("2024-01-01", periods=24, freq="MS")
+monthly = seasonal_dummies(monthly_index)
+
+quarterly_index = pd.period_range("2020Q1", periods=12, freq="Q-DEC")
+quarterly = seasonal_dummies(quarterly_index, drop_first=False)
+```
+
+默认 `drop_first=True`，分别以星期一、第 1 周、1 月或 Q1 为基准，避免与模型
+截距完全共线。设置 `drop_first=False` 可保留全部类别。函数始终返回完整固定列
+结构：日度为星期位置、工作日为周一至周五、周度为 ISO 第 1–53 周、月度为
+1–12 月、季度为 Q1–Q4；样本未出现的类别仍保留为全零列，以保证训练期和预测期
+外生变量列一致。财政季度根据索引频率锚点确定季度位置。
+
+输入可以是带日期索引的 `Series`/`DataFrame`，也可以直接传日期索引。索引必须
+非空、无缺失、唯一、递增且频率规则。年度、日内、不规则及无法识别频率的数据
+不在当前接口范围内，会明确报错。
 
 ## Box-Cox 变换
 
