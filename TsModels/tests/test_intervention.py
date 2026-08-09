@@ -209,6 +209,18 @@ def test_period_rejects_irregular_calendar():
         )
 
 
+def test_period_maps_intraday_event_to_daily_observation():
+    from Ts.TsModels._intervention import EventSpec, build_event_matrix
+
+    dates = pd.date_range("2025-01-01", periods=3, freq="D")
+    matrix, _ = build_event_matrix(
+        dates,
+        [EventSpec("policy", ["2025-01-02 12:30"], "pulse")],
+    )
+
+    assert matrix["event__policy"].tolist() == [0, 1, 0]
+
+
 def test_repeated_step_dates_create_cumulative_staircase():
     from Ts.TsModels._intervention import EventSpec, build_event_matrix
 
