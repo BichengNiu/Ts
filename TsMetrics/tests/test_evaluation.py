@@ -262,6 +262,93 @@ def test_backtest_metrics_by_window_are_exact_and_position_labelled():
     assert frame["n"].tolist() == [2, 2]
 
 
+def test_backtest_metrics_by_window_use_calendar_labels():
+    """Date-aware results label every complete target window with real dates."""
+    dates = pd.date_range("2020-01-01", periods=13, freq="MS")
+    result = BacktestResult(
+        mean=np.ones((2, 2)),
+        actual=np.ones((2, 2)),
+        lower=None,
+        upper=None,
+        origins=np.array([10, 11]),
+        failures=[],
+        model_type="TEST",
+        window="expanding",
+        target="observed",
+        dates=dates,
+    )
+
+    frame = result.metrics_by_window
+
+    assert frame["window_start"].tolist() == [dates[10], dates[11]]
+    assert frame["window_end"].tolist() == [dates[11], dates[12]]
+
+
+def test_backtest_metrics_by_window_separate_multivariate_series():
+    """Window RMSE is reported per series instead of mixing data scales."""
+    actual = np.array(
+        [
+            [[1.0, 10.0], [2.0, 20.0]],
+            [[3.0, 30.0], [4.0, 40.0]],
+        ]
+    )
+    mean = actual + np.array([[[1.0, 2.0], [1.0, 2.0]]])
+    result = BacktestResult(
+        mean=mean,
+        actual=actual,
+        lower=None,
+        upper=None,
+        origins=np.array([10, 11]),
+        failures=[],
+        model_type="TEST",
+        window="expanding",
+        target="observed",
+        series_names=("output", "prices"),
+    )
+
+    frame = result.metrics_by_window
+
+    assert frame.columns.tolist() == [
+        "window_start",
+        "window_end",
+        "series",
+        "mae",
+        "mse",
+        "rmse",
+        "mape",
+        "smape",
+        "theil_u1",
+        "n",
+    ]
+    assert frame["series"].tolist() == [
+        "output",
+        "prices",
+        "output",
+        "prices",
+    ]
+    assert frame["rmse"].tolist() == pytest.approx([1.0, 2.0, 1.0, 2.0])
+
+
+def test_backtest_metrics_by_window_falls_back_to_series_positions():
+    """Unnamed multivariate output receives stable public series labels."""
+    result = BacktestResult(
+        mean=np.ones((1, 2, 2)),
+        actual=np.ones((1, 2, 2)),
+        lower=None,
+        upper=None,
+        origins=np.array([10]),
+        failures=[],
+        model_type="TEST",
+        window="expanding",
+        target="observed",
+    )
+
+    assert result.metrics_by_window["series"].tolist() == [
+        "series_0",
+        "series_1",
+    ]
+
+
 def test_expanding_backtest_rejects_ignored_window_size():
     """An irrelevant rolling-window argument is not silently ignored."""
     model = _MeanModel(np.arange(20.0))

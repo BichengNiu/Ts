@@ -424,6 +424,8 @@ class BacktestResult:
     model_type: str
     window: str
     target: str
+    dates: pd.DatetimeIndex | None = None
+    series_names: tuple[str, ...] | None = None
 
     def __post_init__(self):
         """Normalise arrays and reject incompatible result shapes."""
@@ -433,6 +435,11 @@ class BacktestResult:
         self.upper = _optional_float_array(self.upper)
         self.origins = np.array(self.origins, dtype=int, copy=True)
         self.failures = [dict(failure) for failure in self.failures]
+        self.dates = (
+            None
+            if self.dates is None
+            else pd.DatetimeIndex(self.dates).copy()
+        )
 
         if self.mean.ndim not in (2, 3):
             raise ValueError(
@@ -454,6 +461,14 @@ class BacktestResult:
         _validate_increasing("origins", self.origins)
         if len(self.origins) != self.mean.shape[0]:
             raise ValueError("origins must have one entry per forecast origin")
+        if self.dates is not None:
+            _validate_dates("dates", self.dates, len(self.dates))
+            target_indices = self.target_indices
+            if (
+                target_indices.min() < 0
+                or target_indices.max() >= len(self.dates)
+            ):
+                raise ValueError("dates must cover every backtest target index")
         if self.window not in {"expanding", "rolling"}:
             raise ValueError("window must be either 'expanding' or 'rolling'")
         failed_origins = set()
@@ -475,6 +490,10 @@ class BacktestResult:
                 raise ValueError("failed origins must retain all-NaN result rows")
             failed_origins.add(origin)
         _validate_result_labels(self.model_type, self.target)
+        self.series_names = _validate_series_names(
+            self.series_names,
+            self.mean[0],
+        )
 
     @property
     def target_indices(self):
@@ -501,18 +520,35 @@ class BacktestResult:
     def metrics_by_window(self):
         """Return canonical metrics for each complete forecast window."""
         horizon = self.mean.shape[1]
+        starts = self.origins
+        ends = self.origins + horizon - 1
+        if self.dates is not None:
+            starts = self.dates.take(starts)
+            ends = self.dates.take(ends)
+        multivariate = self.mean.ndim == 3
+        labels = (
+            self.series_names
+            or tuple(f"series_{index}" for index in range(self.mean.shape[2]))
+            if multivariate
+            else (None,)
+        )
         rows = []
-        for position, metrics in enumerate(
+        for position, series_metrics in enumerate(
             backtest_metrics_by_window(self.actual, self.mean)
         ):
-            rows.append(
-                {
-                    "window_start": int(self.origins[position]),
-                    "window_end": int(self.origins[position] + horizon - 1),
-                    **metrics[0],
+            for series, metrics in zip(labels, series_metrics, strict=True):
+                row = {
+                    "window_start": starts[position],
+                    "window_end": ends[position],
                 }
-            )
-        columns = ["window_start", "window_end", *ERROR_METRIC_NAMES, "n"]
+                if multivariate:
+                    row["series"] = series
+                row.update(metrics)
+                rows.append(row)
+        columns = ["window_start", "window_end"]
+        if multivariate:
+            columns.append("series")
+        columns.extend([*ERROR_METRIC_NAMES, "n"])
         return pd.DataFrame.from_records(rows, columns=columns)
 
 

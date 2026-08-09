@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from Ts.TsMetrics import (
@@ -285,6 +286,102 @@ def test_backtest_result_derives_indices_and_rejects_invalid_window():
 
     with pytest.raises(ValueError, match="window"):
         BacktestResult(**{**values, "window": "invented"})
+
+
+def test_backtest_result_metadata_defaults_preserve_positional_construction():
+    """Appending metadata does not change the original positional signature."""
+    result = BacktestResult(
+        np.ones((1, 1)),
+        np.ones((1, 1)),
+        None,
+        None,
+        np.array([10]),
+        [],
+        "TEST",
+        "expanding",
+        "observed",
+    )
+
+    assert result.dates is None
+    assert result.series_names is None
+
+
+def test_backtest_result_preserves_calendar_and_series_names():
+    """Valid date and multivariate labels are copied into public metadata."""
+    dates = pd.date_range("2020-01-01", periods=14, freq="MS")
+    result = BacktestResult(
+        mean=np.ones((2, 2, 2)),
+        actual=np.ones((2, 2, 2)),
+        lower=None,
+        upper=None,
+        origins=np.array([10, 12]),
+        failures=[],
+        model_type="TEST",
+        window="expanding",
+        target="observed",
+        dates=dates,
+        series_names=("output", "prices"),
+    )
+
+    assert result.dates.equals(dates)
+    assert result.dates is not dates
+    assert result.series_names == ("output", "prices")
+
+
+@pytest.mark.parametrize(
+    ("dates", "message"),
+    [
+        (pd.DatetimeIndex(["2020-01-01", None]), "missing"),
+        (pd.DatetimeIndex(["2020-01-01", "2020-01-01"]), "unique"),
+        (pd.DatetimeIndex(["2020-02-01", "2020-01-01"]), "increasing"),
+        (pd.date_range("2020-01-01", periods=11, freq="MS"), "cover"),
+    ],
+)
+def test_backtest_result_rejects_invalid_calendar_metadata(dates, message):
+    """A result calendar must be strict and cover every forecast target."""
+    with pytest.raises(ValueError, match=message):
+        BacktestResult(
+            mean=np.ones((1, 2)),
+            actual=np.ones((1, 2)),
+            lower=None,
+            upper=None,
+            origins=np.array([10]),
+            failures=[],
+            model_type="TEST",
+            window="expanding",
+            target="observed",
+            dates=dates,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mean", "series_names", "message"),
+    [
+        (np.ones((1, 2)), ("output",), "multivariate"),
+        (np.ones((1, 2, 2)), ("output",), "one name per series"),
+        (np.ones((1, 2, 2)), ("output", "output"), "unique"),
+        (np.ones((1, 2, 2)), ("output", ""), "non-empty"),
+    ],
+)
+def test_backtest_result_rejects_invalid_series_names(
+    mean,
+    series_names,
+    message,
+):
+    """Series metadata follows the same strict contract as OOS results."""
+    with pytest.raises((TypeError, ValueError), match=message):
+        BacktestResult(
+            mean=mean,
+            actual=mean,
+            lower=None,
+            upper=None,
+            origins=np.array([10]),
+            failures=[],
+            model_type="TEST",
+            window="expanding",
+            target="observed",
+            series_names=series_names,
+        )
 
 
 def test_comparison_recomputes_metrics_from_result_arrays():
