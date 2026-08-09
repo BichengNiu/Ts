@@ -19,6 +19,11 @@ from Ts.TsMetrics import (
     oos,
 )
 from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
+from Ts.TsMetrics._results import (
+    ForecastComparisonResult,
+    ForecastEvaluationResult,
+)
+from Ts.TsMetrics._schemes import RollingOrigin
 
 
 @dataclass
@@ -970,3 +975,196 @@ def test_record_mode_reports_missing_future_exog_dates():
     message = result.failures[0]["message"]
     assert dates[20].isoformat() in message
     assert dates[22].isoformat() in message
+
+
+def _unified_result(
+    mean,
+    actual,
+    *,
+    splits=None,
+    failures=None,
+    dates=None,
+    series_names=None,
+):
+    """Build one unified result for result-contract tests."""
+    mean = np.asarray(mean, dtype=float)
+    if splits is None:
+        splits = RollingOrigin(
+            initial_window=10,
+            horizon=mean.shape[1],
+            step=2,
+        ).split(14, dates)
+    return ForecastEvaluationResult(
+        mean=mean,
+        actual=np.asarray(actual, dtype=float),
+        lower=mean - 0.5,
+        upper=mean + 0.5,
+        splits=splits,
+        failures=[] if failures is None else failures,
+        model_type="TEST",
+        target="observed",
+        dates=dates,
+        series_names=series_names,
+        alpha=0.05,
+        uses_observed_future_exog=False,
+    )
+
+
+def test_unified_result_keeps_split_and_horizon_axes():
+    result = _unified_result(
+        [[10.0, 11.0], [12.0, 13.0]],
+        [[10.5, 10.5], [12.5, 12.5]],
+    )
+
+    assert result.mean.shape == (2, 2)
+    assert result.metrics["n"] == 4
+    assert [split.split for split in result.splits] == [0, 1]
+    result.mean[0, 0] = -99.0
+    assert result.predictions.loc[0, "forecast"] == -99.0
+
+
+def test_unified_result_rejects_method_specific_one_dimensional_shape():
+    split = RollingOrigin(initial_window=10, horizon=2).split(12, None)
+
+    with pytest.raises(ValueError, match="split, horizon"):
+        ForecastEvaluationResult(
+            mean=np.array([1.0, 2.0]),
+            actual=np.array([1.0, 2.0]),
+            lower=None,
+            upper=None,
+            splits=split,
+            failures=[],
+            model_type="TEST",
+            target="observed",
+        )
+
+
+def test_unified_result_preserves_dates_and_multivariate_series():
+    dates = pd.date_range("2020-01-01", periods=14, freq="MS")
+    splits = RollingOrigin(initial_window=10, horizon=2, step=2).split(14, dates)
+    mean = np.arange(8.0).reshape(2, 2, 2)
+    result = _unified_result(
+        mean,
+        mean + 1.0,
+        splits=splits,
+        dates=dates,
+        series_names=("output", "prices"),
+    )
+
+    assert result.series_names == ("output", "prices")
+    assert result.predictions["series"].tolist() == [
+        "output",
+        "prices",
+        "output",
+        "prices",
+        "output",
+        "prices",
+        "output",
+        "prices",
+    ]
+    assert result.predictions.loc[0, "target_time"] == dates[10]
+
+
+def test_unified_result_requires_failed_splits_to_be_atomic_nan_rows():
+    splits = RollingOrigin(initial_window=10, horizon=2, step=2).split(14, None)
+    mean = np.array([[10.0, 11.0], [np.nan, np.nan]])
+    actual = np.array([[10.0, 12.0], [np.nan, np.nan]])
+    failure = {"split": 1, "error_type": "RuntimeError", "message": "planned"}
+
+    result = _unified_result(
+        mean,
+        actual,
+        splits=splits,
+        failures=[failure],
+    )
+
+    assert len(result.failures) == 1
+    assert not result.predictions.loc[result.predictions["split"] == 1, "valid"].any()
+
+
+def test_unified_comparison_scores_only_the_common_finite_sample():
+    splits = RollingOrigin(initial_window=10, horizon=2, step=2).split(14, None)
+    actual = np.array([[10.0, 12.0], [14.0, 16.0]])
+    complete = _unified_result(
+        [[9.0, 11.0], [13.0, 15.0]],
+        actual,
+        splits=splits,
+    )
+    partial = _unified_result(
+        [[10.0, 12.0], [np.nan, np.nan]],
+        [[10.0, 12.0], [np.nan, np.nan]],
+        splits=splits,
+        failures=[
+            {"split": 1, "error_type": "RuntimeError", "message": "planned"}
+        ],
+    )
+
+    report = ForecastComparisonResult(
+        {"complete": complete, "partial": partial},
+        rank_by="rmse",
+    )
+
+    assert report.ranking == ["partial", "complete"]
+    assert report.best_model == "partial"
+    assert report.table.loc["complete", "n_total"] == 4
+    assert report.table.loc["complete", "n_common"] == 2
+    assert report.table.loc["partial", "coverage"] == pytest.approx(0.5)
+    assert report.table.loc["partial", "failures"] == 1
+    assert report.table.loc["partial", "rank"] == 1
+
+
+def test_unified_comparison_rejects_an_empty_common_sample():
+    splits = RollingOrigin(initial_window=10, horizon=1).split(11, None)
+    failed = _unified_result(
+        [[np.nan]],
+        [[np.nan]],
+        splits=splits,
+        failures=[
+            {"split": 0, "error_type": "RuntimeError", "message": "planned"}
+        ],
+    )
+
+    with pytest.raises(ValueError, match="common finite"):
+        ForecastComparisonResult({"a": failed, "b": failed})
+
+
+def test_unified_metric_tables_group_common_values_by_axis():
+    mean = np.array([[10.0, 11.0], [12.0, 13.0]])
+    actual = mean + 1.0
+    result = _unified_result(mean, actual)
+    report = ForecastComparisonResult({"model": result})
+
+    by_horizon = report.metric_table(by="horizon")
+    by_origin = report.metric_table(by="origin")
+
+    assert by_horizon["horizon"].tolist() == [1, 2]
+    assert by_origin["origin"].tolist() == [10, 12]
+    assert by_horizon["rmse"].tolist() == pytest.approx([1.0, 1.0])
+    assert by_origin["rmse"].tolist() == pytest.approx([1.0, 1.0])
+
+
+def test_unified_comparison_predictions_include_every_model_and_error():
+    result = _unified_result(
+        [[10.0, 11.0], [12.0, 13.0]],
+        [[11.0, 10.0], [12.0, 14.0]],
+    )
+    report = ForecastComparisonResult({"first": result, "second": result})
+
+    frame = report.predictions
+
+    assert frame.columns.tolist() == [
+        "model",
+        "split",
+        "origin",
+        "target_time",
+        "horizon",
+        "series",
+        "actual",
+        "forecast",
+        "error",
+        "lower",
+        "upper",
+        "valid",
+    ]
+    assert frame["model"].value_counts().to_dict() == {"first": 4, "second": 4}
+    assert frame.loc[0, "error"] == pytest.approx(-1.0)

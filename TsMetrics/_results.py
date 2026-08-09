@@ -14,6 +14,7 @@ from ._aggregation import (
     oos_metrics_by_series,
 )
 from ._metrics import ERROR_METRIC_NAMES, compute_metrics
+from ._schemes import ForecastSplit
 
 
 def _optional_float_array(values):
@@ -917,3 +918,389 @@ class OOSComparisonResult:
                 )
         ax.legend(frameon=False, ncol=2)
         return fig, ax
+
+
+def _same_forecast_split(left, right):
+    """Return whether two resolved split records describe identical samples."""
+    scalar_fields = (
+        "split",
+        "train_start",
+        "train_end",
+        "forecast_start",
+        "forecast_end",
+        "gap",
+        "window",
+    )
+    return all(getattr(left, name) == getattr(right, name) for name in scalar_fields) and (
+        np.array_equal(left.train_indices, right.train_indices)
+        and np.array_equal(left.target_indices, right.target_indices)
+    )
+
+
+@dataclass
+class ForecastEvaluationResult:
+    """One model's forecasts over one or more time-ordered evaluation splits."""
+
+    mean: np.ndarray
+    actual: np.ndarray
+    lower: np.ndarray | None
+    upper: np.ndarray | None
+    splits: tuple[ForecastSplit, ...]
+    failures: list[dict]
+    model_type: str
+    target: str
+    dates: pd.DatetimeIndex | None = None
+    series_names: tuple[str, ...] | None = None
+    alpha: float | None = None
+    uses_observed_future_exog: bool = False
+
+    def __post_init__(self):
+        """Own arrays and validate the common split-by-horizon contract."""
+        self.mean = np.array(self.mean, dtype=float, copy=True)
+        self.actual = np.array(self.actual, dtype=float, copy=True)
+        self.lower = _optional_float_array(self.lower)
+        self.upper = _optional_float_array(self.upper)
+        if self.mean.ndim not in (2, 3):
+            raise ValueError(
+                "mean must have shape (split, horizon) or "
+                "(split, horizon, series)"
+            )
+        if any(size == 0 for size in self.mean.shape):
+            raise ValueError("mean must contain at least one forecast value")
+        if self.actual.shape != self.mean.shape:
+            raise ValueError("actual must have the same shape as mean")
+        _validate_interval_pair(self.lower, self.upper, self.mean.shape)
+
+        try:
+            self.splits = tuple(self.splits)
+        except TypeError as error:
+            raise TypeError("splits must be a sequence of ForecastSplit values") from error
+        if len(self.splits) != self.mean.shape[0]:
+            raise ValueError("splits must contain one entry per forecast split")
+        if not all(isinstance(split, ForecastSplit) for split in self.splits):
+            raise TypeError("splits must contain only ForecastSplit values")
+        if [split.split for split in self.splits] != list(range(len(self.splits))):
+            raise ValueError("split identifiers must be contiguous from zero")
+        horizon = self.mean.shape[1]
+        if any(len(split.target_indices) != horizon for split in self.splits):
+            raise ValueError("every split target must match the forecast horizon")
+
+        self.dates = (
+            None if self.dates is None else pd.DatetimeIndex(self.dates).copy()
+        )
+        target_indices = np.concatenate(
+            [split.target_indices for split in self.splits]
+        )
+        if target_indices.min() < 0:
+            raise ValueError("split target indices must be non-negative")
+        if self.dates is not None:
+            _validate_dates("dates", self.dates, len(self.dates))
+            if target_indices.max() >= len(self.dates):
+                raise ValueError("dates must cover every forecast target index")
+
+        _validate_result_labels(self.model_type, self.target)
+        self.series_names = _validate_series_names(self.series_names, self.mean[0])
+        self.alpha = _validate_optional_alpha(self.alpha)
+        self.uses_observed_future_exog = _validate_bool(
+            "uses_observed_future_exog",
+            self.uses_observed_future_exog,
+        )
+        self.failures = [dict(failure) for failure in self.failures]
+        failed_splits = set()
+        for failure in self.failures:
+            required = {"split", "error_type", "message"}
+            if not required.issubset(failure):
+                raise ValueError(
+                    "each failure must contain split, error_type, and message"
+                )
+            split_number = failure["split"]
+            if (
+                isinstance(split_number, (bool, np.bool_))
+                or not isinstance(split_number, (int, np.integer))
+            ):
+                raise TypeError("failure split must be an integer")
+            split_number = int(split_number)
+            if not 0 <= split_number < len(self.splits) or split_number in failed_splits:
+                raise ValueError("failure splits must uniquely identify result rows")
+            if not np.isnan(self.mean[split_number]).all() or not np.isnan(
+                self.actual[split_number]
+            ).all():
+                raise ValueError("failed splits must retain all-NaN result rows")
+            if self.lower is not None and (
+                not np.isnan(self.lower[split_number]).all()
+                or not np.isnan(self.upper[split_number]).all()
+            ):
+                raise ValueError("failed split intervals must be all NaN")
+            failure["split"] = split_number
+            failed_splits.add(split_number)
+
+    @property
+    def metrics(self):
+        """Return canonical metrics over this model's finite forecast pairs."""
+        return compute_metrics(self.actual, self.mean)
+
+    @property
+    def predictions(self):
+        """Return one long-form row per split, horizon, and series."""
+        multivariate = self.mean.ndim == 3
+        labels = (
+            self.series_names
+            or tuple(f"series_{index}" for index in range(self.mean.shape[2]))
+            if multivariate
+            else (None,)
+        )
+        rows = []
+        for split_position, split in enumerate(self.splits):
+            for horizon_position, target_position in enumerate(split.target_indices):
+                target_time = (
+                    int(target_position)
+                    if self.dates is None
+                    else self.dates[int(target_position)]
+                )
+                for series_position, series in enumerate(labels):
+                    index = (
+                        (split_position, horizon_position, series_position)
+                        if multivariate
+                        else (split_position, horizon_position)
+                    )
+                    actual = float(self.actual[index])
+                    forecast = float(self.mean[index])
+                    valid = bool(np.isfinite(actual) and np.isfinite(forecast))
+                    rows.append(
+                        {
+                            "split": split.split,
+                            "origin": split.forecast_start,
+                            "target_time": target_time,
+                            "horizon": horizon_position + 1,
+                            "series": series,
+                            "actual": actual,
+                            "forecast": forecast,
+                            "error": forecast - actual if valid else float("nan"),
+                            "lower": (
+                                float("nan")
+                                if self.lower is None
+                                else float(self.lower[index])
+                            ),
+                            "upper": (
+                                float("nan")
+                                if self.upper is None
+                                else float(self.upper[index])
+                            ),
+                            "valid": valid,
+                        }
+                    )
+        return pd.DataFrame.from_records(
+            rows,
+            columns=[
+                "split",
+                "origin",
+                "target_time",
+                "horizon",
+                "series",
+                "actual",
+                "forecast",
+                "error",
+                "lower",
+                "upper",
+                "valid",
+            ],
+        )
+
+    @property
+    def split_table(self):
+        """Return one row describing each training and forecast split."""
+        return pd.DataFrame.from_records(
+            [
+                {
+                    "split": split.split,
+                    "train_start": split.train_start,
+                    "train_end": split.train_end,
+                    "forecast_start": split.forecast_start,
+                    "forecast_end": split.forecast_end,
+                    "n_train": len(split.train_indices),
+                    "gap": split.gap,
+                    "window": split.window,
+                }
+                for split in self.splits
+            ]
+        )
+
+
+@dataclass
+class ForecastComparisonResult:
+    """Aligned model forecasts, fair common-sample metrics, and rankings."""
+
+    results: dict[str, ForecastEvaluationResult]
+    rank_by: str = "rmse"
+
+    def __post_init__(self):
+        """Validate shared evaluation structure before exposing comparisons."""
+        if not isinstance(self.results, dict):
+            raise TypeError("results must be a dict of names to forecast results")
+        if not self.results:
+            raise ValueError("results must not be empty")
+        if not all(isinstance(name, str) and name for name in self.results):
+            raise TypeError("result names must be non-empty strings")
+        if not all(
+            isinstance(result, ForecastEvaluationResult)
+            for result in self.results.values()
+        ):
+            raise TypeError("results must contain only ForecastEvaluationResult values")
+        if self.rank_by not in ERROR_METRIC_NAMES:
+            raise ValueError(
+                f"rank_by must be one of {list(ERROR_METRIC_NAMES)}, "
+                f"got {self.rank_by!r}"
+            )
+        self.results = dict(self.results)
+        reference = next(iter(self.results.values()))
+        for name, result in self.results.items():
+            if result.target != reference.target:
+                raise ValueError("all results must use the same target")
+            if result.mean.shape != reference.mean.shape:
+                raise ValueError("all results must have the same forecast shape")
+            if result.series_names != reference.series_names:
+                raise ValueError(f"result {name!r} does not use shared series_names")
+            if len(result.splits) != len(reference.splits) or any(
+                not _same_forecast_split(left, right)
+                for left, right in zip(result.splits, reference.splits, strict=True)
+            ):
+                raise ValueError("all results must use the same forecast splits")
+            if (result.dates is None) != (reference.dates is None):
+                raise ValueError("all results must use the same date metadata")
+            if result.dates is not None and not result.dates.equals(reference.dates):
+                raise ValueError("all results must use the same dates")
+            jointly_observed = np.isfinite(result.actual) & np.isfinite(
+                reference.actual
+            )
+            if not np.array_equal(
+                result.actual[jointly_observed],
+                reference.actual[jointly_observed],
+            ):
+                raise ValueError("all results must use the same actual values")
+        if not np.any(self._common_mask):
+            raise ValueError("results do not contain a common finite scoring sample")
+
+    @property
+    def _common_mask(self):
+        """Return pairs where every model has finite actuals and forecasts."""
+        reference = next(iter(self.results.values()))
+        mask = np.ones(reference.mean.shape, dtype=bool)
+        for result in self.results.values():
+            mask &= np.isfinite(result.actual) & np.isfinite(result.mean)
+        return mask
+
+    @property
+    def target(self):
+        """Return the shared forecast target name."""
+        return next(iter(self.results.values())).target
+
+    @property
+    def scores(self):
+        """Return common-sample scores for the selected ranking metric."""
+        mask = self._common_mask
+        return {
+            name: float(compute_metrics(result.actual[mask], result.mean[mask])[self.rank_by])
+            for name, result in self.results.items()
+        }
+
+    @property
+    def ranking(self):
+        """Return model names ordered by ascending common-sample error."""
+        return _rank_scores(self.scores)
+
+    @property
+    def best_model(self):
+        """Return the best finite-scoring model name."""
+        ranking = self.ranking
+        return ranking[0] if ranking and np.isfinite(self.scores[ranking[0]]) else None
+
+    @property
+    def table(self):
+        """Return complete common-sample metrics, coverage, failures, and rank."""
+        mask = self._common_mask
+        n_total = int(mask.size)
+        n_common = int(mask.sum())
+        rows = {}
+        for name, result in self.results.items():
+            metrics = compute_metrics(result.actual[mask], result.mean[mask])
+            valid = np.isfinite(result.actual) & np.isfinite(result.mean)
+            rows[name] = {
+                **{metric: metrics[metric] for metric in ERROR_METRIC_NAMES},
+                "n_total": n_total,
+                "n_common": n_common,
+                "coverage": float(valid.sum() / n_total),
+                "failures": len(result.failures),
+            }
+        frame = pd.DataFrame.from_dict(rows, orient="index")
+        frame.index.name = "model"
+        ranks = {name: rank for rank, name in enumerate(self.ranking, start=1)}
+        frame["rank"] = pd.Series(ranks, dtype=int)
+        return frame.loc[self.ranking].copy()
+
+    @property
+    def predictions(self):
+        """Return every model's canonical long-form forecast rows."""
+        frames = []
+        for name, result in self.results.items():
+            frame = result.predictions
+            frame.insert(0, "model", name)
+            frames.append(frame)
+        return pd.concat(frames, ignore_index=True)
+
+    @property
+    def splits(self):
+        """Return the shared split table."""
+        return next(iter(self.results.values())).split_table.copy()
+
+    @property
+    def failures(self):
+        """Return model-labelled failure records."""
+        rows = []
+        for name, result in self.results.items():
+            rows.extend({"model": name, **failure} for failure in result.failures)
+        return pd.DataFrame.from_records(
+            rows,
+            columns=["model", "split", "error_type", "message"],
+        )
+
+    def metric_table(self, *, by):
+        """Return common-sample metrics grouped by one evaluation axis."""
+        if by not in {"horizon", "origin", "series"}:
+            raise ValueError("by must be 'horizon', 'origin', or 'series'")
+        reference = next(iter(self.results.values()))
+        common = self._common_mask
+        groups = []
+        if by == "horizon":
+            groups = [
+                (horizon + 1, (slice(None), horizon))
+                for horizon in range(reference.mean.shape[1])
+            ]
+        elif by == "origin":
+            groups = [
+                (split.forecast_start, (position, slice(None)))
+                for position, split in enumerate(reference.splits)
+            ]
+        elif reference.mean.ndim == 2:
+            groups = [(reference.target, (slice(None), slice(None)))]
+        else:
+            labels = reference.series_names or tuple(
+                f"series_{index}" for index in range(reference.mean.shape[2])
+            )
+            groups = [
+                (label, (slice(None), slice(None), position))
+                for position, label in enumerate(labels)
+            ]
+
+        rows = []
+        for name, result in self.results.items():
+            for group, index in groups:
+                group_mask = common[index]
+                metrics = compute_metrics(
+                    result.actual[index][group_mask],
+                    result.mean[index][group_mask],
+                )
+                rows.append({"model": name, by: group, **metrics})
+        return pd.DataFrame.from_records(
+            rows,
+            columns=["model", by, *ERROR_METRIC_NAMES, "n"],
+        )
