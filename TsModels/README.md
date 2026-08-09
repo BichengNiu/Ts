@@ -213,9 +213,13 @@ if diagnostic.identified:
 evaluation = model.oos(
     estimation_period=(0, 79),
     validation_period=(80, 99),
+    method="lbfgs",
 )
 print(evaluation.metrics)
 ```
+
+`method` 仅在显式指定时转交给模型的 `fit()`；省略或设为 `None` 会保留该模型
+自己的默认拟合行为。不接受 `fit(method=...)` 的模型会明确报错，不静默忽略。
 
 带日期索引的数据使用精确日期边界：
 
@@ -253,6 +257,7 @@ report = evaluate_models_oos(
     },
     estimation_period=(0, 79),
     validation_period=(80, 99),
+    method="lbfgs",
     rank_by="rmse",
 )
 
@@ -266,8 +271,13 @@ print(report.best_model)
 强制检查预测目标、估计期、验证期和实际观测一致，并拒绝验证期内的非有限
 实际值或预测值，避免模型使用不同有效样本获得不公平排名。
 
+批量 `method` 省略或设为 `None` 时，每个模型保持自己的默认值。显式指定时，
+所有命名模型必须接受 `fit(method=...)`，否则在任何拟合开始前失败。SARIMAX
+可选 `newton`、`nm`、`bfgs`、`lbfgs`、`powell`、`cg`、`ncg` 和
+`basinhopping`。AutoSARIMAX 构造器的同名参数是模型搜索策略，不是似然优化器。
+
 ```python
-model.oos(estimation_period, validation_period, alpha=0.05)
+model.oos(estimation_period, validation_period, alpha=0.05, method=None)
 
 model.backtest(
     initial_window,

@@ -65,6 +65,6 @@ report = evaluate_models_oos(
 - 验证 `method=None` 仍调用无参数 `fit()`。
 - 验证显式 `method` 到达克隆模型的 `fit()`，原模型仍不被拟合或修改。
 - 验证不支持 `method` 的命名模型在任何拟合发生前报错，错误包含模型名。
-- 用真实 `SARIMAX` 比较验证返回结果记录所选优化器。
+- 验证所选优化器实际到达克隆模型的底层拟合调用。
 - 更新 `evaluate_models_oos()` docstring 和 `TsMetrics/README.md` 的参数说明与
   示例，并运行聚焦测试、公开文档测试及完整测试集。

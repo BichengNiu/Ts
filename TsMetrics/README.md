@@ -169,6 +169,7 @@ report = evaluate_models_oos(
     },
     estimation_period=(0, 79),
     validation_period=(80, 99),
+    method="lbfgs",
     rank_by="rmse",
 )
 
@@ -181,6 +182,12 @@ ar1_evaluation = report.evaluations["AR(1)"]
 `report.table` 按排名返回模型 × 指标表，列为 MAE、MSE、RMSE、MAPE、
 sMAPE、Theil U1、有效配对数 `n` 和 `rank`。`report.evaluations` 保留每个
 模型的完整 `OOSResult`，可以继续读取预测值、区间和日期元数据。
+
+`method` 省略或设为 `None` 时，每个模型继续使用自己的 `fit()` 默认值。显式
+指定时，同一批模型都必须支持 `fit(method=...)`；不支持的命名模型会在任何
+拟合开始前报错，不会静默改用默认优化器。SARIMAX 支持 `newton`、`nm`、
+`bfgs`、`lbfgs`、`powell`、`cg`、`ncg` 和 `basinhopping`。AutoSARIMAX
+构造器的 `method` 表示网格或逐步搜索策略，不会被批量入口误当成似然优化器。
 
 真实值、各模型预测值和误差可以直接生成一张逐期对比表：
 
