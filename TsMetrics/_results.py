@@ -386,6 +386,12 @@ class BacktestResult:
         Historical training-window policy.
     target : str
         Forecast target name.
+    dates : pandas.DatetimeIndex or None, optional
+        Full observed calendar used to label forecast-window start and end
+        positions. Positional labels are used when omitted.
+    series_names : tuple of str or None, optional
+        Names for multivariate endogenous series. Unnamed vector results use
+        stable ``series_0``, ``series_1``, ... labels in window metrics.
 
     Attributes
     ----------
@@ -393,8 +399,12 @@ class BacktestResult:
         Origin-plus-horizon target positions.
     metrics : dict
         Metrics pooled across successful origins and horizons.
-    metrics_by_horizon, metrics_by_series : pandas.DataFrame
+    metrics_by_horizon, metrics_by_series : list of dict
         Horizon- and series-specific metrics.
+    metrics_by_window : pandas.DataFrame
+        Time-ordered canonical metrics calculated separately over every
+        complete origin-specific forecast horizon. Multivariate results have
+        one row per window and series.
 
     Examples
     --------
@@ -413,6 +423,8 @@ class BacktestResult:
     ... )
     >>> result.target_indices.tolist()
     [[10], [11]]
+    >>> result.metrics_by_window[["window_start", "window_end"]].values.tolist()
+    [[10, 10], [11, 11]]
     """
 
     mean: np.ndarray

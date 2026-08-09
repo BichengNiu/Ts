@@ -302,6 +302,25 @@ rolling = model.backtest(
 
 结果同时提供总体 `metrics`、逐预测期 `metrics_by_horizon`、逐变量 `metrics_by_series`。规范指标为 MAE、MSE、RMSE、MAPE、sMAPE、Theil U1 和有效配对数 `n`。`on_error='record'` 会将失败窗口保留为 NaN，并把起点和异常写入 `failures`；默认 `on_error='raise'` 会立即抛出异常。完整契约见 `TsMetrics/README.md`。
 
+动态评估模型在连续 `N` 期预测窗口上的可靠性时，设置 `horizon=N`、
+`step=1`，然后读取 `metrics_by_window`：
+
+```python
+expanding = model.backtest(
+    initial_window=80,
+    horizon=4,
+    step=1,
+    window="expanding",
+)
+
+dynamic = expanding.metrics_by_window
+print(dynamic[["window_start", "window_end", "rmse", "mape", "n"]])
+```
+
+每行指标只评价该起点向前预测的完整 `N` 期；训练样本随后增加一期，预测
+起点也前移一期。最后一个窗口结束于最新观测。对于 VAR、VECM 和 SVAR，
+结果增加 `series` 列并逐变量计算，避免把不同量纲混成一个动态 RMSE。
+
 GARCH 的预测对象是条件波动率，无法直接与原始收益比较。回测使用当前训练窗口均值中心化后的绝对收益 `abs(y_future - mean(y_train))` 作为可观测代理，并通过 `target='absolute_demeaned_return_proxy'` 明确标记；该代理不等于真实观测波动率。
 
 ### Backcasting：反向时间估计样本前数值

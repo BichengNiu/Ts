@@ -426,7 +426,8 @@ For VAR/VECM/SVAR, explain that rows are separated by `series`. Do not add or do
 
 ```powershell
 python -m pytest tests/test_public_docstrings.py TsMetrics/tests TsModels/tests/test_evaluation.py -q
-python -c "import numpy as np; from Ts.TsModels import SARIMAX; r=SARIMAX(np.arange(20.0), order=(0,0,0)).backtest(initial_window=10, horizon=3, step=1); f=r.metrics_by_window; assert len(f)==8; assert f.iloc[-1]['window_end']==19; print(f[['window_start','window_end','rmse','mape','n']].tail(2).to_string(index=False))"
+Push-Location ..
+try { python -c "import numpy as np; from Ts.TsModels import SARIMAX; r=SARIMAX(np.arange(20.0), order=(0,0,0)).backtest(initial_window=10, horizon=3, step=1); f=r.metrics_by_window; assert len(f)==8; assert f.iloc[-1]['window_end']==19; print(f[['window_start','window_end','rmse','mape','n']].tail(2).to_string(index=False))" } finally { Pop-Location }
 ```
 
 Expected: tests PASS; the script exits 0, prints two rows, and ends at position 19.
@@ -489,7 +490,8 @@ Expected: all commands exit 0 with no reported violations.
 **Step 4: Verify the acceptance equation with dates**
 
 ```powershell
-python -c "import numpy as np, pandas as pd; from Ts.TsModels import SARIMAX; d=pd.date_range('2020-01-01', periods=20, freq='MS'); r=SARIMAX(pd.Series(np.arange(20.0), index=d), order=(0,0,0)).backtest(initial_window=10, horizon=3, step=1, window='expanding'); f=r.metrics_by_window; assert len(f)==20-10-3+1; assert f.iloc[-1]['window_end']==d[-1]; assert f['n'].eq(3).all(); print(f.tail(1).to_string(index=False))"
+Push-Location ..
+try { python -c "import numpy as np, pandas as pd; from Ts.TsModels import SARIMAX; d=pd.date_range('2020-01-01', periods=20, freq='MS'); r=SARIMAX(pd.Series(np.arange(20.0), index=d), order=(0,0,0)).backtest(initial_window=10, horizon=3, step=1, window='expanding'); f=r.metrics_by_window; assert len(f)==20-10-3+1; assert f.iloc[-1]['window_end']==d[-1]; assert f['n'].eq(3).all(); print(f.tail(1).to_string(index=False))" } finally { Pop-Location }
 ```
 
 Expected: exit code 0; the final row ends on `2021-08-01` and has `n == 3`.

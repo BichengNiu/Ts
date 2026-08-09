@@ -120,6 +120,43 @@ evaluation = backtest(
 `10 <= window_size <= initial_window`，因此从第一个预测原点开始就保持
 同一训练长度，不会先扩展再滚动。
 
+### 按重叠预测窗口评估动态可靠性
+
+如果需要观察模型可靠性如何随时间变化，继续使用同一个 `backtest()`，将
+`horizon` 设为每次评价的完整 `N` 期窗口，并使用 `step=1` 让预测起点每次
+前移一期：
+
+```python
+dynamic_result = model.backtest(
+    initial_window=20,   # 第一次拟合的最小训练样本
+    horizon=3,           # 每个起点向前预测并评价3期
+    step=1,              # 相邻评价窗口重叠并前移1期
+    window="expanding", # 每次加入最新可见观测后重新拟合
+)
+
+dynamic_metrics = dynamic_result.metrics_by_window
+print(
+    dynamic_metrics[
+        ["window_start", "window_end", "rmse", "mape", "n"]
+    ]
+)
+```
+
+长度为 `T` 的样本会产生 `T - initial_window - horizon + 1` 个完整窗口。
+`step=1` 时，最后一行的 `window_end` 就是最新一期样本。不足 `horizon`
+期的尾部不会作为短窗口混入结果。
+
+`metrics_by_window` 每行使用该预测起点未来完整 `horizon` 期的预测值和
+真实值，调用同一个 `compute_metrics()` 计算 MAE、MSE、RMSE、MAPE、
+sMAPE、Theil U1 和有效配对数 `n`。相邻窗口可以包含同一目标日期，但预测
+来自不同起点或预测步长。日期模型返回真实的 `window_start` 和
+`window_end`；无日期模型返回零基位置。
+
+多变量模型按“窗口 × 变量”返回结果，并增加 `series` 列，不把不同量纲的
+变量混入同一个动态 RMSE。使用 `on_error="record"` 时，失败窗口仍保留，
+各误差指标为 `NaN`、`n=0`，详细异常继续保存在 `failures`。部分非有限
+配对和实际值为零时的 MAPE 继续遵循本模块现有指标契约。
+
 ## 模型性能比较
 
 当多个模型需要使用同一个估计期和验证期时，使用批量入口：
