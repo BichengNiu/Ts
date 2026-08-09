@@ -15,6 +15,31 @@ def metrics_by_horizon(actual, predicted):
     ]
 
 
+def backtest_metrics_by_window(actual, predicted):
+    """Compute canonical metrics separately for every forecast window."""
+    if actual.shape != predicted.shape:
+        raise ValueError("backtest actual and predicted must have the same shape")
+    if predicted.ndim == 2:
+        return [
+            [compute_metrics(actual[index], predicted[index])]
+            for index in range(predicted.shape[0])
+        ]
+    if predicted.ndim == 3:
+        return [
+            [
+                compute_metrics(
+                    actual[origin, :, series],
+                    predicted[origin, :, series],
+                )
+                for series in range(predicted.shape[2])
+            ]
+            for origin in range(predicted.shape[0])
+        ]
+    raise ValueError(
+        f"unsupported backtest shape for window metrics: {predicted.shape}"
+    )
+
+
 def oos_metrics_by_series(actual, predicted):
     """Compute one metric dictionary per endogenous series."""
     if actual.shape != predicted.shape:

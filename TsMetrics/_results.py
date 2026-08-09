@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ._aggregation import (
+    backtest_metrics_by_window,
     backtest_metrics_by_series,
     metrics_by_horizon,
     oos_metrics_by_series,
@@ -495,6 +496,24 @@ class BacktestResult:
     def metrics_by_series(self):
         """Compute metrics for each endogenous series."""
         return backtest_metrics_by_series(self.actual, self.mean)
+
+    @property
+    def metrics_by_window(self):
+        """Return canonical metrics for each complete forecast window."""
+        horizon = self.mean.shape[1]
+        rows = []
+        for position, metrics in enumerate(
+            backtest_metrics_by_window(self.actual, self.mean)
+        ):
+            rows.append(
+                {
+                    "window_start": int(self.origins[position]),
+                    "window_end": int(self.origins[position] + horizon - 1),
+                    **metrics[0],
+                }
+            )
+        columns = ["window_start", "window_end", *ERROR_METRIC_NAMES, "n"]
+        return pd.DataFrame.from_records(rows, columns=columns)
 
 
 @dataclass

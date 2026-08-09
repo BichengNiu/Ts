@@ -228,6 +228,40 @@ def test_public_backtest_uses_each_origin_without_future_leakage():
     assert result.metrics["n"] == 6
 
 
+def test_backtest_metrics_by_window_are_exact_and_position_labelled():
+    """Each row scores one complete forecast window at its target positions."""
+    result = BacktestResult(
+        mean=np.array([[2.0, 4.0], [3.0, 8.0]]),
+        actual=np.array([[1.0, 5.0], [3.0, 4.0]]),
+        lower=None,
+        upper=None,
+        origins=np.array([10, 11]),
+        failures=[],
+        model_type="TEST",
+        window="expanding",
+        target="observed",
+    )
+
+    frame = result.metrics_by_window
+
+    assert frame.columns.tolist() == [
+        "window_start",
+        "window_end",
+        "mae",
+        "mse",
+        "rmse",
+        "mape",
+        "smape",
+        "theil_u1",
+        "n",
+    ]
+    assert frame["window_start"].tolist() == [10, 11]
+    assert frame["window_end"].tolist() == [11, 12]
+    assert frame["rmse"].tolist() == pytest.approx([1.0, np.sqrt(8.0)])
+    assert frame["mape"].tolist() == pytest.approx([60.0, 50.0])
+    assert frame["n"].tolist() == [2, 2]
+
+
 def test_expanding_backtest_rejects_ignored_window_size():
     """An irrelevant rolling-window argument is not silently ignored."""
     model = _MeanModel(np.arange(20.0))
