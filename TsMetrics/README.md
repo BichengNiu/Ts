@@ -84,6 +84,16 @@ scheme = RollingOrigin(
 )
 ```
 
+同一个方案还覆盖两种常见泛化检验，无需增加新接口：
+
+```python
+# 逐期在线 / prequential：每次只预测下一期
+online = RollingOrigin(initial_window=80, horizon=1, step=1)
+
+# 非重叠历史测试区块：下一起点正好接在上一预测块之后
+blocked = RollingOrigin(initial_window=80, horizon=4, step=4)
+```
+
 每个起点都克隆并重新拟合模型，只使用该起点之前、方案允许的训练数据。原模型及其
 `result_` 不会被修改。只有完整的预测窗口进入结果。
 
@@ -136,6 +146,13 @@ report.metric_table(by="series")
 - 多变量：`(n_splits, horizon, n_series)`。
 
 固定留出只是 `n_splits == 1`，不会退化成另一套一维结果契约。
+
+当 `step < horizon` 时，相邻窗口会包含相同目标时点，但代表不同起点或预测步长下的预测
+任务；pooled RMSE、MAPE 等会保留这些误差。它们不是相互独立的观测，因此统计解释时应
+同时查看 `metric_table(by="origin")` 与 `metric_table(by="horizon")`，并明确重叠依赖。
+
+`TsModels.compare_models()` 比较的是已经拟合的参数估计结果（例如 AIC、BIC 和系数表）；
+`evaluate_forecasts()` 比较的才是时间有序历史切分上的泛化预测误差，两者不能互换。
 
 ## 绘图
 
