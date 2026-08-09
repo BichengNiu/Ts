@@ -228,6 +228,29 @@ def test_public_backtest_uses_each_origin_without_future_leakage():
     assert result.metrics["n"] == 6
 
 
+def test_overlapping_dated_windows_run_through_latest_observation():
+    """One-period overlap ends the final complete window at the latest date."""
+    dates = pd.date_range("2020-01-01", periods=20, freq="MS")
+    model = _MeanModel(np.arange(20.0), dates=dates)
+
+    result = model.backtest(
+        initial_window=10,
+        horizon=3,
+        step=1,
+        window="expanding",
+    )
+    frame = result.metrics_by_window
+
+    assert len(frame) == 20 - 10 - 3 + 1
+    assert frame["window_start"].tolist()[:2] == [dates[10], dates[11]]
+    assert frame["window_end"].tolist()[:2] == [dates[12], dates[13]]
+    assert frame.iloc[-1]["window_end"] == dates[-1]
+    assert [window[-1] for window in model.fit_windows] == list(
+        np.arange(9.0, 17.0)
+    )
+    assert model.result_ is None
+
+
 def test_backtest_metrics_by_window_are_exact_and_position_labelled():
     """Each row scores one complete forecast window at its target positions."""
     result = BacktestResult(
@@ -373,6 +396,14 @@ def test_recorded_failure_does_not_leave_partial_forecast_values():
     assert np.isnan(result.actual).all()
     assert len(result.failures) == 2
     assert result.metrics["n"] == 0
+    frame = result.metrics_by_window
+    assert frame["n"].tolist() == [0, 0]
+    assert (
+        frame.drop(columns=["window_start", "window_end", "n"])
+        .isna()
+        .all()
+        .all()
+    )
 
 
 def test_base_model_methods_delegate_to_tsmetrics():

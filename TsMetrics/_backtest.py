@@ -9,6 +9,7 @@ from ._evaluation import (
     expected_forecast_shape,
     fit_and_forecast,
     model_data,
+    model_series_names,
     training_dates,
     training_exog,
     validate_model_protocol,
@@ -123,6 +124,7 @@ def backtest(
     data = model_data(model)
     target = validate_model_protocol(model, "backtest")
     dates = validated_model_dates(model, data)
+    series_names = model_series_names(model, data)
     (
         initial_window,
         horizon,
@@ -211,4 +213,6 @@ def backtest(
         model_type=model_type,
         window=window,
         target=target,
+        dates=dates,
+        series_names=series_names,
     )

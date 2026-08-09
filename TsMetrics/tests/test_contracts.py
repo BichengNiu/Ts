@@ -141,6 +141,15 @@ def test_tuple_dates_are_normalised_before_training_slice():
     assert result.validation_dates.tolist() == list(result.validation_dates)
     assert len(result.validation_dates) == 2
 
+    rolling = backtest(
+        _DuckModel(np.arange(12.0), dates=dates),
+        initial_window=10,
+        horizon=2,
+        step=1,
+    )
+    assert isinstance(rolling.dates, pd.DatetimeIndex)
+    assert rolling.metrics_by_window.iloc[-1]["window_end"] == rolling.dates[-1]
+
 
 def test_record_mode_commits_each_origin_atomically():
     """Late fitted-result failures cannot leave scored partial rows."""
