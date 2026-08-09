@@ -423,17 +423,39 @@ class TestBacktestModelIntegration:
         assert result.mean.shape == (2, 2)
         assert np.isfinite(result.mean).all()
         assert result.target == "observed"
+        dynamic = result.metrics_by_window
+        assert len(dynamic) == 2
+        assert dynamic["window_start"].tolist() == [60, 70]
+        assert dynamic["window_end"].tolist() == [61, 71]
+        assert np.isfinite(dynamic["rmse"]).all()
 
     def test_var_backtest(self):
         """VAR preserves the series axis in backtest output."""
         from Ts.TsModels import VAR
 
-        model = VAR(self._multivariate_data(), lags=1)
+        model = VAR(
+            self._multivariate_data(),
+            lags=1,
+            cols=["output", "prices"],
+        )
         result = model.backtest(initial_window=60, horizon=2, step=10)
 
         assert result.mean.shape == (2, 2, 2)
         assert len(result.metrics_by_series) == 2
         assert np.isfinite(result.mean).all()
+        dynamic = result.metrics_by_window
+        assert result.series_names == ("output", "prices")
+        assert dynamic["series"].tolist() == [
+            "output",
+            "prices",
+            "output",
+            "prices",
+        ]
+        assert dynamic.groupby("series", sort=False).size().to_dict() == {
+            "output": 2,
+            "prices": 2,
+        }
+        assert np.isfinite(dynamic["rmse"]).all()
 
     def test_var_oos_preserves_series_names_for_comparison_helpers(self):
         """Vector OOS results retain names used by tables and plots."""
