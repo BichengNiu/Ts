@@ -435,6 +435,26 @@ class TestBacktestModelIntegration:
         assert len(result.metrics_by_series) == 2
         assert np.isfinite(result.mean).all()
 
+    def test_var_oos_preserves_series_names_for_comparison_helpers(self):
+        """Vector OOS results retain names used by tables and plots."""
+        from Ts.TsModels import VAR
+
+        model = VAR(
+            self._multivariate_data(),
+            lags=1,
+            cols=["output", "prices"],
+        )
+
+        result = model.oos(
+            estimation_period=(0, 59),
+            validation_period=(60, 69),
+            alpha=0.10,
+        )
+
+        assert result.series_names == ("output", "prices")
+        assert result.alpha == pytest.approx(0.10)
+        assert result.mean.shape == (10, 2)
+
     def test_vecm_backtest(self):
         """VECM refits and forecasts cointegrated data at each origin."""
         from Ts.TsModels import VECM

@@ -64,6 +64,62 @@ def _validate_result_labels(model_type, target):
         raise TypeError("target must be a non-empty string")
 
 
+def _validate_series_names(series_names, mean):
+    """Return immutable multivariate names or preserve absent metadata."""
+    if series_names is None:
+        return None
+    if mean.ndim == 1:
+        raise ValueError("series_names is only valid for multivariate results")
+    if isinstance(series_names, str):
+        raise TypeError("series_names must be a sequence of strings")
+    try:
+        names = tuple(series_names)
+    except TypeError as error:
+        raise TypeError("series_names must be a sequence of strings") from error
+    if len(names) != mean.shape[1]:
+        raise ValueError("series_names must contain one name per series")
+    if not all(isinstance(name, str) and name for name in names):
+        raise TypeError("series_names must contain non-empty strings")
+    if len(set(names)) != len(names):
+        raise ValueError("series_names must be unique")
+    return names
+
+
+def _validate_optional_alpha(alpha):
+    """Return an optional significance level for manually built results."""
+    if alpha is None:
+        return None
+    if isinstance(alpha, (bool, np.bool_)):
+        raise TypeError("alpha must be a number strictly between 0 and 1")
+    try:
+        value = float(alpha)
+    except (TypeError, ValueError) as error:
+        raise TypeError("alpha must be a number strictly between 0 and 1") from error
+    if not np.isfinite(value) or not 0.0 < value < 1.0:
+        raise ValueError("alpha must be strictly between 0 and 1")
+    return value
+
+
+def _validate_bool(name, value):
+    """Require a real boolean rather than accepting truthy substitutes."""
+    if not isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be a boolean")
+    return bool(value)
+
+
+def _validate_interval_alpha(value):
+    """Return a finite Matplotlib opacity in the closed unit interval."""
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError("interval_alpha must be a number between 0 and 1")
+    try:
+        resolved = float(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError("interval_alpha must be a number between 0 and 1") from error
+    if not np.isfinite(resolved) or not 0.0 <= resolved <= 1.0:
+        raise ValueError("interval_alpha must be between 0 and 1")
+    return resolved
+
+
 def _rank_scores(scores):
     """Return deterministic ascending error-score ranking."""
     return sorted(
@@ -74,6 +130,91 @@ def _rank_scores(scores):
             name,
         ),
     )
+
+
+def _shared_oos_reference(evaluations):
+    """Validate comparison metadata and return its first evaluation."""
+    reference = next(iter(evaluations.values()))
+    for name, evaluation in evaluations.items():
+        if evaluation.target != reference.target:
+            raise ValueError("all evaluations must use the same target")
+        if evaluation.mean.shape != reference.mean.shape:
+            raise ValueError("all evaluations must have the same forecast shape")
+        if not np.array_equal(evaluation.actual, reference.actual, equal_nan=True):
+            raise ValueError("all evaluations must use the same actual values")
+        for attribute in ("estimation_indices", "validation_indices"):
+            if not np.array_equal(
+                getattr(evaluation, attribute),
+                getattr(reference, attribute),
+            ):
+                raise ValueError(
+                    f"all evaluations must use the same {attribute}"
+                )
+        for attribute in ("estimation_dates", "validation_dates"):
+            dates = getattr(evaluation, attribute)
+            reference_dates = getattr(reference, attribute)
+            if (dates is None) != (reference_dates is None):
+                raise ValueError("all evaluations must use the same date metadata")
+            if dates is not None and not dates.equals(reference_dates):
+                raise ValueError(f"all evaluations must use the same {attribute}")
+        if evaluation.series_names != reference.series_names:
+            raise ValueError(
+                f"evaluation {name!r} does not use the shared series_names"
+            )
+    return reference
+
+
+def _resolve_oos_series(reference, series):
+    """Resolve a public series selector to one multivariate column position."""
+    if isinstance(series, (bool, np.bool_)):
+        raise TypeError("series must be an integer position or non-empty name")
+    if reference.mean.ndim == 1:
+        if series is None:
+            return None
+        if isinstance(series, (int, np.integer)) and int(series) == 0:
+            return None
+        if not isinstance(series, (int, np.integer, str)):
+            raise TypeError("series must be an integer position or non-empty name")
+        raise ValueError("series must be None or 0 for a univariate result")
+    if series is None:
+        raise ValueError("series is required for a multivariate OOS comparison")
+    if isinstance(series, (int, np.integer)):
+        position = int(series)
+        if not 0 <= position < reference.mean.shape[1]:
+            raise IndexError(
+                f"series position {position} is out of range for "
+                f"{reference.mean.shape[1]} series"
+            )
+        return position
+    if not isinstance(series, str) or not series:
+        raise TypeError("series must be an integer position or non-empty name")
+    if reference.series_names is None:
+        raise ValueError("series names are unavailable; use an integer position")
+    try:
+        return reference.series_names.index(series)
+    except ValueError as error:
+        raise ValueError(f"unknown series {series!r}") from error
+
+
+def _select_oos_series(values, position):
+    """Return one copied validation path from univariate or vector values."""
+    selected = values if position is None else values[:, position]
+    return np.array(selected, dtype=float, copy=True)
+
+
+def _oos_validation_index(reference):
+    """Return the preserved date index or labelled positional validation index."""
+    if reference.validation_dates is not None:
+        return reference.validation_dates.copy()
+    return pd.Index(reference.validation_indices.copy(), name="observation")
+
+
+def _interval_label(model_name, alpha):
+    """Build an honest interval label from retained significance metadata."""
+    if alpha is None:
+        return f"{model_name} interval"
+    confidence = (1.0 - alpha) * 100.0
+    return f"{model_name} {confidence:g}% interval"
 
 
 @dataclass
@@ -94,6 +235,10 @@ class OOSResult:
         Model label recorded by the evaluator.
     target : str
         Forecast target name, such as ``"level"`` or ``"variance"``.
+    series_names : tuple of str or None
+        Optional names for the columns of a multivariate forecast.
+    alpha : float or None
+        Significance level requested for forecast intervals.
 
     Attributes
     ----------
@@ -132,6 +277,8 @@ class OOSResult:
     validation_dates: pd.DatetimeIndex | None
     model_type: str
     target: str
+    series_names: tuple[str, ...] | None = None
+    alpha: float | None = None
 
     def __post_init__(self):
         """Normalise arrays and validate the period metadata contract."""
@@ -203,6 +350,8 @@ class OOSResult:
                 )
         _validate_interval_pair(self.lower, self.upper, self.mean.shape)
         _validate_result_labels(self.model_type, self.target)
+        self.series_names = _validate_series_names(self.series_names, self.mean)
+        self.alpha = _validate_optional_alpha(self.alpha)
 
     @property
     def metrics(self):
@@ -422,6 +571,13 @@ class OOSComparisonResult:
     table : pandas.DataFrame
         All canonical metrics, sample size, and rank.
 
+    Methods
+    -------
+    forecast_table
+        Return aligned actual, forecast, error, and optional interval columns.
+    plot_forecasts
+        Plot actual values, every model forecast, and available intervals.
+
     Examples
     --------
     >>> import numpy as np
@@ -503,3 +659,194 @@ class OOSComparisonResult:
         ranks = {name: rank for rank, name in enumerate(self.ranking, start=1)}
         frame["rank"] = pd.Series(ranks, dtype=int)
         return frame.loc[self.ranking].copy()
+
+    def forecast_table(
+        self,
+        series=None,
+        *,
+        include_errors=True,
+        include_intervals=False,
+    ):
+        """Return aligned validation values for every compared model.
+
+        Parameters
+        ----------
+        series : int or str, optional
+            Required for multivariate results. Select a zero-based series
+            position or a retained series name.
+        include_errors : bool, default True
+            Include ``forecast - actual`` for every model.
+        include_intervals : bool, default False
+            Include lower and upper columns for models that provide bounds.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Actual values followed by each model's forecast, optional bounds,
+            and optional error in report insertion order.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsMetrics import OOSComparisonResult, OOSResult
+        >>> def result(mean):
+        ...     return OOSResult(
+        ...         np.array(mean), np.array([1.0, 2.0]), None, None,
+        ...         np.arange(3), np.array([3, 4]), None, None,
+        ...         "Example", "observed",
+        ...     )
+        >>> report = OOSComparisonResult(
+        ...     {"AR(1)": result([1.1, 2.1]), "AR(2)": result([0.9, 1.9])},
+        ...     rank_by="rmse",
+        ... )
+        >>> report.forecast_table().shape
+        (2, 5)
+        """
+        include_errors = _validate_bool("include_errors", include_errors)
+        include_intervals = _validate_bool(
+            "include_intervals",
+            include_intervals,
+        )
+        reference = _shared_oos_reference(self.evaluations)
+        position = _resolve_oos_series(reference, series)
+        actual = _select_oos_series(reference.actual, position)
+        columns = {"Actual": actual}
+        for name, evaluation in self.evaluations.items():
+            forecast = _select_oos_series(evaluation.mean, position)
+            columns[f"{name} forecast"] = forecast
+            if include_intervals and evaluation.lower is not None:
+                columns[f"{name} lower"] = _select_oos_series(
+                    evaluation.lower,
+                    position,
+                )
+                columns[f"{name} upper"] = _select_oos_series(
+                    evaluation.upper,
+                    position,
+                )
+            if include_errors:
+                columns[f"{name} error"] = forecast - actual
+        return pd.DataFrame(columns, index=_oos_validation_index(reference))
+
+    def plot_forecasts(
+        self,
+        series=None,
+        *,
+        colors=None,
+        title=None,
+        xtitle=None,
+        ytitle="Value",
+        freq=None,
+        note=None,
+        grid=False,
+        show_intervals=True,
+        interval_alpha=0.12,
+        ax=None,
+    ):
+        """Plot actual validation values and every model forecast on one axis.
+
+        Available lower and upper bounds are shown by default. Their labels
+        use each result's retained ``alpha``; manually constructed results
+        without that metadata receive a generic interval label.
+
+        Parameters
+        ----------
+        series : int or str, optional
+            Required for multivariate results. Select a zero-based series
+            position or a retained series name.
+        colors : sequence of str, optional
+            One colour for actual values followed by one per model.
+        title : str, optional
+            Plot title.
+        xtitle : str, optional
+            Label for the validation axis.
+        ytitle : str, default "Value"
+            Label for the value axis.
+        freq : str, optional
+            Date tick frequency accepted by :func:`Ts.TsPlots.plot_series`.
+        note : str, optional
+            Free-text note placed below the figure.
+        grid : bool, default False
+            Whether to show the shared dashed grid.
+        show_intervals : bool, default True
+            Draw bounds for models that provide them.
+        interval_alpha : float, default 0.12
+            Opacity of interval fills, between zero and one.
+        ax : matplotlib.axes.Axes, optional
+            Existing axes on which to draw the comparison.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        ax : matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsMetrics import OOSComparisonResult, OOSResult
+        >>> def result(mean):
+        ...     return OOSResult(
+        ...         np.array(mean), np.array([1.0, 2.0]), None, None,
+        ...         np.arange(3), np.array([3, 4]), None, None,
+        ...         "Example", "observed",
+        ...     )
+        >>> report = OOSComparisonResult(
+        ...     {"AR(1)": result([1.1, 2.1]), "AR(2)": result([0.9, 1.9])},
+        ...     rank_by="rmse",
+        ... )
+        >>> fig, ax = report.plot_forecasts(title="Validation forecasts")
+        >>> len(ax.lines)
+        3
+        """
+        from Ts.TsPlots import plot_series
+        from Ts.TsPlots.style import DEFAULT_PALETTE
+
+        show_intervals = _validate_bool("show_intervals", show_intervals)
+        interval_alpha = _validate_interval_alpha(interval_alpha)
+        reference = _shared_oos_reference(self.evaluations)
+        position = _resolve_oos_series(reference, series)
+        frame = self.forecast_table(
+            series=series,
+            include_errors=False,
+            include_intervals=False,
+        )
+        if colors is None:
+            colors = ["#222222"] + [
+                DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)]
+                for index in range(len(self.evaluations))
+            ]
+        existing_line_count = 0 if ax is None else len(ax.lines)
+        fig, ax = plot_series(
+            frame,
+            facet=False,
+            auto_dual_y=False,
+            colors=colors,
+            title=title,
+            xtitle=xtitle,
+            ytitle=ytitle,
+            freq=freq,
+            note=note,
+            grid=grid,
+            show_legend=False,
+            ax=ax,
+        )
+        comparison_lines = ax.lines[
+            existing_line_count : existing_line_count + len(frame.columns)
+        ]
+        if show_intervals:
+            for line, (name, evaluation) in zip(
+                comparison_lines[1:],
+                self.evaluations.items(),
+                strict=True,
+            ):
+                if evaluation.lower is None:
+                    continue
+                ax.fill_between(
+                    frame.index,
+                    _select_oos_series(evaluation.lower, position),
+                    _select_oos_series(evaluation.upper, position),
+                    color=line.get_color(),
+                    alpha=interval_alpha,
+                    label=_interval_label(name, evaluation.alpha),
+                )
+        ax.legend(frameon=False, ncol=2)
+        return fig, ax

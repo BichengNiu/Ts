@@ -20,6 +20,28 @@ def model_data(model):
     return data
 
 
+def model_series_names(model, data):
+    """Return validated display names for a multivariate model, when available."""
+    if data.ndim == 1:
+        return None
+    names = getattr(model, "data_names", None)
+    if names is None:
+        return None
+    if isinstance(names, str):
+        raise TypeError("model.data_names must be a sequence of strings")
+    try:
+        resolved = tuple(names)
+    except TypeError as error:
+        raise TypeError("model.data_names must be a sequence of strings") from error
+    if len(resolved) != data.shape[1]:
+        raise ValueError("model.data_names must contain one name per data series")
+    if not all(isinstance(name, str) and name for name in resolved):
+        raise TypeError("model.data_names must contain non-empty strings")
+    if len(set(resolved)) != len(resolved):
+        raise ValueError("model.data_names must be unique")
+    return resolved
+
+
 def expected_forecast_shape(data, horizon):
     """Return one forecast origin's required output shape."""
     if data.ndim == 1:

@@ -42,7 +42,7 @@ assert result.series_names == ("output", "prices")
 assert result.alpha == pytest.approx(0.10)
 ```
 
-Also reject duplicate/empty/wrong-length names, names on a univariate result, invalid `alpha`, and `alpha` without intervals. Retain a test constructing the original ten positional arguments to prove backward compatibility.
+Also reject duplicate/empty/wrong-length names, names on a univariate result, and invalid `alpha`. Retain a test constructing the original ten positional arguments to prove backward compatibility. Allow `alpha` without intervals because it records the requested level even when a compliant model cannot produce bounds.
 
 **Step 2: Run the tests and verify failure**
 
@@ -63,7 +63,7 @@ series_names: tuple[str, ...] | None = None
 alpha: float | None = None
 ```
 
-Normalize `series_names` to a tuple, require one unique non-empty string per multivariate column, and reject names for one-dimensional results. Normalize `alpha` to float and require `0 < alpha < 1`; require intervals when it is set.
+Normalize `series_names` to a tuple, require one unique non-empty string per multivariate column, and reject names for one-dimensional results. Normalize `alpha` to float and require `0 < alpha < 1`; do not require interval arrays when it is set.
 
 Add an evaluation helper that reads `model.data_names` for two-dimensional data, validates its length, and returns a copied tuple. In `oos()`, pass this tuple and the already validated `alpha` into `OOSResult`.
 
@@ -202,7 +202,6 @@ Expected: all tests pass with no open-figure warnings.
 
 **Files:**
 - Modify: `TsMetrics/README.md`
-- Modify: `TsMetrics/demo.ipynb`
 - Modify: `TsMetrics/_results.py`
 
 **Step 1: Update public documentation**
@@ -224,9 +223,9 @@ Explain the `forecast - actual` sign, default interval exclusion from tables, au
 
 Expand result-container docstrings with the two methods, metadata fields, return types, and concise examples.
 
-**Step 2: Update and execute the demo Notebook**
+**Step 2: Confirm the documentation boundary**
 
-Replace the manual OOS comparison DataFrame and manual `fill_between()` calls in `TsMetrics/demo.ipynb` with `report.forecast_table()` and `report.plot_forecasts()`. Execute from a clean kernel with `nbclient`, save outputs, and verify every code cell completed without an error output.
+The current checkout has no `TsMetrics` demonstration Notebook and the root Notebook is unrelated to this workflow. Do not modify or create an unrelated Notebook; keep the runnable public example in `TsMetrics/README.md` and method docstrings.
 
 **Step 3: Run focused and full verification**
 
@@ -244,5 +243,4 @@ Expected: all tests pass; Ruff, compilation and whitespace checks exit zero.
 
 **Step 4: Audit and publish**
 
-Inspect the final diff for hard-coded model names, duplicated plotting logic, stale manual Notebook code, compatibility regressions and unrelated changes. Commit the implementation and documentation on `main`, confirm the working tree is clean and ahead of `origin/main`, then push `main` to `origin` and verify local/remote commit equality.
-
+Inspect the final diff for hard-coded model names, duplicated plotting logic, compatibility regressions and unrelated changes. Commit only the feature implementation and documentation on `main`; preserve unrelated user changes without staging them. Push `main` to `origin` and verify local/remote commit equality.

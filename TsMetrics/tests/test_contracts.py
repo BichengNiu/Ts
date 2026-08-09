@@ -179,6 +179,94 @@ def test_oos_result_rejects_empty_validation_and_half_interval():
         )
 
 
+def test_oos_result_preserves_optional_series_and_interval_metadata():
+    """Multivariate names and the requested interval level are public metadata."""
+    result = OOSResult(
+        mean=np.ones((2, 2)),
+        actual=np.ones((2, 2)),
+        lower=np.zeros((2, 2)),
+        upper=np.full((2, 2), 2.0),
+        estimation_indices=np.arange(10),
+        validation_indices=np.array([10, 11]),
+        estimation_dates=None,
+        validation_dates=None,
+        model_type="TEST",
+        target="observed",
+        series_names=("output", "prices"),
+        alpha=0.10,
+    )
+
+    assert result.series_names == ("output", "prices")
+    assert result.alpha == pytest.approx(0.10)
+
+
+@pytest.mark.parametrize(
+    ("series_names", "message"),
+    [
+        (("output",), "one name per series"),
+        (("output", "output"), "unique"),
+        (("output", ""), "non-empty"),
+    ],
+)
+def test_oos_result_rejects_invalid_multivariate_series_names(
+    series_names,
+    message,
+):
+    """Series metadata must identify every multivariate result column."""
+    with pytest.raises((TypeError, ValueError), match=message):
+        OOSResult(
+            mean=np.ones((2, 2)),
+            actual=np.ones((2, 2)),
+            lower=None,
+            upper=None,
+            estimation_indices=np.arange(10),
+            validation_indices=np.array([10, 11]),
+            estimation_dates=None,
+            validation_dates=None,
+            model_type="TEST",
+            target="observed",
+            series_names=series_names,
+        )
+
+
+def test_oos_result_metadata_defaults_preserve_positional_construction():
+    """Appending optional fields does not break the original public signature."""
+    result = OOSResult(
+        np.array([1.0]),
+        np.array([1.0]),
+        None,
+        None,
+        np.arange(10),
+        np.array([10]),
+        None,
+        None,
+        "TEST",
+        "observed",
+    )
+
+    assert result.series_names is None
+    assert result.alpha is None
+
+
+@pytest.mark.parametrize("alpha", [0.0, 1.0, np.nan, True, "bad"])
+def test_oos_result_rejects_invalid_interval_level(alpha):
+    """Manually constructed results enforce the evaluator's alpha contract."""
+    with pytest.raises((TypeError, ValueError), match="alpha"):
+        OOSResult(
+            np.array([1.0]),
+            np.array([1.0]),
+            None,
+            None,
+            np.arange(10),
+            np.array([10]),
+            None,
+            None,
+            "TEST",
+            "observed",
+            alpha=alpha,
+        )
+
+
 def test_backtest_result_derives_indices_and_rejects_invalid_window():
     """Target positions are derived and window metadata is constrained."""
     values = {

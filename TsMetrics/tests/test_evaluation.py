@@ -268,22 +268,42 @@ def test_base_model_methods_delegate_to_tsmetrics():
     assert isinstance(rolling, BacktestResult)
 
 
-def _oos_result(mean, actual, target="observed"):
+def _oos_result(
+    mean,
+    actual,
+    target="observed",
+    *,
+    lower=None,
+    upper=None,
+    validation_dates=None,
+    series_names=None,
+    alpha=None,
+):
     """Build a minimal comparable result."""
     mean = np.asarray(mean, dtype=float)
     actual = np.asarray(actual, dtype=float)
+    estimation_dates = None
+    if validation_dates is not None:
+        validation_dates = pd.DatetimeIndex(validation_dates)
+        estimation_dates = pd.date_range(
+            end=validation_dates[0] - pd.offsets.Day(1),
+            periods=10,
+            freq="D",
+        )
 
     return OOSResult(
         mean=mean,
         actual=actual,
-        lower=None,
-        upper=None,
+        lower=lower,
+        upper=upper,
         estimation_indices=np.arange(10),
         validation_indices=np.arange(10, 10 + len(mean)),
-        estimation_dates=None,
-        validation_dates=None,
+        estimation_dates=estimation_dates,
+        validation_dates=validation_dates,
         model_type="TEST",
         target=target,
+        series_names=series_names,
+        alpha=alpha,
     )
 
 
@@ -342,6 +362,211 @@ def test_evaluate_models_oos_returns_all_metrics_and_shared_periods():
             np.arange(10, 15),
         )
     assert all(model.result_ is None for model in models.values())
+
+
+def test_oos_records_requested_alpha_even_without_intervals():
+    """The OOS result retains the requested level independently of bounds."""
+    result = oos(
+        _MeanModel(np.arange(15.0)),
+        estimation_period=(0, 9),
+        validation_period=(10, 14),
+        alpha=0.10,
+    )
+
+    assert result.alpha == pytest.approx(0.10)
+
+
+def test_forecast_table_uses_all_models_and_excludes_intervals_by_default():
+    """The automatic table keeps mapping order and forecast-minus-actual errors."""
+    actual = np.array([10.0, 12.0, 14.0])
+    lower = np.array([9.0, 10.0, 11.0])
+    upper = np.array([13.0, 14.0, 15.0])
+    report = OOSComparisonResult(
+        {
+            "model-a": _oos_result(
+                [11.0, 11.0, 15.0],
+                actual,
+                lower=lower,
+                upper=upper,
+                alpha=0.05,
+            ),
+            "model-b": _oos_result([10.0, 13.0, 13.0], actual),
+            "model-c": _oos_result([9.0, 12.0, 14.0], actual),
+        },
+        rank_by="rmse",
+    )
+
+    frame = report.forecast_table()
+
+    assert frame.columns.tolist() == [
+        "Actual",
+        "model-a forecast",
+        "model-a error",
+        "model-b forecast",
+        "model-b error",
+        "model-c forecast",
+        "model-c error",
+    ]
+    assert frame.index.tolist() == [10, 11, 12]
+    assert frame.index.name == "observation"
+    np.testing.assert_allclose(
+        frame["model-a error"],
+        frame["model-a forecast"] - frame["Actual"],
+    )
+    assert not any("lower" in column or "upper" in column for column in frame)
+
+
+def test_forecast_table_can_include_available_intervals_and_date_index():
+    """Interval columns are opt-in and absent bounds do not create fake columns."""
+    dates = pd.date_range("2025-01-01", periods=2, freq="MS", name="month")
+    actual = np.array([4.0, 5.0])
+    report = OOSComparisonResult(
+        {
+            "bounded": _oos_result(
+                [4.5, 5.5],
+                actual,
+                lower=np.array([3.5, 4.5]),
+                upper=np.array([5.5, 6.5]),
+                validation_dates=dates,
+                alpha=0.05,
+            ),
+            "point-only": _oos_result(
+                [4.2, 5.2],
+                actual,
+                validation_dates=dates,
+            ),
+        },
+        rank_by="rmse",
+    )
+
+    frame = report.forecast_table(
+        include_errors=False,
+        include_intervals=True,
+    )
+
+    assert frame.columns.tolist() == [
+        "Actual",
+        "bounded forecast",
+        "bounded lower",
+        "bounded upper",
+        "point-only forecast",
+    ]
+    assert frame.index.equals(dates)
+
+
+def test_forecast_table_selects_multivariate_series_by_name_or_position():
+    """Every named vector component can be compared without model-specific code."""
+    actual = np.array([[1.0, 10.0], [2.0, 20.0]])
+    report = OOSComparisonResult(
+        {
+            "var-a": _oos_result(
+                [[1.5, 11.0], [2.5, 19.0]],
+                actual,
+                series_names=("output", "prices"),
+            ),
+            "var-b": _oos_result(
+                [[0.5, 9.0], [1.5, 21.0]],
+                actual,
+                series_names=("output", "prices"),
+            ),
+        },
+        rank_by="rmse",
+    )
+
+    by_name = report.forecast_table(series="prices")
+    by_position = report.forecast_table(series=1)
+
+    pd.testing.assert_frame_equal(by_name, by_position)
+    np.testing.assert_allclose(by_name["Actual"], [10.0, 20.0])
+    with pytest.raises(ValueError, match="series is required"):
+        report.forecast_table()
+    with pytest.raises(ValueError, match="unknown series"):
+        report.forecast_table(series="sales")
+    with pytest.raises(IndexError, match="out of range"):
+        report.forecast_table(series=2)
+
+
+def test_plot_forecasts_draws_all_models_and_only_available_intervals():
+    """The plot composes shared line styling with same-colour interval bands."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
+
+    actual = np.array([10.0, 12.0, 14.0])
+    report = OOSComparisonResult(
+        {
+            "model-a": _oos_result(
+                [11.0, 11.0, 15.0],
+                actual,
+                lower=np.array([9.0, 10.0, 12.0]),
+                upper=np.array([13.0, 14.0, 16.0]),
+                alpha=0.10,
+            ),
+            "model-b": _oos_result([10.0, 13.0, 13.0], actual),
+        },
+        rank_by="rmse",
+    )
+
+    colors = ["#222222", "#1f77b4", "#ff7f0e"]
+    fig, ax = report.plot_forecasts(
+        colors=colors,
+        title="Holdout comparison",
+        grid=True,
+    )
+
+    try:
+        assert ax.get_title() == "Holdout comparison"
+        assert [line.get_label() for line in ax.lines] == [
+            "Actual",
+            "model-a forecast",
+            "model-b forecast",
+        ]
+        assert [line.get_color() for line in ax.lines] == colors
+        assert len(ax.collections) == 1
+        assert ax.collections[0].get_facecolor()[0] == pytest.approx(
+            to_rgba(colors[1], alpha=0.12)
+        )
+        labels = ax.get_legend_handles_labels()[1]
+        assert "model-a 90% interval" in labels
+    finally:
+        plt.close(fig)
+
+
+def test_plot_forecasts_can_hide_intervals_and_reuse_an_axes():
+    """Plot options remain composable with a caller-owned Matplotlib axes."""
+    import matplotlib.pyplot as plt
+
+    evaluation = _oos_result(
+        [1.0, 2.0],
+        [1.5, 2.5],
+        lower=np.array([0.5, 1.5]),
+        upper=np.array([1.5, 2.5]),
+        alpha=0.05,
+    )
+    report = OOSComparisonResult({"model": evaluation}, rank_by="rmse")
+    expected_fig, expected_ax = plt.subplots()
+    expected_ax.plot([10, 11], [0.0, 0.0], label="Existing")
+
+    fig, ax = report.plot_forecasts(ax=expected_ax, show_intervals=False)
+
+    try:
+        assert fig is expected_fig
+        assert ax is expected_ax
+        assert len(ax.lines) == 3
+        assert len(ax.collections) == 0
+    finally:
+        plt.close(fig)
+
+
+@pytest.mark.parametrize("interval_alpha", [-0.1, 1.1, np.nan, True])
+def test_plot_forecasts_rejects_invalid_interval_opacity(interval_alpha):
+    """Invalid fill opacity fails before any plot is created."""
+    report = OOSComparisonResult(
+        {"model": _oos_result([1.0], [1.0])},
+        rank_by="rmse",
+    )
+
+    with pytest.raises((TypeError, ValueError), match="interval_alpha"):
+        report.plot_forecasts(interval_alpha=interval_alpha)
 
 
 def test_evaluate_models_oos_rejects_nonfinite_scoring_values():

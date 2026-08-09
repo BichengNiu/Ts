@@ -88,7 +88,7 @@ series_names: tuple[str, ...] | None = None
 alpha: float | None = None
 ```
 
-`oos()` 将从估计器的 `data_names` 获取多变量名称，并保存经验证的 `alpha`。手工构造、未提供 `alpha` 的结果仍可绘图，其区间图例使用通用的 `interval`；由 `oos()` 生成的结果按 `(1 - alpha) * 100` 正确标记区间水平。
+`oos()` 将从估计器的 `data_names` 获取多变量名称，并保存经验证的 `alpha`。`alpha` 表示评价时请求的区间显著性水平；模型即使不返回上下界也可以保留该请求元数据。手工构造、未提供 `alpha` 的结果仍可绘图，其区间图例使用通用的 `interval`；由 `oos()` 生成且实际包含上下界的结果按 `(1 - alpha) * 100` 正确标记区间水平。
 
 ## 错误处理
 
@@ -107,5 +107,4 @@ alpha: float | None = None
 - 多变量按名称和位置选择；无选择、非法名称和越界位置。
 - 绘图复用 `plot_series` 样式、同轴显示、区间颜色与非默认置信水平标签。
 - `OOSResult` 旧位置参数构造、`report.table` 和现有 OOS 评价行为保持兼容。
-- 更新 `TsMetrics/README.md`、公共 docstring 和 `TsMetrics/demo.ipynb`，并执行相关测试、全量测试、Ruff、编译检查、Notebook 执行和 `git diff --check`。
-
+- 更新 `TsMetrics/README.md` 和公共 docstring，并执行相关测试、全量测试、Ruff、编译检查和 `git diff --check`。仓库没有与该工作流相关的演示 Notebook，因此不修改或新增无关 Notebook。

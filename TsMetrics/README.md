@@ -95,6 +95,7 @@ evaluation = model.oos(
 - `mean`、`actual`、`lower`、`upper`；
 - `estimation_indices` 与 `validation_indices`；
 - 日期模型同时提供 `estimation_dates` 与 `validation_dates`；
+- 向量模型提供 `series_names`，所有模型保留区间请求的 `alpha`；
 - 总体 `metrics` 与逐变量 `metrics_by_series`；
 - `target`，用于标明被评价的可观测对象。
 ## 滚动历史回测
@@ -143,6 +144,46 @@ ar1_evaluation = report.evaluations["AR(1)"]
 `report.table` 按排名返回模型 × 指标表，列为 MAE、MSE、RMSE、MAPE、
 sMAPE、Theil U1、有效配对数 `n` 和 `rank`。`report.evaluations` 保留每个
 模型的完整 `OOSResult`，可以继续读取预测值、区间和日期元数据。
+
+真实值、各模型预测值和误差可以直接生成一张逐期对比表：
+
+```python
+forecast_comparison = report.forecast_table()
+```
+
+列顺序为 `Actual`，随后按模型传入顺序排列 `<model> forecast` 和
+`<model> error`。误差固定定义为 `forecast - actual`。预测区间默认不进入
+表格；确实需要上下界时显式使用：
+
+```python
+forecast_comparison = report.forecast_table(include_intervals=True)
+```
+
+真实值、全部模型预测值和已有预测区间也可以直接绘制：
+
+```python
+fig, ax = report.plot_forecasts(
+    title="Validation forecasts",
+    xtitle="Validation month",
+    ytitle="Housing starts",
+    freq="month",
+    grid=True,
+    note="Models use one shared estimation and validation split.",
+)
+```
+
+绘图复用 `TsPlots.plot_series()` 的样式和日期轴，真实值与所有模型预测值
+保持在同一纵轴。只有实际提供上下界的模型才会显示区间；可以通过
+`show_intervals=False` 隐藏。区间标签使用 OOS 评价时的 `alpha`，例如
+`alpha=0.10` 显示为 90% interval。
+
+以上接口遍历 `report.evaluations`，不限定模型类型或模型数量。对于 VAR、
+VECM、SVAR 等多变量结果，必须按名称或零基位置选择一个变量：
+
+```python
+prices_table = report.forecast_table(series="prices")
+fig, ax = report.plot_forecasts(series=1)
+```
 
 批量比较要求每个模型的实际值和点预测在整个验证期内均为有限值。
 任何模型存在缺失或无限预测都会直接报错，不能通过少算困难观测获得更优

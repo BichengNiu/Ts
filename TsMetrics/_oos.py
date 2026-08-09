@@ -11,6 +11,7 @@ from ._evaluation import (
     expected_forecast_shape,
     fit_and_forecast,
     model_data,
+    model_series_names,
     training_dates,
     training_exog,
     validate_model_protocol,
@@ -65,6 +66,7 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
     [40, 49]
     """
     data = model_data(model)
+    series_names = model_series_names(model, data)
     target = validate_model_protocol(model, "oos")
     periods = resolve_evaluation_periods(
         model,
@@ -129,4 +131,6 @@ def oos(model, estimation_period, validation_period, *, alpha=0.05):
         validation_dates=periods.validation_dates,
         model_type=model_type,
         target=target,
+        series_names=series_names,
+        alpha=alpha,
     )
