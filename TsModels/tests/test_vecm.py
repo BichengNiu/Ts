@@ -489,6 +489,22 @@ class TestVECMResultDiagnostics:
 
         assert isinstance(fig, plt.Figure)
         assert axes is not None
+        assert axes.shape == (3, 3)
+
+        standardized = fitted.standardized_residuals
+        np.testing.assert_allclose(
+            np.std(standardized, axis=0, ddof=0),
+            np.ones(standardized.shape[1]),
+        )
+        for position in range(standardized.shape[1]):
+            displayed = np.asarray(
+                axes[position, 0].lines[0].get_ydata(), dtype=float
+            )
+            np.testing.assert_allclose(displayed, standardized[:, position])
+            assert axes[position, 0].get_title().endswith(
+                "Standardized Residuals"
+            )
+            assert axes[position, 0].get_ylabel() == "Standardized Residual"
 
     def test_test_residuals_returns_dict(self, fitted):
         """test_residuals() returns dict of ResidualTestResults.

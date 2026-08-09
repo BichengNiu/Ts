@@ -446,9 +446,9 @@ class TestSARIMAXResult:
 
         fig, axes = result.plot_diagnostics()
         displayed = np.asarray(axes[0].lines[0].get_ydata(), dtype=float)
-        np.testing.assert_allclose(displayed, result.residuals)
+        np.testing.assert_allclose(displayed, result.standardized_residuals)
 
-        expected_acf = sm_acf(result.residuals, nlags=40, fft=True)
+        expected_acf = sm_acf(result.standardized_residuals, nlags=40, fft=True)
         assert axes[2].patches[0].get_height() == pytest.approx(expected_acf[1])
 
         diagnostics = result.test_residuals(lags=5)

@@ -1,5 +1,7 @@
 """Tests for Ts.TsModels._base — BaseModel ABC and BaseModelResult dataclass."""
 
+from dataclasses import replace
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -47,6 +49,28 @@ class TestBaseModelResult:
         assert result.aic == 280.5
         assert result.bic == 290.3
 
+    def test_standardized_residuals_divide_by_population_std(self, result):
+        """Standardized residuals divide by ddof=0 std without centring."""
+        original = result.residuals.copy()
+        expected = original / np.std(original, ddof=0)
+
+        np.testing.assert_allclose(result.standardized_residuals, expected)
+        np.testing.assert_array_equal(result.residuals, original)
+
+    @pytest.mark.parametrize(
+        "residuals",
+        [np.zeros(4), np.array([0.0, 1.0, np.nan])],
+    )
+    def test_standardized_residuals_reject_invalid_scale(self, result, residuals):
+        """Zero or non-finite residual standard deviations are undefined."""
+        invalid = replace(result, residuals=residuals)
+
+        with pytest.raises(
+            ValueError,
+            match="residual standard deviation must be positive and finite",
+        ):
+            _ = invalid.standardized_residuals
+
     def test_params_is_dict(self, result):
         """params is a dict with expected keys."""
         assert isinstance(result.params, dict)
@@ -77,11 +101,16 @@ class TestBaseModelResult:
         assert isinstance(fig, Figure)
         assert len(axes) == 4
         assert [ax.get_title() for ax in axes] == [
-            "Residuals",
-            "Residual Histogram",
-            "Residual ACF",
-            "Residual PACF",
+            "Standardized Residuals",
+            "Standardized Residual Histogram",
+            "Standardized Residual ACF",
+            "Standardized Residual PACF",
         ]
+
+        displayed = np.asarray(axes[0].lines[0].get_ydata(), dtype=float)
+        np.testing.assert_allclose(displayed, result.standardized_residuals)
+        assert axes[0].get_ylabel() == "Standardized Residual"
+        assert axes[1].get_xlabel() == "Standardized Residual"
 
     def test_plot_diagnostics_histogram_contains_all_residuals(self, result):
         """Residual histogram counts every diagnostic residual exactly once."""

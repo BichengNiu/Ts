@@ -101,11 +101,12 @@ result.test_residuals(lags=10)
 |-----------|------|
 | `.summary()` | 参数估计表 + AIC/BIC |
 | `.plot_fit()` | 实际值与拟合值对比图 |
-| `.plot_diagnostics()` | 2×2 残差诊断图：第一行为残差时间序列和直方图（含 Normality/Jarque–Bera），第二行为 ACF（含 White Noise/Ljung–Box）和 PACF |
+| `.plot_diagnostics()` | 标准化残差诊断图：第一行为标准化残差时间序列和直方图（含 Normality/Jarque–Bera），第二行为 ACF（含 White Noise/Ljung–Box）和 PACF；VAR/VECM 保持逐方程三列布局 |
 | `.test_residuals(lags)` | 四项残差检验：白噪音 + 正态性 + Ljung-Box + Engle LM |
 | `.params` | 估计参数 dict |
 | `.aic` / `.bic` | 信息准则 |
-| `.residuals` | 残差序列 |
+| `.residuals` | 原始模型尺度上的有效残差序列 |
+| `.standardized_residuals` | 标准化残差 `residuals / np.std(residuals, ddof=0)`；不另行减均值，多变量结果按方程分别计算 |
 
 ## 模型专属方法
 
@@ -156,6 +157,9 @@ result.test_residuals(lags=10)
 | | `.coint_rank` | 协整秩 |
 | | `.is_stable` | 基于 companion matrix 的稳定性检查 (bool) |
 | | `.plot_roots(title)` | VECM 逆特征根单位圆图 |
+
+当前 GARCH 结果的 `.standardized_residuals` 也遵循共享定义，即除以残差的
+整体标准差；逐期除以 `.conditional_volatility` 的条件标准化不在本次接口内。
 
 ### AR(2) 周期识别
 

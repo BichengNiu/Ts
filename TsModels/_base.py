@@ -355,7 +355,9 @@ class BaseModelResult:
         Maximised log-likelihood.
     residuals : np.ndarray
         Statistically valid residual series. Its length may be less than
-        *nobs* when a model discards state-initialization periods.
+        *nobs* when a model discards state-initialization periods. Use
+        :attr:`standardized_residuals` for residuals divided by their
+        population standard deviation.
     fitted_values : np.ndarray or None
         Fitted values (length *nobs*). May be ``None`` for pure volatility
         models.
@@ -385,6 +387,34 @@ class BaseModelResult:
     fitted_values: np.ndarray | None
     nobs: int
     data: np.ndarray
+
+    @property
+    def standardized_residuals(self) -> np.ndarray:
+        """Return residuals divided by their population standard deviation.
+
+        The residual mean is not subtracted. One-dimensional residuals use one
+        scale for the full statistically valid sample. Two-dimensional
+        residuals are scaled separately by equation (column). The original
+        :attr:`residuals` array is not modified.
+
+        Returns
+        -------
+        numpy.ndarray
+            Floating-point residuals divided by ``std(ddof=0)``.
+
+        Raises
+        ------
+        ValueError
+            If a required residual standard deviation is zero or non-finite.
+        """
+        residuals = np.asarray(self.residuals, dtype=float)
+        axis = 0 if residuals.ndim == 2 else None
+        scale = np.std(residuals, axis=axis, ddof=0)
+        if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
+            raise ValueError(
+                "residual standard deviation must be positive and finite"
+            )
+        return residuals / scale
 
     def summary(self) -> str:
         """Return a formatted parameter summary string.
@@ -470,10 +500,10 @@ class BaseModelResult:
     def plot_diagnostics(self, title=None):
         """Plot residual diagnostics in a 2-by-2 figure.
 
-        The first row contains residuals over time and a residual histogram;
-        the second row contains residual ACF and residual PACF. The histogram
-        includes the normality test result, while the ACF panel includes the
-        white-noise test result.
+        The first row contains standardized residuals over time and their
+        histogram; the second row contains standardized-residual ACF and PACF.
+        The histogram includes the normality test result, while the ACF panel
+        includes the white-noise test result.
 
         Parameters
         ----------
@@ -515,13 +545,13 @@ class BaseModelResult:
         _ensure_fonts()
         fig, axes = plt.subplots(2, 2, figsize=(12, 8))
         ax_residuals, ax_histogram, ax_acf, ax_pacf = axes.flat
-        diagnostic_residuals = self.residuals
+        diagnostic_residuals = self.standardized_residuals
 
         plot_series(
             diagnostic_residuals,
             ax=ax_residuals,
-            title="Residuals",
-            ytitle="Residual",
+            title="Standardized Residuals",
+            ytitle="Standardized Residual",
             show_legend=False,
         )
 
@@ -546,23 +576,29 @@ class BaseModelResult:
             alpha=0.85,
         )
         ax_histogram.set_title(
-            "Residual Histogram",
+            "Standardized Residual Histogram",
             fontsize=TITLE_FONTSIZE,
             fontweight="bold",
             pad=12,
         )
-        ax_histogram.set_xlabel("Residual", fontsize=AXIS_LABEL_FONTSIZE)
+        ax_histogram.set_xlabel(
+            "Standardized Residual", fontsize=AXIS_LABEL_FONTSIZE
+        )
         ax_histogram.set_ylabel("Frequency", fontsize=AXIS_LABEL_FONTSIZE)
         style_axes(ax_histogram)
 
         plot_acf(
             diagnostic_residuals,
             ax=ax_acf,
-            title="Residual ACF",
+            title="Standardized Residual ACF",
             zero_lag=False,
         )
 
-        plot_pacf(diagnostic_residuals, ax=ax_pacf, title="Residual PACF")
+        plot_pacf(
+            diagnostic_residuals,
+            ax=ax_pacf,
+            title="Standardized Residual PACF",
+        )
 
         annotation_bbox = {
             "boxstyle": "round,pad=0.3",

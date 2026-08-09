@@ -993,10 +993,10 @@ class VARResult(BaseModelResult):
         return fig, axes
 
     def plot_diagnostics(self, title=None):
-        """Plot diagnostic charts for each variable: residuals + ACF + PACF.
+        """Plot standardized-residual diagnostics for each variable.
 
-        Grid layout: k rows x 3 columns. Left: residuals; middle: ACF;
-        right: PACF.
+        Grid layout: k rows x 3 columns. Left: standardized residuals;
+        middle: ACF; right: PACF.
 
         Parameters
         ----------
@@ -1023,28 +1023,29 @@ class VARResult(BaseModelResult):
 
         k = self._k
         fig, axes = plt.subplots(k, 3, figsize=(14, 3 * k), squeeze=False)
+        diagnostic_residuals = self.standardized_residuals
 
         for i in range(k):
             name = self._data_names[i]
 
             plot_series(
-                self.residuals[:, i],
+                diagnostic_residuals[:, i],
                 ax=axes[i, 0],
-                title=f"{name} Residuals",
-                ytitle="Residual",
+                title=f"{name} Standardized Residuals",
+                ytitle="Standardized Residual",
                 show_legend=False,
             )
 
             plot_acf(
-                self.residuals[:, i],
+                diagnostic_residuals[:, i],
                 ax=axes[i, 1],
-                title=f"{name} ACF",
+                title=f"{name} Standardized Residual ACF",
             )
 
             plot_pacf(
-                self.residuals[:, i],
+                diagnostic_residuals[:, i],
                 ax=axes[i, 2],
-                title=f"{name} PACF",
+                title=f"{name} Standardized Residual PACF",
             )
 
         if title is None:

@@ -427,6 +427,21 @@ class TestVARResultPlots:
         assert isinstance(fig, Figure)
         assert axes.shape == (2, 3)
 
+        standardized = fitted_var.standardized_residuals
+        np.testing.assert_allclose(
+            np.std(standardized, axis=0, ddof=0),
+            np.ones(standardized.shape[1]),
+        )
+        for position in range(standardized.shape[1]):
+            displayed = np.asarray(
+                axes[position, 0].lines[0].get_ydata(), dtype=float
+            )
+            np.testing.assert_allclose(displayed, standardized[:, position])
+            assert axes[position, 0].get_title().endswith(
+                "Standardized Residuals"
+            )
+            assert axes[position, 0].get_ylabel() == "Standardized Residual"
+
     def test_plot_irf_returns_fig_axes(self, fitted_var):
         """plot_irf() returns (fig, axes) with k x k grid.
 

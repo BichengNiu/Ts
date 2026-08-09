@@ -646,9 +646,9 @@ class VECMResult(BaseModelResult):
         return bool(np.all(np.abs(evals) <= 1.0 + 1e-10))
 
     def plot_diagnostics(self, title=None):
-        """Plot diagnostic charts for each VECM equation.
+        """Plot standardized-residual diagnostics for each VECM equation.
 
-        Grid: k rows x 3 columns (residuals, ACF, PACF).
+        Grid: k rows x 3 columns (standardized residuals, ACF, PACF).
 
         Parameters
         ----------
@@ -675,18 +675,27 @@ class VECMResult(BaseModelResult):
 
         k = self.k
         fig, axes = plt.subplots(k, 3, figsize=(14, 3 * k), squeeze=False)
+        diagnostic_residuals = self.standardized_residuals
 
         for i in range(k):
             name = self._data_names[i]
             plot_series(
-                self.residuals[:, i],
+                diagnostic_residuals[:, i],
                 ax=axes[i, 0],
-                title=f"D_{name} Residuals",
-                ytitle="Residual",
+                title=f"D_{name} Standardized Residuals",
+                ytitle="Standardized Residual",
                 show_legend=False,
             )
-            plot_acf(self.residuals[:, i], ax=axes[i, 1], title=f"D_{name} ACF")
-            plot_pacf(self.residuals[:, i], ax=axes[i, 2], title=f"D_{name} PACF")
+            plot_acf(
+                diagnostic_residuals[:, i],
+                ax=axes[i, 1],
+                title=f"D_{name} Standardized Residual ACF",
+            )
+            plot_pacf(
+                diagnostic_residuals[:, i],
+                ax=axes[i, 2],
+                title=f"D_{name} Standardized Residual PACF",
+            )
 
         if title is None:
             title = f"VECM({self._lags}, r={self.coint_rank}): Diagnostic Plots"
