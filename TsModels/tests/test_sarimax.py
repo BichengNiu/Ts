@@ -910,6 +910,26 @@ class TestSARIMAXSparseLags:
         assert sparse_ar_result.long_run_equilibrium() == pytest.approx(expected)
         assert f"Level Intercept C    : {expected:.4f}" in sparse_ar_result.summary()
 
+    def test_level_intercept_inference_with_named_pandas_parameters(self):
+        from Ts.TsModels._sarimax import SARIMAX
+
+        rng = np.random.default_rng(20260809)
+        index = pd.date_range("2020-01-01", periods=80, freq="MS")
+        exog = pd.DataFrame({"sales": rng.normal(size=80)}, index=index)
+        data = pd.Series(
+            2.0 + 0.7 * exog["sales"] + rng.normal(scale=0.3, size=80),
+            index=index,
+            name="demand",
+        )
+
+        result = SARIMAX(data, exog=exog, trend="c").fit(require_convergence=True)
+        inference = result.level_intercept_inference()
+
+        assert isinstance(result._statsmodels_result.params, pd.Series)
+        assert inference is not None
+        assert np.isfinite(inference["standard_error"])
+        assert "Level Intercept C" in result.summary()
+
     def test_level_intercept_is_not_available_after_differencing(self, ar1_data):
         from Ts.TsModels._sarimax import SARIMAX
 

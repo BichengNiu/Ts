@@ -353,8 +353,7 @@ def _normalise_array_exog(exog, endog_length, exog_names):
         values = values.reshape(-1, 1)
     elif values.ndim != 2:
         raise ValueError(
-            "exog must be one- or two-dimensional, "
-            f"got shape {values.shape}"
+            f"exog must be one- or two-dimensional, got shape {values.shape}"
         )
     if len(values) != endog_length:
         raise ValueError(
@@ -703,9 +702,7 @@ def _coerce_future_frame(
                 )
             array = array.reshape(-1, 1)
         elif array.ndim != 2:
-            raise ValueError(
-                f"scenario {name!r} must be one- or two-dimensional"
-            )
+            raise ValueError(f"scenario {name!r} must be one- or two-dimensional")
         if array.shape != (len(expected_dates), len(exog_names)):
             raise ValueError(
                 f"scenario {name!r} has shape {array.shape}; expected "
@@ -1198,9 +1195,7 @@ class SARIMAXResult(BaseModelResult):
             )
         missing_models = [name for name in selected if name not in input_models]
         if missing_models:
-            raise ValueError(
-                f"missing fitted input model for {missing_models[0]!r}"
-            )
+            raise ValueError(f"missing fitted input model for {missing_models[0]!r}")
 
         innovations = {}
         parameter_counts = {}
@@ -1213,7 +1208,9 @@ class SARIMAXResult(BaseModelResult):
                     "AutoModelResult with a SARIMAXResult best model"
                 )
             if not candidate.converged:
-                raise RuntimeError(f"input prewhitening model for {name!r} did not converge")
+                raise RuntimeError(
+                    f"input prewhitening model for {name!r} did not converge"
+                )
             if (
                 candidate._ordinary_exog is not None
                 or candidate._event_specs
@@ -1302,7 +1299,9 @@ class SARIMAXResult(BaseModelResult):
             try:
                 selected = tuple(inputs)
             except TypeError as error:
-                raise TypeError("inputs must be a name or an iterable of names") from error
+                raise TypeError(
+                    "inputs must be a name or an iterable of names"
+                ) from error
         if not selected:
             raise ValueError("inputs must contain at least one RDL input")
         if len(set(selected)) != len(selected):
@@ -2305,16 +2304,17 @@ class SARIMAXResult(BaseModelResult):
 
         fitted = self._statsmodels_result
         names = tuple(fitted.param_names)
+        parameter_values = np.asarray(fitted.params, dtype=float)
         gradient = np.zeros(len(names), dtype=float)
         intercept_position = names.index("intercept")
-        raw_intercept = float(fitted.params[intercept_position])
+        raw_intercept = float(parameter_values[intercept_position])
         nonseasonal_ar = sum(
-            float(fitted.params[position])
+            float(parameter_values[position])
             for position, name in enumerate(names)
             if name.startswith("ar.L")
         )
         seasonal_ar = sum(
-            float(fitted.params[position])
+            float(parameter_values[position])
             for position, name in enumerate(names)
             if name.startswith("ar.S.L")
         )
@@ -2324,9 +2324,7 @@ class SARIMAXResult(BaseModelResult):
         gradient[intercept_position] = 1.0 / reduced_at_one
         for position, name in enumerate(names):
             if name.startswith("ar.L"):
-                gradient[position] = (
-                    raw_intercept * seasonal_at_one / reduced_at_one**2
-                )
+                gradient[position] = raw_intercept * seasonal_at_one / reduced_at_one**2
             elif name.startswith("ar.S.L"):
                 gradient[position] = (
                     raw_intercept * nonseasonal_at_one / reduced_at_one**2

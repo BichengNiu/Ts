@@ -16,6 +16,7 @@ from pandas.tseries.offsets import (
     BQuarterEnd,
     BYearBegin,
     BYearEnd,
+    Day,
     MonthBegin,
     MonthEnd,
     QuarterBegin,
@@ -387,6 +388,8 @@ def _period_label(
         raise ValueError("date_rule='period' requires a regular calendar frequency")
     offset = to_offset(frequency)
     normalized = event_date.normalize()
+    if isinstance(offset, Day):
+        return normalized
     if isinstance(offset, Tick):
         return event_date.floor(offset)
     if isinstance(offset, _START_OFFSETS):
