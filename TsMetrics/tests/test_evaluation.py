@@ -857,7 +857,11 @@ def test_oos_passes_holdout_exog_without_holdout_y():
 
     dates = pd.date_range("2020-01-01", periods=30, freq="MS")
     exog = pd.DataFrame({"x": np.arange(30.0)}, index=dates)
-    data = pd.Series(2.0 * exog["x"].to_numpy(), index=dates)
+    rng = np.random.default_rng(2609)
+    data = pd.Series(
+        2.0 * exog["x"].to_numpy() + rng.normal(scale=0.01, size=len(dates)),
+        index=dates,
+    )
     model = SARIMAX(
         data,
         exog=exog,
@@ -871,7 +875,7 @@ def test_oos_passes_holdout_exog_without_holdout_y():
     )
 
     assert result.mean.shape == (10,)
-    assert result.metrics["rmse"] < 1e-5
+    assert result.metrics["rmse"] < 0.05
     assert model.result_ is None
 
 

@@ -160,6 +160,38 @@ class TestSARIMAX:
             np.array([1.0, 0.4, 0.5]),
         )
 
+    def test_fit_uses_reliable_defaults(self, ar1_data, monkeypatch):
+        """The public defaults use OIM inference and require convergence."""
+        import Ts.TsModels._sarimax as sarimax_module
+
+        captured = {}
+
+        class StopAfterCapture(RuntimeError):
+            pass
+
+        class CapturingSARIMAX:
+            def __init__(self, *args, **kwargs):
+                self.k_params = 3
+
+            def fit(self, **kwargs):
+                captured.update(kwargs)
+                raise StopAfterCapture
+
+        monkeypatch.setattr(
+            sarimax_module,
+            "StatsmodelsSARIMAX",
+            CapturingSARIMAX,
+        )
+        model = sarimax_module.SARIMAX(ar1_data, order=(1, 0, 0))
+
+        with pytest.raises(StopAfterCapture):
+            model.fit()
+
+        assert captured["method"] == "bfgs"
+        assert captured["maxiter"] == 500
+        assert captured["cov_type"] == "oim"
+        assert captured["disp"] is False
+
     @pytest.mark.parametrize(
         ("kwargs", "error", "message"),
         [
@@ -222,8 +254,44 @@ class TestSARIMAX:
             model.fit(
                 method="powell",
                 maxiter=7,
-                require_convergence=True,
             )
+
+    def test_require_convergence_can_be_disabled(self, ar1_data, monkeypatch):
+        """Callers can explicitly inspect a non-converged fitted result."""
+        import Ts.TsModels._sarimax as sarimax_module
+
+        class NonconvergedSARIMAX:
+            def __init__(self, *args, **kwargs):
+                self.k_params = 3
+
+            def fit(self, **kwargs):
+                zeros = np.zeros(len(ar1_data))
+                return SimpleNamespace(
+                    mle_retvals={"converged": False, "warnflag": 1},
+                    param_names=[],
+                    params=np.array([]),
+                    bse=np.array([]),
+                    pvalues=np.array([]),
+                    cov_params=lambda: np.empty((0, 0)),
+                    loglikelihood_burn=0,
+                    resid=zeros,
+                    fittedvalues=zeros,
+                    aic=0.0,
+                    bic=0.0,
+                    llf=0.0,
+                    nobs=len(ar1_data),
+                )
+
+        monkeypatch.setattr(
+            sarimax_module,
+            "StatsmodelsSARIMAX",
+            NonconvergedSARIMAX,
+        )
+        model = sarimax_module.SARIMAX(ar1_data, order=(1, 0, 0))
+
+        result = model.fit(require_convergence=False)
+
+        assert result.converged is False
 
     def test_fit_attaches_inferred_frequency_before_statsmodels(
         self,
@@ -434,7 +502,7 @@ class TestSARIMAXResult:
             order=(0, 1, 1),
             seasonal_order=(0, 1, 0, 12),
             trend="n",
-        ).fit()
+        ).fit(require_convergence=False)
         burn = result._statsmodels_result.loglikelihood_burn
         raw_residuals = np.asarray(result._statsmodels_result.resid, dtype=float)
 
@@ -550,15 +618,88 @@ class TestSARIMAXLogScale:
         np.testing.assert_allclose(result.data, data)
         np.testing.assert_allclose(result.fitted_values[burn:], expected[burn:])
 
-    def test_undefined_log_scale_effect_summaries_are_rejected(self):
+    def test_log_level_intercept_matches_explicit_log_response_fit(self):
+        from Ts.TsModels import SARIMAX
+
+        log_data = simulate_sarima(
+            n=120,
+            order=(1, 0, 0),
+            seasonal_order=(1, 0, 0, 12),
+            ar=[0.6],
+            seasonal_ar=[0.4],
+            const=0.1,
+            sigma2=0.01,
+            seed=2512,
+            burn=200,
+        ).data
+        data = np.exp(log_data)
+        model_kwargs = {
+            "order": (1, 0, 0),
+            "seasonal_order": (1, 0, 0, 12),
+        }
+        logged = SARIMAX(data, log=True, **model_kwargs).fit(maxiter=200)
+        explicit = SARIMAX(log_data, log=False, **model_kwargs).fit(maxiter=200)
+
+        expected = logged.params["intercept"] / float(
+            np.sum(logged._statsmodels_result.polynomial_reduced_ar)
+        )
+        expected_multiplicative = logged.params["intercept"] / (
+            (1.0 - logged.params["ar.L1"])
+            * (1.0 - logged.params["ar.S.L12"])
+        )
+        logged_inference = logged.level_intercept_inference()
+        explicit_inference = explicit.level_intercept_inference()
+        impulse_weights = np.asarray(
+            logged._statsmodels_result.impulse_responses(steps=1000),
+            dtype=float,
+        )
+        expected_log_variance = logged.params["sigma2"] * float(
+            np.sum(impulse_weights**2)
+        )
+        expected_original_mean = np.exp(expected + 0.5 * expected_log_variance)
+
+        assert logged.level_intercept == pytest.approx(expected)
+        assert logged.level_intercept == pytest.approx(expected_multiplicative)
+        assert logged.level_intercept == pytest.approx(explicit.level_intercept)
+        assert logged.unconditional_log_variance == pytest.approx(
+            expected_log_variance
+        )
+        assert explicit.unconditional_log_variance is None
+        assert logged.long_run_equilibrium() == pytest.approx(
+            expected_original_mean
+        )
+        assert logged_inference["estimate"] == pytest.approx(
+            explicit_inference["estimate"]
+        )
+        assert logged_inference["standard_error"] == pytest.approx(
+            explicit_inference["standard_error"]
+        )
+        assert "Log-response Intercept C" in logged.summary()
+        assert "State Intercept c" in logged.summary()
+        assert "Log-response Variance" in logged.summary()
+        assert "Original-scale Mean" in logged.summary()
+
+    def test_log_policy_effect_is_rejected(self):
         from Ts.TsModels import SARIMAX
 
         result = SARIMAX(self._positive_data(), log=True).fit()
 
         with pytest.raises(NotImplementedError, match="policy_effect"):
             result.policy_effect(events=[])
-        with pytest.raises(NotImplementedError, match="unconditional log variance"):
-            result.long_run_equilibrium()
+
+    def test_log_long_run_equilibrium_is_undefined_after_differencing(self):
+        from Ts.TsModels import SARIMAX
+
+        result = SARIMAX(
+            self._positive_data(),
+            order=(0, 1, 0),
+            trend="n",
+            log=True,
+        ).fit()
+
+        assert result.level_intercept is None
+        assert result.unconditional_log_variance is None
+        assert result.long_run_equilibrium() is None
 
 
 @pytest.fixture
@@ -908,6 +1049,7 @@ class TestSARIMAXSparseLags:
         assert inference["standard_error"] > 0.0
         assert inference["lower"] < expected < inference["upper"]
         assert sparse_ar_result.long_run_equilibrium() == pytest.approx(expected)
+        assert sparse_ar_result.unconditional_log_variance is None
         assert f"Level Intercept C    : {expected:.4f}" in sparse_ar_result.summary()
 
     def test_level_intercept_inference_with_named_pandas_parameters(self):

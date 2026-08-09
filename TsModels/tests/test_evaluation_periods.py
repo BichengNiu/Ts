@@ -174,7 +174,11 @@ def test_sarima_exog_covers_the_gap_and_validation_period():
     """ARIMAX forecasts through the gap using aligned exogenous values."""
     dates = pd.date_range("2020-01-01", periods=60, freq="MS")
     exog = pd.DataFrame({"x": np.linspace(0.0, 2.0, 60)}, index=dates)
-    data = pd.Series(2.0 * exog["x"].to_numpy(), index=dates)
+    rng = np.random.default_rng(2608)
+    data = pd.Series(
+        2.0 * exog["x"].to_numpy() + rng.normal(scale=0.01, size=len(dates)),
+        index=dates,
+    )
     model = SARIMAX(data, exog=exog, order=(0, 0, 0), trend="n")
 
     result = model.oos(
@@ -182,7 +186,7 @@ def test_sarima_exog_covers_the_gap_and_validation_period():
         validation_period=(dates[47], dates[54]),
     )
 
-    assert result.metrics["rmse"] < 1e-5
+    assert result.metrics["rmse"] < 0.05
     assert result.validation_dates.equals(dates[47:55])
 
 

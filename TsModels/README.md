@@ -128,9 +128,10 @@ result.test_residuals(lags=10)
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
 | | `.likelihood_burn` / `.effective_nobs` | 状态/RDL 初始化所丢弃的期数与实际参与似然的样本量 |
-| | `.level_intercept` | `trend="c"` 在原始回归层面的截距 `C`；自动完成状态截距到水平截距的变换 |
-| | `.level_intercept_inference(alpha)` | 原始层面截距 `C` 的 delta-method 标准误、统计量、p 值与区间 |
-| | `.long_run_equilibrium()` | 无外生输入均值贡献时的长期水平；与可定义的 `.level_intercept` 一致 |
+| | `.level_intercept` | `trend="c"` 在未差分拟合响应尺度上的截距 `C`；自动完成状态截距到水平截距的变换。`log=True` 时结果位于自然对数响应尺度 |
+| | `.level_intercept_inference(alpha)` | 拟合响应尺度截距 `C` 的 delta-method 标准误、统计量、p 值与区间；`log=True` 时均位于自然对数尺度 |
+| | `.unconditional_log_variance` | `log=True` 平稳模型的无条件对数响应方差；通过状态空间离散 Lyapunov 方程精确计算，其他模型返回 `None` |
+| | `.long_run_equilibrium()` | 零外生输入基线的长期均值；`log=True` 时返回 `exp(C + 0.5 * unconditional_log_variance)` 的原始尺度均值 |
 | `GARCH` / `GARCHResult` | `.predict(start, end, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
 | | `.conditional_volatility` | 条件波动率 σ_t |
 | | `.test_persistence()` | IGARCH 持久性 Wald 检验 |
@@ -397,9 +398,21 @@ SARIMAX(
 | `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 以外生列名为键的 RDL/transfer-function 规格；支持多个输入 |
 | `enforce_distributed_lag_stability` | bool | `True` | 约束并复核完整分母多项式稳定性 |
 
-`fit()` 默认使用 `method="bfgs"` 进行极大似然估计；仍可通过 `method`
-显式选择其他 statsmodels 优化器。优化器只控制似然函数的数值搜索，
-不会改变模型规格。
+`fit()` 对普通 SARIMAX、RDL 和 `AutoSARIMAX` 的全部候选统一使用以下默认值：
+
+```python
+result = model.fit(
+    method="bfgs",
+    maxiter=500,
+    cov_type="oim",
+    require_convergence=True,
+)
+```
+
+因此默认最多进行 500 次迭代、使用 observed-information covariance，并在
+优化器未报告收敛时抛出 `RuntimeError`。调用者仍可显式覆盖任一参数；如需检查
+未收敛结果，必须明确传入 `require_convergence=False`。优化器只控制似然函数的
+数值搜索，不会改变模型规格。
 
 稀疏滞后列表用于把未列出的中间阶系数严格固定为 0：
 
@@ -434,7 +447,7 @@ model = SARIMAX(
         "income": RationalLagSpec(numerator=1, denominator=1),
     },
 )
-result = model.fit(method="bfgs", maxiter=300, require_convergence=True)
+result = model.fit(maxiter=300)
 ```
 
 整数阶数表示连续活动滞后：`numerator=2` 为 L0–L2，`denominator=2`
@@ -461,18 +474,22 @@ result = SARIMAX(
     distributed_lags={
         "leading_indicator": RationalLagSpec(numerator=15, denominator=0)
     },
-).fit(
-    method="bfgs",
-    maxiter=100,
-    cov_type="oim",  # 教材表格使用的 observed-information 标准误
-    require_convergence=True,
-)
+).fit()
 ```
 
-这里 `trend="c"` 就是公共模型设定中的原始层面截距。Statsmodels 底层为了
+这里无需重复传入拟合控制：默认的 `cov_type="oim"` 与教材表格的
+observed-information 标准误口径一致，并默认要求优化器收敛。
+
+这里 `trend="c"` 对应拟合响应尺度上的水平截距。Statsmodels 底层为了
 状态空间递推估计的是状态截距 `c`；Ts 在 `result.level_intercept` 和
 `summary()` 中自动报告 `C = c / A(1)`，并通过
 `level_intercept_inference()` 对完整协方差矩阵做 delta-method 变换。
+当模型使用 `log=True` 时，`C` 及其推断保留在自然对数响应尺度，摘要标记为
+`Log-response Intercept C`。`exp(C)` 是原始尺度中位数，不是均值；
+`unconditional_log_variance` 通过拟合状态空间的离散 Lyapunov 方程精确求得
+对数响应的平稳方差，`long_run_equilibrium()` 返回
+`exp(C + 0.5 * unconditional_log_variance)`。普通外生变量、事件和 RDL 输入
+均按零输入基线解释；逐期预测仍使用各预测期自己的方差修正。
 底层原始 `params["intercept"]` 仍保留，便于复核似然、协方差和优化器参数顺序；
 用户不应再向 `exog` 手工加入常数列。
 
@@ -696,6 +713,9 @@ AutoSARIMAX(
     enforce_stationarity=True,
     enforce_invertibility=True,
     missing="drop",
+    log=False,
+    distributed_lags=None,
+    enforce_distributed_lag_stability=True,
 )
 ```
 
@@ -712,8 +732,18 @@ AutoSARIMAX(
 | `enforce_stationarity` | bool | `True` | 所有候选模型是否强制平稳性 |
 | `enforce_invertibility` | bool | `True` | 所有候选模型是否强制可逆性 |
 | `missing` | `"raise"`/`"drop"` | `"drop"` | 搜索前统一处理内生与外生缺失行；严格模式显式传入 `"raise"` |
+| `log` | bool | `False` | 是否让所有候选模型拟合响应变量的自然对数；这是固定设置，不是搜索维度。输入必须严格为正，预测自动返回原尺度并进行对数正态均值偏差修正 |
 | `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 所有候选共享的固定 RDL 规格；不自动搜索其阶数 |
 | `enforce_distributed_lag_stability` | bool | `True` | 所有候选统一使用的分母稳定性规则 |
+
+对于严格为正的响应变量，可统一在对数尺度搜索候选阶数，同时让最终结果和
+预测自动返回原尺度：
+
+```python
+auto = AutoSARIMAX(positive_data, log=True)
+result = auto.fit()
+assert result.log is True
+```
 
 ### AutoGARCH
 
@@ -786,6 +816,10 @@ result = auto.fit()
 | `candidate_results` | `list` | 所有成功拟合的模型结果 |
 | `candidate_orders` | `list` | 所有成功的参数组合 |
 | `selection_criterion` | `str` | 使用的选择准则 |
+| `log` | `bool` | 所选模型是否在响应变量的自然对数尺度拟合 |
+| `level_intercept` | `float`/`None` | 委托所选 SARIMAX 模型的拟合响应尺度截距；`log=True` 时位于自然对数响应尺度 |
+| `.level_intercept_inference(alpha)` | `dict`/`None` | 委托所选 SARIMAX 模型的截距 delta-method 推断 |
+| `unconditional_log_variance` | `float`/`None` | 委托所选 SARIMAX 模型的无条件对数响应方差 |
 | `.long_run_equilibrium()` | — | 委托给 `best_result.long_run_equilibrium()` |
 | `.cycle_period(seasonal=False)` | `ARCycleResult` | 委托给 `AutoSARIMAX` 选中的 `best_result` |
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from scipy.linalg import solve_discrete_lyapunov
 from scipy.stats import norm
 from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 
@@ -1467,16 +1468,26 @@ class SARIMAXResult(BaseModelResult):
             header_lines.append(
                 "Response Scale     : original (log fit; bias-adjusted mean)"
             )
-        level_inference = None if self.log else self.level_intercept_inference()
+        level_inference = self.level_intercept_inference()
         if level_inference is not None:
+            level_label = (
+                "Log-response Intercept C" if self.log else "Level Intercept C"
+            )
             header_lines.append(
-                f"Level Intercept C    : {level_inference['estimate']:.4f} "
+                f"{level_label:<21s}: {level_inference['estimate']:.4f} "
                 f"(SE={level_inference['standard_error']:.4f}, "
                 f"|t|={abs(level_inference['statistic']):.2f})"
             )
             if "intercept" in self.params:
                 header_lines.append(
                     f"State Intercept c    : {self.params['intercept']:.4f}"
+                )
+        if self.log:
+            log_variance = self.unconditional_log_variance
+            if log_variance is not None:
+                header_lines.append(f"Log-response Variance: {log_variance:.4f}")
+                header_lines.append(
+                    f"Original-scale Mean  : {self.long_run_equilibrium():.4f}"
                 )
         if self.likelihood_burn:
             header_lines.append(
@@ -2192,20 +2203,17 @@ class SARIMAXResult(BaseModelResult):
 
     @property
     def level_intercept(self):
-        """Return the constant on the original regression level.
+        """Return the constant on the undifferenced fitted-response level.
 
         Statsmodels' SARIMAX ``trend="c"`` parameter is the state-equation
         intercept.  For an undifferenced stationary model, the corresponding
         regression-level constant is ``intercept / A(1)``, where ``A`` is the
-        complete reduced AR polynomial.
+        complete reduced AR polynomial.  With ``log=True``, this value remains
+        on the natural-log response scale; it is not an original-scale mean
+        and must not be exponentiated as though it were a point forecast.
         """
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
-        if self.log:
-            raise NotImplementedError(
-                "level_intercept is not available for log=True because "
-                "an original-scale constant requires a scale definition"
-            )
 
         _p, d, _q = self._order
         _P, D, _Q, _s = self._seasonal_order
@@ -2227,12 +2235,72 @@ class SARIMAXResult(BaseModelResult):
             return None
         return self.params.get("intercept", 0.0) / denominator
 
+    def _stationary_response_variance(self):
+        """Return the exact stationary variance from fitted state matrices."""
+        if self.level_intercept is None:
+            return None
+
+        state_space = self._statsmodels_result.model.ssm
+
+        def time_invariant_matrix(values):
+            matrix = np.asarray(values, dtype=float)
+            if matrix.ndim == 2:
+                return matrix
+            if matrix.ndim == 3 and matrix.shape[-1] == 1:
+                return matrix[..., 0]
+            return None
+
+        transition = time_invariant_matrix(state_space.transition)
+        selection = time_invariant_matrix(state_space.selection)
+        state_cov = time_invariant_matrix(state_space.state_cov)
+        design = time_invariant_matrix(state_space.design)
+        obs_cov = time_invariant_matrix(state_space.obs_cov)
+        if any(
+            matrix is None
+            for matrix in (transition, selection, state_cov, design, obs_cov)
+        ):
+            return None
+
+        innovation_cov = selection @ state_cov @ selection.T
+        try:
+            stationary_state_cov = solve_discrete_lyapunov(
+                transition,
+                innovation_cov,
+            )
+        except np.linalg.LinAlgError as error:
+            raise RuntimeError(
+                "Unable to solve the stationary SARIMAX state covariance"
+            ) from error
+
+        response_cov = design @ stationary_state_cov @ design.T + obs_cov
+        variance = float(response_cov[0, 0])
+        if not np.isfinite(variance):
+            raise RuntimeError("Stationary SARIMAX response variance is not finite")
+        tolerance = 1e-10 * max(1.0, abs(variance))
+        if variance < -tolerance:
+            raise RuntimeError("Stationary SARIMAX response variance is negative")
+        return max(variance, 0.0)
+
+    @property
+    def unconditional_log_variance(self):
+        """Return the stationary variance of the natural-log response.
+
+        The variance is obtained exactly from the fitted time-invariant state
+        matrices by solving the discrete Lyapunov equation. It is available
+        only for stationary, undifferenced ``log=True`` models without a time
+        trend. Deterministic exogenous, event, and distributed-lag inputs are
+        held at the zero-input baseline.
+        """
+        if not self.log:
+            return None
+        return self._stationary_response_variance()
+
     def long_run_equilibrium(self):
         """Return the unconditional mean (long-run equilibrium) of the
         estimated SARIMAX process.
 
         For a stationary ARMA/SARMA process with reduced AR polynomial
-        :math:`A(B)` and constant :math:`c`:
+        :math:`A(B)` and constant :math:`c`, the fitted-scale mean is:
 
         .. math::
 
@@ -2240,6 +2308,10 @@ class SARIMAXResult(BaseModelResult):
 
         This reduced-polynomial form handles sparse and multiplicative
         seasonal AR terms without assuming contiguous lag coefficients.
+
+        With ``log=True``, the original-scale Gaussian mean is bias-adjusted
+        with the exact stationary log-response variance. Deterministic
+        exogenous, event, and distributed-lag inputs are held at zero.
 
         Returns ``None`` when the concept is not applicable:
 
@@ -2264,15 +2336,21 @@ class SARIMAXResult(BaseModelResult):
         >>> equilibrium is None
         False
         """
-        if self.log:
-            raise NotImplementedError(
-                "long_run_equilibrium is not available for log=True because "
-                "an original-scale mean requires the unconditional log variance"
-            )
-        return self.level_intercept
+        level_intercept = self.level_intercept
+        if level_intercept is None or not self.log:
+            return level_intercept
+
+        log_variance = self.unconditional_log_variance
+        if log_variance is None:
+            return None
+        with np.errstate(over="ignore"):
+            return float(np.exp(level_intercept + 0.5 * log_variance))
 
     def level_intercept_inference(self, alpha=0.05):
-        """Return delta-method inference for the original-level constant.
+        """Return delta-method inference for the fitted-response constant.
+
+        With ``log=True``, the estimate, standard error, statistic, and
+        confidence limits are all reported on the natural-log response scale.
 
         Parameters
         ----------
@@ -2562,9 +2640,9 @@ class SARIMAX(BaseModel):
         *,
         start_params=None,
         method="bfgs",
-        maxiter=50,
-        cov_type="opg",
-        require_convergence=False,
+        maxiter=500,
+        cov_type="oim",
+        require_convergence=True,
     ):
         """Estimate the SARIMAX model via maximum likelihood.
 
@@ -2577,15 +2655,16 @@ class SARIMAX(BaseModel):
             Optimizer passed to statsmodels. Supported values are ``"newton"``,
             ``"nm"``, ``"bfgs"``, ``"lbfgs"``, ``"powell"``, ``"cg"``,
             ``"ncg"``, and ``"basinhopping"``.
-        maxiter : int, default 50
+        maxiter : int, default 500
             Strictly positive maximum number of optimizer iterations.
-        cov_type : str, default ``"opg"``
+        cov_type : str, default ``"oim"``
             Parameter covariance estimator passed to statsmodels. Use
             ``"oim"`` for observed-information standard errors such as the
             preliminary LTF table in the textbook.
-        require_convergence : bool, default False
+        require_convergence : bool, default True
             Raise :class:`RuntimeError` instead of returning a result when the
-            optimizer does not report convergence.
+            optimizer does not report convergence. Pass ``False`` explicitly
+            to inspect a non-converged result.
 
         Returns
         -------

@@ -523,6 +523,10 @@ def test_invalid_rdl_mapping_and_gapped_samples_are_rejected():
 
 def test_rdl_require_convergence_rejects_optimizer_failure(monkeypatch):
     def nonconverged(*args, **kwargs):
+        assert kwargs["method"] == "bfgs"
+        assert kwargs["maxiter"] == 500
+        assert kwargs["cov_type"] == "oim"
+        assert kwargs["disp"] is False
         return SimpleNamespace(mle_retvals={"converged": False})
 
     monkeypatch.setattr(
@@ -538,7 +542,7 @@ def test_rdl_require_convergence_rejects_optimizer_failure(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="failed to converge"):
-        model.fit(require_convergence=True)
+        model.fit()
 
 
 def test_future_forecast_continues_filter_over_full_input_history():
@@ -684,6 +688,40 @@ def test_auto_sarimax_keeps_fixed_rdl_spec_across_candidates():
     assert result.distributed_lags["x"].spec.denominator_lags == (1,)
     assert result.steady_state_gains.loc[0, "input"] == "x"
     assert result.weights(3).columns.tolist() == ["x"]
+
+
+def test_log_rdl_long_run_equilibrium_uses_zero_input_baseline():
+    rng = np.random.default_rng(2603)
+    nobs = 180
+    x = rng.normal(size=nobs)
+    log_y = np.empty(nobs)
+    log_y[0] = 1.2
+    for index in range(1, nobs):
+        log_y[index] = (
+            0.2
+            + 0.55 * log_y[index - 1]
+            + 0.4 * x[index]
+            + rng.normal(scale=0.1)
+        )
+
+    result = SARIMAX(
+        np.exp(log_y),
+        exog=pd.Series(x, name="x"),
+        order=(1, 0, 0),
+        trend="c",
+        log=True,
+        distributed_lags={"x": RationalLagSpec()},
+    ).fit(maxiter=300, require_convergence=True)
+
+    expected_log_variance = result.params["sigma2"] / (
+        1.0 - result.params["ar.L1"] ** 2
+    )
+    expected_zero_input_mean = np.exp(
+        result.level_intercept + 0.5 * expected_log_variance
+    )
+
+    assert result.unconditional_log_variance == pytest.approx(expected_log_variance)
+    assert result.long_run_equilibrium() == pytest.approx(expected_zero_input_mean)
 
 
 def test_intervention_bootstrap_refit_preserves_rdl_backend():

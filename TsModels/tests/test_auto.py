@@ -296,6 +296,18 @@ class TestAutoModelResult:
 class TestAutoSARIMAX:
     """Tests for AutoSARIMAX construction and fit()."""
 
+    @staticmethod
+    def _positive_data():
+        """Generate positive data with autoregressive dynamics on log scale."""
+        rng = np.random.default_rng(2511)
+        log_values = np.empty(80)
+        log_values[0] = 2.0
+        for index in range(1, len(log_values)):
+            log_values[index] = (
+                0.6 + 0.7 * log_values[index - 1] + rng.normal(scale=0.12)
+            )
+        return np.exp(log_values)
+
     @pytest.fixture
     def ar1_data(self):
         """Generate AR(1) data."""
@@ -316,6 +328,33 @@ class TestAutoSARIMAX:
         result = auto.fit()
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
+
+    def test_candidates_inherit_sarimax_fit_defaults(self, ar1_data, monkeypatch):
+        """AutoSARIMAX does not override the shared SARIMAX fit defaults."""
+        from Ts.TsModels._auto import AutoSARIMAX
+        from Ts.TsModels._sarimax import SARIMAX
+
+        calls = []
+
+        def recording_fit(self, **kwargs):
+            calls.append(kwargs.copy())
+            raise RuntimeError("sentinel candidate failure")
+
+        monkeypatch.setattr(SARIMAX, "fit", recording_fit)
+        auto = AutoSARIMAX(
+            ar1_data,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+        )
+
+        with pytest.raises(RuntimeError, match="No model converged"):
+            auto.fit()
+
+        assert calls == [{}]
 
     def test_result_stored(self, ar1_data):
         """result_ is set after fit()."""
@@ -376,6 +415,87 @@ class TestAutoSARIMAX:
         with pytest.raises(ValueError):
             AutoSARIMAX(ar1_data, p=(3, 1))
 
+    def test_log_reuses_sarimax_validation(self):
+        """AutoSARIMAX applies the shared boolean and positivity contract."""
+        from Ts.TsModels import AutoSARIMAX
+
+        with pytest.raises(TypeError, match="log must be a boolean"):
+            AutoSARIMAX(self._positive_data(), log=1)
+        with pytest.raises(ValueError, match="strictly positive"):
+            AutoSARIMAX(np.arange(20.0), log=True)
+
+    def test_log_is_fixed_across_candidates_and_evaluation_clones(self):
+        """Every candidate and reconstructed evaluation model retains log=True."""
+        from Ts.TsModels import AutoSARIMAX
+
+        data = self._positive_data()
+        model = AutoSARIMAX(
+            data,
+            p=(0, 1),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+            log=True,
+        )
+        clone = model._clone_for_evaluation(data[:50])
+        result = model.fit()
+        clone_result = clone.fit()
+
+        assert model.log is True
+        assert clone.log is True
+        assert result.log is True
+        assert clone_result.log is True
+        assert all(candidate.log is True for candidate in result.candidate_results)
+        assert result.level_intercept == pytest.approx(
+            result.best_result.level_intercept
+        )
+        assert result.level_intercept_inference()["estimate"] == pytest.approx(
+            result.level_intercept
+        )
+        assert result.unconditional_log_variance == pytest.approx(
+            result.best_result.unconditional_log_variance
+        )
+        assert result.long_run_equilibrium() == pytest.approx(
+            result.best_result.long_run_equilibrium()
+        )
+        assert "original (log fit; bias-adjusted mean)" in result.summary()
+
+    def test_single_log_candidate_matches_direct_sarimax(self):
+        """Auto selection reuses SARIMAX log fitting and original-scale prediction."""
+        from Ts.TsModels import AutoSARIMAX, SARIMAX
+
+        data = self._positive_data()
+        auto_result = AutoSARIMAX(
+            data,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+            log=True,
+        ).fit()
+        direct_result = SARIMAX(
+            data,
+            order=(0, 0, 0),
+            seasonal_order=(0, 0, 0, 0),
+            log=True,
+        ).fit()
+
+        auto_prediction = auto_result.predict(start=len(data), end=len(data) + 2)
+        direct_prediction = direct_result.predict(start=len(data), end=len(data) + 2)
+
+        assert auto_result.log is True
+        assert auto_result.log_likelihood == pytest.approx(direct_result.log_likelihood)
+        np.testing.assert_allclose(
+            auto_result.fitted_values, direct_result.fitted_values
+        )
+        np.testing.assert_allclose(auto_prediction.mean, direct_prediction.mean)
+        np.testing.assert_allclose(auto_prediction.lower, direct_prediction.lower)
+        np.testing.assert_allclose(auto_prediction.upper, direct_prediction.upper)
+
     def test_summary_has_auto_label(self, ar1_data):
         """summary() contains Auto SARIMAX header."""
         from Ts.TsModels._auto import AutoSARIMAX
@@ -386,13 +506,16 @@ class TestAutoSARIMAX:
         assert "Auto SARIMAX" in text
 
     def test_candidate_orders_tracked(self, ar1_data):
-        """candidate_orders list has correct length."""
+        """Search metadata separates attempts from converged candidates."""
         from Ts.TsModels._auto import AutoSARIMAX
 
         auto = AutoSARIMAX(ar1_data, p=(1, 2), d=(0, 0), q=(0, 1), criterion="aic")
         result = auto.fit()
-        assert len(result.candidate_orders) == 4  # 2*1*2 = 4
+        assert result.n_attempted == 4  # 2*1*2 = 4
+        assert len(result.candidate_orders) == len(result.candidate_results)
+        assert all(candidate.converged for candidate in result.candidate_results)
         assert result.candidate_orders[0] == (1, 0, 0)
+        assert any("failed to converge" in message for message in result.search_messages)
 
     def test_seasonal_orders_are_retained(self, ar1_data):
         """Seasonal grid metadata remains available after model selection."""

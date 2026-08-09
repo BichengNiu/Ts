@@ -269,6 +269,12 @@ class AutoModelResult(BaseModelResult):
         ]
         if self.best_seasonal_order is not None:
             lines.insert(5, f"Best Seasonal Order: {self.best_seasonal_order}")
+        if self.log:
+            details_index = lines.index("Best Model Details:")
+            lines.insert(
+                details_index - 1,
+                "Response Scale     : original (log fit; bias-adjusted mean)",
+            )
 
         # Rebuild base summary from fields directly to get the clean table
         base_lines = [
@@ -316,6 +322,62 @@ class AutoModelResult(BaseModelResult):
         if self.best_result is None:
             raise RuntimeError("No best_result available")
         return self.best_result.predict(**kwargs)
+
+    @property
+    def log(self):
+        """Whether the selected model used a log-transformed response."""
+        if self.best_result is None:
+            return False
+        return bool(getattr(self.best_result, "log", False))
+
+    @property
+    def level_intercept(self):
+        """Delegate the fitted-response constant of the selected model."""
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        return getattr(self.best_result, "level_intercept", None)
+
+    @property
+    def unconditional_log_variance(self):
+        """Delegate the selected model's stationary log-response variance."""
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        return getattr(self.best_result, "unconditional_log_variance", None)
+
+    def level_intercept_inference(self, alpha=0.05):
+        """Delegate fitted-response constant inference to the selected model.
+
+        Parameters
+        ----------
+        alpha : float, default 0.05
+            Two-sided significance level for the confidence interval.
+
+        Returns
+        -------
+        dict or None
+            Estimate and delta-method inference on the selected model's fitted
+            response scale. With ``log=True``, that scale is the natural log.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> data = np.exp(np.linspace(1.0, 2.0, 40))
+        >>> result = AutoSARIMAX(
+        ...     data, p=(0, 0), d=(0, 0), q=(0, 0), log=True
+        ... ).fit()
+        >>> result.level_intercept_inference()["estimate"] == result.level_intercept
+        True
+        """
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        method = getattr(self.best_result, "level_intercept_inference", None)
+        if method is None:
+            raise TypeError(
+                "level_intercept_inference is only available for "
+                "AutoSARIMAX results"
+            )
+        return method(alpha=alpha)
 
     @property
     def distributed_lags(self):
@@ -690,6 +752,13 @@ class AutoSARIMAX(_BaseAutoModel):
         Non-finite input policy. ``"drop"`` records removed zero-based rows
         in :attr:`dropped_positions`. Default ``"drop"``; use ``"raise"``
         to reject any sample change.
+    log : bool
+        Fit every candidate to the natural logarithm of the response. The
+        input must be on its original positive scale. Fitted values,
+        predictions, and intervals are returned on the original scale;
+        prediction means use the horizon-specific lognormal bias correction.
+        This is a fixed setting, not an automatically searched dimension.
+        Default ``False``.
     dates : datetime-like sequence, optional
         Strict sample dates. A Series DatetimeIndex is inferred automatically.
         Array inputs may provide dates explicitly.
@@ -750,6 +819,7 @@ class AutoSARIMAX(_BaseAutoModel):
         enforce_stationarity=True,
         enforce_invertibility=True,
         missing="drop",
+        log=False,
         distributed_lags=None,
         enforce_distributed_lag_stability=True,
     ):
@@ -767,6 +837,7 @@ class AutoSARIMAX(_BaseAutoModel):
             exog_names=exog_names,
             events=events,
             missing=missing,
+            log=log,
             distributed_lags=distributed_lags,
             enforce_distributed_lag_stability=(enforce_distributed_lag_stability),
         )
@@ -774,6 +845,7 @@ class AutoSARIMAX(_BaseAutoModel):
         self.data = self._validate_params(prototype.data, criterion, method)
         self.missing = missing
         self.dropped_positions = prototype.dropped_positions
+        self.log = prototype.log
         self.criterion = criterion
         self.method = method
         self.dates = None if prototype.dates is None else prototype.dates.copy()
@@ -848,6 +920,7 @@ class AutoSARIMAX(_BaseAutoModel):
             enforce_stationarity=self.enforce_stationarity,
             enforce_invertibility=self.enforce_invertibility,
             missing="raise",
+            log=self.log,
             distributed_lags=self.distributed_lags,
             enforce_distributed_lag_stability=(self.enforce_distributed_lag_stability),
         )
@@ -941,6 +1014,7 @@ class AutoSARIMAX(_BaseAutoModel):
                 ),
                 events=self.events,
                 missing="raise",
+                log=self.log,
                 distributed_lags=self.distributed_lags,
                 enforce_distributed_lag_stability=(
                     self.enforce_distributed_lag_stability
