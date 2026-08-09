@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from inspect import Parameter, signature
+from collections.abc import Mapping
 
 import numpy as np
 
@@ -10,13 +11,14 @@ import numpy as np
 from ._protocols import EvaluationModelProtocol
 
 
-def validate_fit_method(model, method, *, model_name=None):
-    """Return fit kwargs after validating explicit optimizer support."""
-    if method is None:
+def validate_fit_kwargs(model, fit_kwargs, *, model_name=None):
+    """Copy fit keywords after validating support without fitting a model."""
+    if fit_kwargs is None:
         return {}
-    if not isinstance(method, str):
-        raise TypeError("method must be a string or None")
-
+    if not isinstance(fit_kwargs, Mapping):
+        raise TypeError("fit_kwargs must be a mapping or None")
+    if not all(isinstance(name, str) and name for name in fit_kwargs):
+        raise TypeError("fit_kwargs names must be non-empty strings")
     fit = getattr(model, "fit", None)
     if not callable(fit):
         raise TypeError("model must provide fit()")
@@ -28,14 +30,28 @@ def validate_fit_method(model, method, *, model_name=None):
             f"model {label} does not expose an inspectable fit() supporting method"
         ) from error
 
-    accepts_method = any(
-        parameter.name == "method" or parameter.kind == Parameter.VAR_KEYWORD
-        for parameter in parameters
+    parameters = tuple(parameters)
+    accepts_kwargs = any(
+        parameter.kind == Parameter.VAR_KEYWORD for parameter in parameters
     )
-    if not accepts_method:
+    accepted_names = {parameter.name for parameter in parameters}
+    unsupported = [
+        name for name in fit_kwargs if name not in accepted_names and not accepts_kwargs
+    ]
+    if unsupported:
         label = type(model).__name__ if model_name is None else repr(model_name)
-        raise TypeError(f"model {label} does not support fit(method=...)")
-    return {"method": method}
+        names = ", ".join(repr(name) for name in unsupported)
+        raise TypeError(f"model {label} does not support fit keyword(s): {names}")
+    return dict(fit_kwargs)
+
+
+def validate_fit_method(model, method, *, model_name=None):
+    """Validate the legacy optimizer option through general fit keywords."""
+    if method is None:
+        return {}
+    if not isinstance(method, str):
+        raise TypeError("method must be a string or None")
+    return validate_fit_kwargs(model, {"method": method}, model_name=model_name)
 
 
 def model_data(model):

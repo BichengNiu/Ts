@@ -23,7 +23,8 @@ from Ts.TsMetrics._results import (
     ForecastComparisonResult,
     ForecastEvaluationResult,
 )
-from Ts.TsMetrics._schemes import RollingOrigin
+from Ts.TsMetrics._engine import evaluate_forecasts
+from Ts.TsMetrics._schemes import Holdout, RollingOrigin
 
 
 @dataclass
@@ -103,6 +104,31 @@ class _OptimizerMeanModel(_MeanModel):
     def fit(self, *, method="bfgs"):
         """Record the requested optimizer before fitting the mean model."""
         self.methods.append(method)
+        return super().fit()
+
+
+class _FitOptionsMeanModel(_MeanModel):
+    """Mean model that records general fit keyword forwarding."""
+
+    def __init__(self, data, dates=None, *, options=None, **kwargs):
+        super().__init__(data, dates=dates, **kwargs)
+        self.options = [] if options is None else options
+
+    def fit(self, *, method="bfgs", maxiter=100):
+        self.options.append((method, maxiter))
+        return super().fit()
+
+
+class _FailingMeanModel(_MeanModel):
+    """Mean model that raises for one selected training length."""
+
+    def __init__(self, data, dates=None, *, fail_length, **kwargs):
+        super().__init__(data, dates=dates, **kwargs)
+        self.fail_length = fail_length
+
+    def fit(self):
+        if len(self.data) == self.fail_length:
+            raise RuntimeError("planned fit failure")
         return super().fit()
 
 
@@ -1168,3 +1194,117 @@ def test_unified_comparison_predictions_include_every_model_and_error():
     ]
     assert frame["model"].value_counts().to_dict() == {"first": 4, "second": 4}
     assert frame.loc[0, "error"] == pytest.approx(-1.0)
+
+
+def test_evaluate_forecasts_uses_one_holdout_engine_for_multiple_models():
+    data = np.arange(15.0)
+    report = evaluate_forecasts(
+        {
+            "weak": _MeanModel(data),
+            "strong": _MeanModel(data, forecast_bias=6.5),
+        },
+        scheme=Holdout(train=(0, 9), test=(10, 14)),
+    )
+
+    assert report.ranking == ["strong", "weak"]
+    assert report.results["strong"].mean.shape == (1, 5)
+    assert report.splits.loc[0, "train_start"] == 0
+    assert report.splits.loc[0, "forecast_end"] == 14
+
+
+def test_evaluate_forecasts_uses_exact_expanding_and_gapped_windows():
+    model = _MeanModel(np.arange(20.0))
+
+    report = evaluate_forecasts(
+        {"model": model},
+        scheme=RollingOrigin(
+            initial_window=10,
+            horizon=2,
+            step=3,
+            gap=1,
+        ),
+    )
+
+    assert [window.tolist() for window in model.fit_windows] == [
+        list(np.arange(10.0)),
+        list(np.arange(13.0)),
+        list(np.arange(16.0)),
+    ]
+    assert report.results["model"].mean.shape == (3, 2)
+    assert report.splits["forecast_start"].tolist() == [11, 14, 17]
+
+
+def test_evaluate_forecasts_forwards_all_fit_kwargs_to_every_split():
+    model = _FitOptionsMeanModel(np.arange(16.0))
+
+    evaluate_forecasts(
+        {"model": model},
+        scheme=RollingOrigin(initial_window=10, horizon=1, step=2),
+        fit_kwargs={"method": "lbfgs", "maxiter": 500},
+    )
+
+    assert model.options == [("lbfgs", 500), ("lbfgs", 500), ("lbfgs", 500)]
+
+
+def test_evaluate_forecasts_validates_every_fit_keyword_before_fitting():
+    supported = _FitOptionsMeanModel(np.arange(15.0))
+    unsupported = _MeanModel(np.arange(15.0))
+
+    with pytest.raises(TypeError, match=r"unsupported.*maxiter"):
+        evaluate_forecasts(
+            {"supported": supported, "unsupported": unsupported},
+            scheme=Holdout(train=(0, 9), test=(10, 14)),
+            fit_kwargs={"maxiter": 500},
+        )
+
+    assert supported.options == []
+    assert unsupported.fit_windows == []
+
+
+def test_evaluate_forecasts_requires_explicit_observed_future_exog():
+    model = _MeanModel(np.arange(15.0))
+    model.exog = np.arange(15.0)[:, None]
+
+    with pytest.raises(ValueError, match="future_exog='observed'"):
+        evaluate_forecasts(
+            {"conditional": model},
+            scheme=Holdout(train=(0, 9), test=(10, 14)),
+        )
+
+    report = evaluate_forecasts(
+        {"conditional": model},
+        scheme=Holdout(train=(0, 9), test=(10, 14)),
+        future_exog="observed",
+    )
+    assert report.results["conditional"].uses_observed_future_exog
+
+
+def test_evaluate_forecasts_records_failed_splits_atomically():
+    model = _FailingMeanModel(np.arange(16.0), fail_length=12)
+
+    report = evaluate_forecasts(
+        {"model": model},
+        scheme=RollingOrigin(initial_window=10, horizon=1, step=2),
+        on_error="record",
+    )
+    result = report.results["model"]
+
+    assert len(result.failures) == 1
+    assert result.failures[0]["split"] == 1
+    assert np.isnan(result.mean[1]).all()
+    assert np.isnan(result.actual[1]).all()
+    assert report.table.loc["model", "coverage"] == pytest.approx(2 / 3)
+
+
+def test_evaluate_forecasts_rejects_different_targets_before_fitting():
+    first = _MeanModel(np.arange(15.0))
+    second = _MeanModel(np.arange(15.0) + 1.0)
+
+    with pytest.raises(ValueError, match="same target values"):
+        evaluate_forecasts(
+            {"first": first, "second": second},
+            scheme=Holdout(train=(0, 9), test=(10, 14)),
+        )
+
+    assert first.fit_windows == []
+    assert second.fit_windows == []
