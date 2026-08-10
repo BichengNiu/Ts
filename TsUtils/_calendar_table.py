@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 from pandas.tseries.offsets import (
     BMonthBegin,
     BMonthEnd,
@@ -40,6 +42,20 @@ def _select_series(data, *, col):
     if col not in data.columns:
         raise ValueError(f"col {col!r} is not a DataFrame column")
     return data[col].copy(deep=False)
+
+
+def _validate_series_values(series):
+    """Require finite real numeric observations while allowing missing values."""
+    if is_bool_dtype(series.dtype):
+        raise TypeError("data must not contain Boolean values")
+    if is_complex_dtype(series.dtype):
+        raise TypeError("data must not contain complex values")
+    if not is_numeric_dtype(series.dtype):
+        raise TypeError("data must contain numeric values")
+
+    observed = series.dropna()
+    if not np.isfinite(observed.to_numpy()).all():
+        raise ValueError("non-missing data values must be finite")
 
 
 def _complete_series(series, offset):
@@ -154,11 +170,48 @@ def _reshape(series, family):
     return result.reindex(pd.Index(row_schema, name=row_name))
 
 
+def _apply_label_style(table, *, family, label_style):
+    """Apply optional presentation labels without changing table values."""
+    if label_style == "numeric":
+        return table
+    if label_style != "text":
+        raise ValueError("label_style must be 'numeric' or 'text'")
+
+    result = table.copy(deep=False)
+    if family == "quarterly":
+        row_labels = [f"Q{quarter}" for quarter in result.index]
+    elif family == "monthly":
+        row_labels = [f"{month}月" for month in result.index]
+    elif family == "weekly":
+        row_labels = [f"第{week}周" for week in result.index]
+    elif family in {"daily", "business_daily"}:
+        row_labels = [f"{day}日" for day in result.index]
+    else:
+        row_labels = result.index
+    result.index = pd.Index(row_labels, name=result.index.name)
+
+    if isinstance(result.columns, pd.MultiIndex):
+        result.columns = pd.MultiIndex.from_tuples(
+            [(f"{year}年", f"{month}月") for year, month in result.columns],
+            names=result.columns.names,
+        )
+    else:
+        result.columns = pd.Index(
+            [f"{year}年" for year in result.columns],
+            name=result.columns.name,
+        )
+    return result
+
+
 def calendar_table(data, *, col=None, freq=None, label_style="numeric") -> pd.DataFrame:
     """Reshape one dated series into a calendar-oriented table."""
+    if label_style not in {"numeric", "text"}:
+        raise ValueError("label_style must be 'numeric' or 'text'")
     series = _select_series(data, col=col)
+    _validate_series_values(series)
     index = resolve_time_index(series)
     offset = resolve_frequency(index, freq=freq)
     family = _classify_frequency(offset)
     complete = _complete_series(series, offset)
-    return _reshape(complete, family)
+    table = _reshape(complete, family)
+    return _apply_label_style(table, family=family, label_style=label_style)

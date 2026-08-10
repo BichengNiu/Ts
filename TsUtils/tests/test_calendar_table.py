@@ -132,3 +132,160 @@ def test_weekly_period_index_uses_the_periods_wednesday():
 
     assert result.loc[5, (2024, 1)] == 10.0
     assert result.loc[1, (2024, 2)] == 20.0
+
+
+def test_explicit_monthly_frequency_completes_missing_timestamp_with_nan():
+    """An explicit base frequency distinguishes a gap from a multiplied offset."""
+    index = pd.DatetimeIndex(["2024-01-01", "2024-03-01"])
+    source = pd.Series([1.0, 3.0], index=index)
+
+    result = calendar_table(source, freq="MS")
+
+    assert result.loc[1, 2024] == 1.0
+    assert pd.isna(result.loc[2, 2024])
+    assert result.loc[3, 2024] == 3.0
+    with pytest.raises(ValueError, match="regular frequency"):
+        calendar_table(source)
+
+
+def test_text_labels_are_presentation_ready_for_one_level_tables():
+    """Text labels format monthly rows and natural-year columns."""
+    index = pd.date_range("2024-01-01", periods=2, freq="MS")
+
+    result = calendar_table(
+        pd.Series([1.0, 2.0], index=index),
+        label_style="text",
+    )
+
+    assert result.index[:2].tolist() == ["1月", "2月"]
+    assert result.index.name == "month"
+    assert result.columns.tolist() == ["2024年"]
+    assert result.columns.name == "year"
+
+
+@pytest.mark.parametrize(
+    ("frequency", "expected_rows"),
+    [
+        ("QS-JAN", ["Q1", "Q2", "Q3", "Q4"]),
+        ("W-SUN", ["第1周", "第2周", "第3周", "第4周", "第5周"]),
+        ("D", [f"{day}日" for day in range(1, 32)]),
+    ],
+)
+def test_text_labels_cover_quarterly_weekly_and_daily_rows(
+    frequency,
+    expected_rows,
+):
+    """Every schema offers deterministic presentation labels."""
+    index = pd.date_range("2024-01-01", periods=4, freq=frequency)
+
+    result = calendar_table(
+        pd.Series(range(4), index=index, dtype=float),
+        label_style="text",
+    )
+
+    assert result.index.tolist() == expected_rows
+    assert all(str(column[0]).endswith("年") for column in result.columns) if isinstance(
+        result.columns, pd.MultiIndex
+    ) else all(str(column).endswith("年") for column in result.columns)
+    if isinstance(result.columns, pd.MultiIndex):
+        assert all(str(column[1]).endswith("月") for column in result.columns)
+
+
+@pytest.mark.parametrize("label_style", [None, True, "labels"])
+def test_label_style_must_be_numeric_or_text(label_style):
+    """Unknown display modes fail instead of silently changing labels."""
+    index = pd.date_range("2024-01-01", periods=3, freq="MS")
+    with pytest.raises(ValueError, match="label_style"):
+        calendar_table(
+            pd.Series([1.0, 2.0, 3.0], index=index),
+            label_style=label_style,
+        )
+
+
+def test_explicit_frequency_must_match_every_observed_timestamp():
+    """An explicit calendar cannot coerce off-calendar observations."""
+    index = pd.DatetimeIndex(["2024-01-01", "2024-01-31"])
+    with pytest.raises(ValueError, match="incompatible"):
+        calendar_table(pd.Series([1.0, 2.0], index=index), freq="MS")
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        pd.period_range("2024Q1", periods=4, freq="Q-MAR"),
+        pd.date_range("2024-03-01", periods=3, freq="YS-MAR"),
+        pd.date_range("2024-01-01", periods=3, freq="2MS"),
+        pd.date_range("2024-01-01", periods=3, freq="h"),
+    ],
+)
+def test_unsupported_frequency_semantics_are_rejected(index):
+    """Fiscal, multiplied, and intraday inputs stay outside the contract."""
+    with pytest.raises(ValueError, match="does not support frequency"):
+        calendar_table(pd.Series(range(len(index)), index=index, dtype=float))
+
+
+@pytest.mark.parametrize(
+    ("data", "error", "match"),
+    [
+        (
+            pd.Series(dtype=float, index=pd.DatetimeIndex([])),
+            ValueError,
+            "must not be empty",
+        ),
+        (
+            pd.Series([1.0, 2.0], index=pd.DatetimeIndex(["2024-01-01", None])),
+            ValueError,
+            "missing dates",
+        ),
+        (
+            pd.Series(
+                [1.0, 2.0],
+                index=pd.DatetimeIndex(["2024-01-01", "2024-01-01"]),
+            ),
+            ValueError,
+            "unique dates",
+        ),
+        (
+            pd.Series(
+                [1.0, 2.0],
+                index=pd.DatetimeIndex(["2024-02-01", "2024-01-01"]),
+            ),
+            ValueError,
+            "in increasing order",
+        ),
+        ([1.0, 2.0], TypeError, "Series or DataFrame"),
+    ],
+)
+def test_invalid_containers_and_time_indexes_are_rejected(data, error, match):
+    """Calendar reshaping requires one well-defined ordered dated series."""
+    with pytest.raises(error, match=match):
+        calendar_table(data)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        ["1", "2", "3"],
+        [True, False, True],
+        [1 + 2j, 2 + 3j, 3 + 4j],
+        [1.0, np.inf, 3.0],
+        [1.0, -np.inf, 3.0],
+    ],
+)
+def test_invalid_time_series_values_are_rejected(values):
+    """Only finite real numeric observations and ordinary missing values pass."""
+    index = pd.date_range("2024-01-01", periods=3, freq="MS")
+    with pytest.raises((TypeError, ValueError), match="numeric|Boolean|complex|finite"):
+        calendar_table(pd.Series(values, index=index))
+
+
+def test_missing_values_are_preserved_without_mutating_the_source():
+    """Reshaping neither imputes missing observations nor changes its input."""
+    index = pd.date_range("2024-01-01", periods=3, freq="MS")
+    source = pd.Series([1.0, np.nan, 3.0], index=index, name="sales")
+    original = source.copy(deep=True)
+
+    result = calendar_table(source)
+
+    assert pd.isna(result.loc[2, 2024])
+    pd.testing.assert_series_equal(source, original)
