@@ -138,7 +138,32 @@ report.failures
 report.metric_table(by="origin")
 report.metric_table(by="horizon")
 report.metric_table(by="series")
+report.parameter_table(model="ARIMA", parameters="ar.L1")
 ```
+
+滚动与扩展窗口评估会同时保留每次重新拟合的标量参数、标准误和
+p 值。可按模型名和参数名查看各训练样本范围下的估计轨迹；失败的
+split 仍保留在表中，对应估计值为 NaN：
+
+```python
+parameter_path = report.parameter_table(
+    model="ARIMA",
+    parameters=["ar.L1", "ma.L1"],
+)
+
+fig, ax = report.plot_parameters(
+    model="ARIMA",
+    parameters="ar.L1",
+    x="train_end",
+    title="AR(1) coefficient across expanding samples",
+)
+```
+
+表格包含 `train_start`、`train_end`、`n_train`、`window`、
+`forecast_start`、`estimate`、`std_error` 和 `p_value`。图形继续复用
+`TsPlots.plot_series()` 的统一样式。该轨迹用于查看参数敏感性；正式的
+已知断点、未知断点和多断点检验仍分别使用 `TsTests` 中的 `ChowTest`、
+`CUSUMTest` 和 `BaiPerronTest`。
 
 单模型结果数组形状固定为：
 

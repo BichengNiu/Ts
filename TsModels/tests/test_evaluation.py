@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from Ts.TsMetrics import Holdout, RollingOrigin, compute_metrics, evaluate_forecasts
-from Ts.TsModels import BackcastResult
+from Ts.TsModels import BackcastResult, SARIMAX
 from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
 
 
@@ -117,6 +117,26 @@ def test_unified_rolling_refits_only_the_declared_expanding_windows():
     ]
     assert report.results["model"].mean.shape == (2, 3)
     assert model.result_ is None
+
+
+def test_unified_rolling_retains_named_sarimax_parameter_estimates():
+    rng = np.random.default_rng(2408)
+    data = np.zeros(45)
+    innovations = rng.normal(scale=0.5, size=len(data))
+    for position in range(1, len(data)):
+        data[position] = 0.6 * data[position - 1] + innovations[position]
+
+    report = evaluate_forecasts(
+        {"sarimax": SARIMAX(data, order=(1, 0, 0), trend="n")},
+        scheme=RollingOrigin(initial_window=30, horizon=1, step=5),
+    )
+    table = report.parameter_table(model="sarimax", parameters="ar.L1")
+
+    assert table["split"].tolist() == [0, 1, 2]
+    assert table["train_end"].tolist() == [29, 34, 39]
+    assert table["parameter"].eq("ar.L1").all()
+    assert np.isfinite(table["estimate"]).all()
+    assert np.isfinite(table["std_error"]).all()
 
 
 def test_unified_rolling_supports_fixed_window_and_failure_records():

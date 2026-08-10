@@ -50,9 +50,9 @@ class _MeanModel(BaseModel):
         mean = float(np.mean(self.data))
         return _MeanResult(
             model_type="MEAN",
-            params={},
-            std_errors={},
-            p_values={},
+            params={"mean": mean},
+            std_errors={"mean": 0.25},
+            p_values={"mean": 0.01},
             aic=0.0,
             bic=0.0,
             log_likelihood=0.0,
@@ -326,6 +326,68 @@ def test_grouped_metrics_and_long_predictions_cover_all_models():
     }
 
 
+def test_rolling_parameter_table_tracks_each_training_sample_range():
+    report = evaluate_forecasts(
+        {"model": _MeanModel(np.arange(16.0))},
+        scheme=RollingOrigin(initial_window=10, horizon=1, step=2),
+    )
+
+    table = report.parameter_table(model="model", parameters="mean")
+
+    assert table["split"].tolist() == [0, 1, 2]
+    assert table["train_start"].tolist() == [0, 0, 0]
+    assert table["train_end"].tolist() == [9, 11, 13]
+    assert table["n_train"].tolist() == [10, 12, 14]
+    assert table["estimate"].tolist() == pytest.approx([4.5, 5.5, 6.5])
+    assert table["std_error"].tolist() == pytest.approx([0.25] * 3)
+    assert table["p_value"].tolist() == pytest.approx([0.01] * 3)
+
+
+def test_parameter_table_keeps_failed_sample_range_as_nan():
+    report = evaluate_forecasts(
+        {"model": _FailingModel(np.arange(16.0), fail_length=12)},
+        scheme=RollingOrigin(initial_window=10, horizon=1, step=2),
+        on_error="record",
+    )
+
+    table = report.parameter_table(model="model", parameters="mean")
+
+    assert table["split"].tolist() == [0, 1, 2]
+    assert np.isnan(table.loc[table["split"] == 1, "estimate"]).all()
+
+
+def test_parameter_api_validates_model_and_parameter_names():
+    report = evaluate_forecasts(
+        {"model": _MeanModel(np.arange(12.0))},
+        scheme=RollingOrigin(initial_window=10),
+    )
+
+    with pytest.raises(ValueError, match="unknown model"):
+        report.parameter_table(model="missing")
+    with pytest.raises(ValueError, match="unknown parameter"):
+        report.parameter_table(model="model", parameters="missing")
+
+
+def test_parameter_plot_reuses_shared_series_plotting_contract():
+    report = evaluate_forecasts(
+        {"model": _MeanModel(np.arange(16.0))},
+        scheme=RollingOrigin(initial_window=10, horizon=1, step=2),
+    )
+
+    fig, ax = report.plot_parameters(
+        model="model",
+        parameters="mean",
+        title="Rolling mean estimate",
+    )
+
+    assert ax.get_title() == "Rolling mean estimate"
+    assert ax.get_xlabel() == "Training sample end"
+    assert ax.get_ylabel() == "Estimate"
+    assert ax.lines[0].get_xdata().tolist() == [9, 11, 13]
+    assert ax.lines[0].get_ydata().tolist() == pytest.approx([4.5, 5.5, 6.5])
+    plt.close(fig)
+
+
 def test_plots_reuse_shared_series_plotting_contract():
     result = _result(
         [[10.0, 11.0], [12.0, 13.0]],
@@ -386,3 +448,4 @@ def test_structural_protocol_is_supported_without_inheritance():
         scheme=Holdout(train=(0, 9), test=(10, 11)),
     )
     assert report.results["duck"].mean.shape == (1, 2)
+    assert report.parameter_table(model="duck").empty

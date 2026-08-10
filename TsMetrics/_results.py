@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
 from ._metrics import ERROR_METRIC_NAMES, compute_metrics
 from ._schemes import ForecastSplit
+
+
+PARAMETER_ESTIMATE_COLUMNS = (
+    "split",
+    "parameter",
+    "estimate",
+    "std_error",
+    "p_value",
+)
+PARAMETER_TABLE_COLUMNS = (
+    "split",
+    "train_start",
+    "train_end",
+    "n_train",
+    "window",
+    "forecast_start",
+    "parameter",
+    "estimate",
+    "std_error",
+    "p_value",
+)
 
 
 def _optional_array(values):
@@ -76,6 +97,80 @@ def _rank(scores):
     )
 
 
+def _normalise_parameter_estimates(values, n_splits):
+    """Return an owned, validated long-form parameter-estimate table."""
+    if values is None:
+        return pd.DataFrame(columns=PARAMETER_ESTIMATE_COLUMNS)
+    if isinstance(values, pd.DataFrame):
+        frame = values.copy()
+    else:
+        try:
+            frame = pd.DataFrame.from_records(values)
+        except (TypeError, ValueError) as error:
+            raise TypeError(
+                "parameter_estimates must be tabular records or None"
+            ) from error
+    if frame.empty:
+        return pd.DataFrame(columns=PARAMETER_ESTIMATE_COLUMNS)
+    missing = set(PARAMETER_ESTIMATE_COLUMNS).difference(frame.columns)
+    if missing:
+        raise ValueError(
+            "parameter_estimates is missing columns: " + ", ".join(sorted(missing))
+        )
+    frame = frame.loc[:, list(PARAMETER_ESTIMATE_COLUMNS)].copy()
+    split_values = []
+    for value in frame["split"]:
+        if isinstance(value, (bool, np.bool_)) or not isinstance(
+            value, (int, np.integer)
+        ):
+            raise TypeError("parameter estimate split must be an integer")
+        value = int(value)
+        if not 0 <= value < n_splits:
+            raise ValueError("parameter estimate split is out of range")
+        split_values.append(value)
+    frame["split"] = split_values
+    if (
+        not frame["parameter"]
+        .map(lambda value: isinstance(value, str) and bool(value))
+        .all()
+    ):
+        raise TypeError("parameter names must be non-empty strings")
+    if frame.duplicated(["split", "parameter"]).any():
+        raise ValueError("parameter estimates must be unique by split and parameter")
+    for column in ("estimate", "std_error", "p_value"):
+        try:
+            frame[column] = pd.to_numeric(frame[column], errors="raise").astype(float)
+        except (TypeError, ValueError) as error:
+            raise TypeError(f"parameter estimate {column} must be numeric") from error
+    return frame.reset_index(drop=True)
+
+
+def _select_parameter_names(parameters, available):
+    """Validate a parameter selector and retain the caller's order."""
+    available = tuple(dict.fromkeys(available))
+    if parameters is None:
+        return available
+    if isinstance(parameters, str):
+        selected = (parameters,)
+    else:
+        try:
+            selected = tuple(parameters)
+        except TypeError as error:
+            raise TypeError(
+                "parameters must be a parameter name, a sequence, or None"
+            ) from error
+    if not selected:
+        raise ValueError("parameters must not be empty")
+    if not all(isinstance(name, str) and name for name in selected):
+        raise TypeError("parameters must contain non-empty strings")
+    if len(set(selected)) != len(selected):
+        raise ValueError("parameters must not contain duplicates")
+    unknown = [name for name in selected if name not in available]
+    if unknown:
+        raise ValueError(f"unknown parameter(s): {unknown}")
+    return selected
+
+
 @dataclass
 class ForecastEvaluationResult:
     """Forecasts from one estimator over all splits in one scheme.
@@ -110,6 +205,8 @@ class ForecastEvaluationResult:
         Significance level used for intervals.
     uses_observed_future_exog : bool, default False
         Whether realized future exogenous paths conditioned the forecasts.
+    parameter_estimates : tabular records, optional
+        Scalar fitted parameter estimates and diagnostics retained by split.
 
     Examples
     --------
@@ -134,6 +231,9 @@ class ForecastEvaluationResult:
     series_names: tuple[str, ...] | None = None
     alpha: float | None = None
     uses_observed_future_exog: bool = False
+    parameter_estimates: pd.DataFrame = field(
+        default_factory=lambda: pd.DataFrame(columns=PARAMETER_ESTIMATE_COLUMNS)
+    )
 
     def __post_init__(self):
         self.mean = np.array(self.mean, dtype=float, copy=True)
@@ -180,6 +280,10 @@ class ForecastEvaluationResult:
         if not isinstance(self.uses_observed_future_exog, (bool, np.bool_)):
             raise TypeError("uses_observed_future_exog must be a boolean")
         self.uses_observed_future_exog = bool(self.uses_observed_future_exog)
+        self.parameter_estimates = _normalise_parameter_estimates(
+            self.parameter_estimates,
+            len(self.splits),
+        )
 
         self.dates = None if self.dates is None else pd.DatetimeIndex(self.dates).copy()
         targets = np.concatenate([split.target_indices for split in self.splits])
@@ -287,6 +391,53 @@ class ForecastEvaluationResult:
                 for split in self.splits
             ]
         )
+
+    def parameter_table(self, parameters=None):
+        """Return parameter estimates for every resolved training sample.
+
+        Parameters
+        ----------
+        parameters : str or sequence of str, optional
+            Parameter names to retain. By default, all observed parameters are
+            returned.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per split and parameter, including training-sample bounds,
+            estimate, standard error, and p-value. Failed splits are retained
+            with missing estimates.
+
+        Examples
+        --------
+        >>> table = result.parameter_table("ar.L1")
+        >>> ["train_start", "train_end", "estimate"]
+        ['train_start', 'train_end', 'estimate']
+        """
+        available = self.parameter_estimates["parameter"].tolist()
+        selected = _select_parameter_names(parameters, available)
+        if not selected:
+            return pd.DataFrame(columns=PARAMETER_TABLE_COLUMNS)
+        pairs = pd.DataFrame.from_records(
+            [
+                {"split": split.split, "parameter": parameter}
+                for split in self.splits
+                for parameter in selected
+            ]
+        )
+        estimates = pairs.merge(
+            self.parameter_estimates,
+            on=["split", "parameter"],
+            how="left",
+            validate="one_to_one",
+        )
+        table = self.split_table.merge(
+            estimates,
+            on="split",
+            how="inner",
+            validate="one_to_many",
+        )
+        return table.loc[:, list(PARAMETER_TABLE_COLUMNS)].copy()
 
 
 @dataclass
@@ -428,6 +579,146 @@ class ForecastComparisonResult:
             rows.extend({"model": name, **failure} for failure in result.failures)
         return pd.DataFrame.from_records(
             rows, columns=["model", "split", "error_type", "message"]
+        )
+
+    def parameter_table(self, *, model=None, parameters=None):
+        """Return rolling parameter estimates with training-sample metadata.
+
+        Parameters
+        ----------
+        model : str, optional
+            One model name from ``results``. By default all models are included.
+        parameters : str or sequence of str, optional
+            Parameter names to retain. By default all observed parameters are
+            included.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Model-labelled estimates by split and training-sample range.
+
+        Examples
+        --------
+        >>> table = report.parameter_table(model="ARIMA", parameters="ar.L1")
+        >>> "estimate" in table
+        True
+        """
+        if model is None:
+            model_names = tuple(self.results)
+        elif not isinstance(model, str) or not model:
+            raise TypeError("model must be a non-empty string or None")
+        elif model not in self.results:
+            raise ValueError(f"unknown model {model!r}")
+        else:
+            model_names = (model,)
+
+        frames = []
+        for name in model_names:
+            frame = self.results[name].parameter_table()
+            if frame.empty:
+                continue
+            frame.insert(0, "model", name)
+            frames.append(frame)
+        columns = ("model", *PARAMETER_TABLE_COLUMNS)
+        if not frames:
+            _select_parameter_names(parameters, ())
+            return pd.DataFrame(columns=columns)
+        table = pd.concat(frames, ignore_index=True)
+        selected = _select_parameter_names(parameters, table["parameter"].tolist())
+        table = table.loc[table["parameter"].isin(selected)].copy()
+        parameter_order = {name: position for position, name in enumerate(selected)}
+        model_order = {name: position for position, name in enumerate(model_names)}
+        table["_model_order"] = table["model"].map(model_order)
+        table["_parameter_order"] = table["parameter"].map(parameter_order)
+        table = table.sort_values(
+            ["_model_order", "_parameter_order", "split"],
+            kind="stable",
+        ).drop(columns=["_model_order", "_parameter_order"])
+        return table.loc[:, list(columns)].reset_index(drop=True)
+
+    def plot_parameters(
+        self,
+        parameters=None,
+        *,
+        model=None,
+        x="train_end",
+        title=None,
+        xtitle=None,
+        ytitle=None,
+        freq=None,
+        note=None,
+        grid=False,
+        ax=None,
+    ):
+        """Plot parameter estimates across rolling training samples.
+
+        Parameters
+        ----------
+        parameters : str or sequence of str, optional
+            Parameter names to plot. By default all observed parameters are
+            shown.
+        model : str, optional
+            One model name from ``results``. By default all models are included.
+        x : {"split", "train_end", "forecast_start"}
+            Horizontal axis identifying each estimation sample.
+        title, xtitle, ytitle, freq, note, grid, ax : optional
+            Plot options forwarded to :func:`TsPlots.plot_series`.
+
+        Returns
+        -------
+        tuple
+            Matplotlib figure and axes.
+
+        Examples
+        --------
+        >>> fig, ax = report.plot_parameters(
+        ...     "ar.L1", model="ARIMA", x="train_end"
+        ... )
+        """
+        from Ts.TsPlots import plot_series
+
+        x_labels = {
+            "split": "Split",
+            "train_end": "Training sample end",
+            "forecast_start": "Forecast origin",
+        }
+        if x not in x_labels:
+            raise ValueError(f"x must be one of {list(x_labels)}")
+        table = self.parameter_table(model=model, parameters=parameters)
+        if table.empty:
+            raise ValueError("no fitted parameter estimates are available to plot")
+        model_names = table["model"].drop_duplicates().tolist()
+        parameter_names = table["parameter"].drop_duplicates().tolist()
+        if len(model_names) == 1:
+            table["_series"] = table["parameter"]
+            series_order = parameter_names
+        elif len(parameter_names) == 1:
+            table["_series"] = table["model"]
+            series_order = model_names
+        else:
+            table["_series"] = table["model"] + ": " + table["parameter"]
+            series_order = [
+                f"{name}: {parameter}"
+                for name in model_names
+                for parameter in parameter_names
+                if not table.loc[
+                    (table["model"] == name) & (table["parameter"] == parameter)
+                ].empty
+            ]
+        frame = table.pivot(index=x, columns="_series", values="estimate").reindex(
+            columns=series_order
+        )
+        return plot_series(
+            frame,
+            facet=False,
+            auto_dual_y=False,
+            title=title,
+            xtitle=x_labels[x] if xtitle is None else xtitle,
+            ytitle="Estimate" if ytitle is None else ytitle,
+            freq=freq,
+            note=note,
+            grid=grid,
+            ax=ax,
         )
 
     def metric_table(self, *, by):
