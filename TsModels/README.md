@@ -246,8 +246,11 @@ rolling = evaluate_forecasts(
 - `predictions`：模型、拆分、起点、目标期、预测步长和变量维度的长表；
 - `splits` / `failures`：训练窗口元数据和失败记录；
 - `metric_table(by="origin"|"horizon"|"series")`：分组误差；
+- `parameter_table(model=..., parameters=...)`：各训练样本范围下的参数估计、
+  标准误和 p 值；失败 split 以 NaN 保留；
 - `plot_forecasts(horizon=..., series=...)` 与
-  `plot_metric("rmse", by="origin")`：复用 `TsPlots.plot_series()` 的统一样式。
+  `plot_metric("rmse", by="origin")`、
+  `plot_parameters(parameters=..., model=...)`：复用 `TsPlots.plot_series()` 的统一样式。
 
 结果数组始终保留拆分维和预测步长维：单变量为
 `(n_splits, horizon)`，多变量为 `(n_splits, horizon, n_series)`。

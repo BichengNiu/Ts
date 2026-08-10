@@ -130,6 +130,7 @@ def _evaluate_one_model(
     lower = np.full(output_shape, np.nan)
     upper = np.full(output_shape, np.nan)
     failures = []
+    parameter_estimates = []
     has_interval = False
     model_type = type(model).__name__
 
@@ -142,7 +143,7 @@ def _evaluate_one_model(
         bridge_horizon = target_stop - train_stop
         bridge_shape = expected_forecast_shape(data, bridge_horizon)
         try:
-            model_type, forecast = fit_and_forecast(
+            model_type, parameters, forecast = fit_and_forecast(
                 model,
                 train_data,
                 training_exog(model, train_start, train_stop),
@@ -173,6 +174,9 @@ def _evaluate_one_model(
                 lower[row] = bridge_lower[offset:]
                 upper[row] = bridge_upper[offset:]
                 has_interval = True
+            parameter_estimates.extend(
+                {"split": split.split, **parameter} for parameter in parameters
+            )
         except Exception as error:
             if on_error == "raise":
                 raise
@@ -197,6 +201,7 @@ def _evaluate_one_model(
         series_names=series_names,
         alpha=alpha,
         uses_observed_future_exog=uses_observed_future_exog,
+        parameter_estimates=parameter_estimates,
     )
 
 

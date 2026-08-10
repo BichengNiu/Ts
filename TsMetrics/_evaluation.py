@@ -118,6 +118,61 @@ def prediction_arrays(prediction, expected_shape):
     )
 
 
+def _optional_parameter_value(values, name):
+    """Return one optional scalar diagnostic without tightening the protocol."""
+    get = getattr(values, "get", None)
+    if not callable(get):
+        return np.nan
+    try:
+        value = get(name, np.nan)
+        array = np.asarray(value)
+        if array.size != 1:
+            return np.nan
+        return float(array.reshape(-1)[0])
+    except (TypeError, ValueError):
+        return np.nan
+
+
+def parameter_snapshot(fitted):
+    """Extract scalar parameter diagnostics from a fitted result when exposed."""
+    try:
+        params = getattr(fitted, "params", None)
+        items = getattr(params, "items", None)
+        if not callable(items):
+            return ()
+        items = tuple(items())
+    except Exception:
+        return ()
+    try:
+        std_errors = getattr(fitted, "std_errors", None)
+    except Exception:
+        std_errors = None
+    try:
+        p_values = getattr(fitted, "p_values", None)
+    except Exception:
+        p_values = None
+    records = []
+    for name, value in items:
+        if not isinstance(name, str) or not name:
+            continue
+        try:
+            array = np.asarray(value)
+            if array.size != 1:
+                continue
+            estimate = float(array.reshape(-1)[0])
+        except (TypeError, ValueError):
+            continue
+        records.append(
+            {
+                "parameter": name,
+                "estimate": estimate,
+                "std_error": _optional_parameter_value(std_errors, name),
+                "p_value": _optional_parameter_value(p_values, name),
+            }
+        )
+    return tuple(records)
+
+
 def fit_and_forecast(
     model: EvaluationModelProtocol,
     train_data,
@@ -158,7 +213,11 @@ def fit_and_forecast(
         alpha=alpha,
         **predict_kwargs,
     )
-    return model_type, prediction_arrays(prediction, expected_shape)
+    return (
+        model_type,
+        parameter_snapshot(fitted),
+        prediction_arrays(prediction, expected_shape),
+    )
 
 
 def evaluation_actual(model, observed, train_data, expected_shape):
