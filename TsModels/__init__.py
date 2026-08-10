@@ -24,12 +24,13 @@ Result classes
 SARIMAXResult
     Container for SARIMAX estimation output. Provides ``.summary()``,
     ``.predict()``, ``.plot_fit()``, ``.plot_diagnostics()``,
-    ``.test_residuals()``, and ``.standardized_residuals``.
+    ``.test_residuals()``, ``.parameter_correlation()``, and
+    ``.standardized_residuals``.
 GARCHResult
     Container for GARCH estimation output. Provides ``.summary()``,
     ``.predict()``, ``.plot_fit()``, ``.plot_diagnostics()``,
-    ``.test_residuals()``, ``.standardized_residuals``, and
-    ``.conditional_volatility``.
+    ``.test_residuals()``, ``.parameter_correlation()``,
+    ``.standardized_residuals``, and ``.conditional_volatility``.
 SVARResult
     Container for SVAR estimation output (extends VARResult). Provides
     ``.A``, ``.B``, ``.sirf()``, ``.structural_residuals``.

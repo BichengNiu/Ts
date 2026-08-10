@@ -2806,6 +2806,9 @@ class SARIMAX(BaseModel):
             std_errors[name] = float(bse_val)
             p_values[name] = float(pval)
 
+        parameter_names = tuple(fitted.param_names)
+        parameter_covariance = np.asarray(fitted.cov_params(), dtype=float)
+
         burn = int(fitted.loglikelihood_burn)
         resid = np.asarray(fitted.resid)[burn:].copy()
         if self.log:
@@ -2831,6 +2834,8 @@ class SARIMAX(BaseModel):
             fitted_values=fitted_vals,
             nobs=int(fitted.nobs),
             data=self.data.copy(),
+            _parameter_covariance=parameter_covariance,
+            _parameter_names=parameter_names,
             _order=self.order,
             _seasonal_order=self.seasonal_order,
             _statsmodels_result=fitted,

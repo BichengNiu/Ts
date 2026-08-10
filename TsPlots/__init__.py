@@ -20,6 +20,8 @@ plot_correlogram
     Precomputed lag correlations with supplied null confidence bands.
 plot_lag_response
     Lag-indexed impulse-response bar chart with optional facets.
+plot_correlation_matrix
+    Labelled heatmap for a precomputed correlation matrix.
 
 Quick start
 -----------
@@ -36,9 +38,11 @@ from .ts_plot import plot_series
 from .sc_plot import plot_scatter
 from .acf_plot import plot_acf, plot_correlogram, plot_pacf
 from .lag_plot import plot_lag_response
+from .matrix_plot import plot_correlation_matrix
 
 __all__ = [
     "plot_acf",
+    "plot_correlation_matrix",
     "plot_correlogram",
     "plot_lag_response",
     "plot_pacf",

@@ -79,6 +79,20 @@ class TestSARIMAX:
         assert ar_estimate is not None
         assert 0.3 < ar_estimate < 1.0
 
+    def test_fit_exposes_parameter_correlation_in_fitted_order(self, ar1_data):
+        """SARIMAX correlations use statsmodels covariance and parameter order."""
+        from Ts.TsModels._sarimax import SARIMAX
+
+        result = SARIMAX(ar1_data, order=(1, 0, 0)).fit()
+        correlation = result.parameter_correlation()
+        names = list(result._statsmodels_result.param_names)
+        covariance = np.asarray(result._statsmodels_result.cov_params(), dtype=float)
+        scale = np.sqrt(np.diag(covariance))
+        expected = covariance / np.outer(scale, scale)
+
+        assert correlation.index.tolist() == names
+        np.testing.assert_allclose(correlation.to_numpy(), expected)
+
     def test_ma1_fit_basic(self, ma1_data):
         """MA(1) model fits without error.
 

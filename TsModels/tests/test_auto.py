@@ -155,6 +155,8 @@ class TestAutoModelResult:
             fitted_values=np.zeros(n),
             nobs=n,
             data=np.arange(n, dtype=float),
+            _parameter_covariance=np.array([[0.01, -0.01], [-0.01, 0.04]]),
+            _parameter_names=("ar.L1", "sigma2"),
         )
 
     @pytest.fixture
@@ -215,6 +217,16 @@ class TestAutoModelResult:
         output = auto_result.test_residuals(lags=3)
         assert output.ljung_box is not None
         assert output.engle_lm is not None
+
+    def test_parameter_correlation_delegates_to_best_result(self, auto_result):
+        """Auto results expose the selected model's inference, not search data."""
+        correlation = auto_result.parameter_correlation(["sigma2", "ar.L1"])
+
+        assert correlation.index.tolist() == ["sigma2", "ar.L1"]
+        np.testing.assert_allclose(
+            correlation.to_numpy(),
+            [[1.0, -0.5], [-0.5, 1.0]],
+        )
 
     def test_cycle_period_delegates_to_best_result(self, auto_result, base_result):
         expected = object()

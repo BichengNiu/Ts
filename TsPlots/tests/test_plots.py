@@ -7,6 +7,7 @@ matplotlib.use("Agg")  # Non-interactive backend
 import matplotlib.pyplot as plt
 from Ts.TsPlots import (
     plot_acf,
+    plot_correlation_matrix,
     plot_correlogram,
     plot_pacf,
     plot_scatter,
@@ -338,6 +339,8 @@ class TestStyleConstants:
 
     def test_markers_has_eight(self):
         assert len(DEFAULT_MARKERS) == 8
+
+
 class TestPlotCorrelogram:
     def test_precomputed_series_uses_supplied_values_and_band(self):
         values = pd.Series([0.1, -0.3, 0.5], index=[0, 1, 2], name="price")
@@ -397,3 +400,49 @@ class TestPlotCorrelogram:
     ):
         with pytest.raises(ValueError, match=match):
             plot_correlogram(values, confidence_band=band)
+
+
+class TestPlotCorrelationMatrix:
+    def test_dataframe_uses_labels_annotations_and_fixed_scale(self):
+        matrix = pd.DataFrame(
+            [[1.0, -0.75], [-0.75, 1.0]],
+            index=["alpha[1]", "beta[1]"],
+            columns=["alpha[1]", "beta[1]"],
+        )
+
+        fig, ax = plot_correlation_matrix(matrix)
+
+        assert fig is ax.figure
+        assert [tick.get_text() for tick in ax.get_xticklabels()] == list(matrix)
+        assert len(ax.texts) == 4
+        assert ax.images[0].get_clim() == (-1.0, 1.0)
+        plt.close(fig)
+
+    def test_array_accepts_labels_and_existing_axes(self):
+        fig, ax = plt.subplots()
+
+        returned_fig, returned_ax = plot_correlation_matrix(
+            [[1.0, 0.25], [0.25, 1.0]],
+            labels=["ar.L1", "ma.L1"],
+            annotate=False,
+            ax=ax,
+        )
+
+        assert returned_fig is fig
+        assert returned_ax is ax
+        assert not ax.texts
+        plt.close(fig)
+
+    @pytest.mark.parametrize(
+        ("matrix", "kwargs", "message"),
+        [
+            ([[1.0, 0.2]], {}, "square"),
+            ([[1.0, 1.2], [1.2, 1.0]], {}, "between -1 and 1"),
+            ([[1.0, 0.2], [0.3, 1.0]], {}, "symmetric"),
+            ([[0.9, 0.2], [0.2, 1.0]], {}, "diagonal"),
+            ([[1.0, 0.2], [0.2, 1.0]], {"labels": ["one"]}, "length"),
+        ],
+    )
+    def test_validates_matrix_contract(self, matrix, kwargs, message):
+        with pytest.raises(ValueError, match=message):
+            plot_correlation_matrix(matrix, **kwargs)

@@ -102,6 +102,8 @@ result.test_residuals(lags=10)
 | `.plot_fit()` | 实际值与拟合值对比图 |
 | `.plot_diagnostics()` | 标准化残差诊断图：第一行为标准化残差时间序列和直方图（含 Normality/Jarque–Bera），第二行为 ACF（含 White Noise/Ljung–Box）和 PACF；VAR/VECM 保持逐方程三列布局 |
 | `.test_residuals(lags)` | 四项残差检验：白噪音 + 正态性 + Ljung-Box + Engle LM |
+| `.parameter_correlation(parameters=None)` | 估计参数的相关矩阵；当前由 SARIMAX 与 ARCH/GARCH 系列提供 |
+| `.plot_parameter_correlation(...)` | 使用 `TsPlots.plot_correlation_matrix` 绘制参数相关热图 |
 | `.params` | 估计参数 dict |
 | `.aic` / `.bic` | 信息准则 |
 | `.residuals` | 原始模型尺度上的有效残差序列 |
@@ -112,6 +114,8 @@ result.test_residuals(lags=10)
 | 模型 | 方法 | 说明 |
 |------|------|------|
 | `SARIMAX` / `SARIMAXResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
+| | `.parameter_correlation(parameters=None)` | SARIMA/SARIMAX、外生变量、事件与 RDL 的已估参数相关矩阵；固定为零的稀疏滞后不进入矩阵 |
+| | `.plot_parameter_correlation(...)` | 参数相关矩阵热图；可按参数名筛选 |
 | | `.arroots` | AR 多项式特征根 (ndarray) |
 | | `.maroots` | MA 多项式特征根 (ndarray) |
 | | `.is_stationary` | AR 多项式的全部根是否位于单位圆外 |
@@ -132,6 +136,8 @@ result.test_residuals(lags=10)
 | | `.unconditional_log_variance` | `log=True` 平稳模型的无条件对数响应方差；通过状态空间离散 Lyapunov 方程精确计算，其他模型返回 `None` |
 | | `.long_run_equilibrium()` | 零外生输入基线的长期均值；`log=True` 时返回 `exp(C + 0.5 * unconditional_log_variance)` 的原始尺度均值 |
 | `GARCH` / `GARCHResult` | `.predict(start, end, alpha)` | 条件波动率预测；性能评估由 `TsMetrics` 负责 |
+| | `.parameter_correlation(parameters=None)` | ARCH、GARCH、GJR-GARCH、EGARCH、GARCH-M 与 IGARCH 的参数相关矩阵 |
+| | `.plot_parameter_correlation(...)` | 参数相关矩阵热图；IGARCH 的矩阵因精确持久性约束而奇异 |
 | | `.conditional_volatility` | 条件波动率 σ_t |
 | | `.test_persistence()` | IGARCH 持久性 Wald 检验 |
 | | `.long_run_equilibrium()` | 无条件方差 (协方差平稳 GARCH/GJR → float；EGARCH/IGARCH → None) |
