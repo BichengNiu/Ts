@@ -1,10 +1,11 @@
 # Ts/TsUtils
 
-时间序列预处理与识别诊断工具包。当前提供七类能力：
+时间序列预处理与识别诊断工具包。当前提供八类能力：
 
 - STL（Seasonal-Trend decomposition using LOESS）分解；
 - 缺失值内插及可审计的填补结果；
 - 普通、对数及显式周期的差分；
+- 将单一时间序列重塑为便于 Excel/CSV 导出的日历方块表；
 - 根据规则日期索引自动生成季节虚拟变量；
 - 可审计、可复用参数的 Box-Cox 幂变换；
 - 时间序列统计摘要与诊断图；
@@ -22,6 +23,7 @@ from Ts.TsUtils import (
     STL,
     STLResult,
     boxcox,
+    calendar_table,
     difference,
     eacf,
     interpolate_missing,
@@ -120,6 +122,64 @@ difference(data, *, order=1, log=False, lag=1)
 计算；返回值保持原容器类型、索引、Series 名称、DataFrame 列名和行数，不修改
 调用方数据。差分产生的前置缺失值不会被删除，输入中的缺失值按 pandas 的标准
 差分规则传播；正负无穷、布尔值、复数和非数值列会被拒绝。
+
+## 日历方块表
+
+`calendar_table()` 将一个带日期索引的数值时间序列重塑为可直接导出的方块表：
+
+```python
+import pandas as pd
+
+from Ts.TsUtils import calendar_table
+
+dates = pd.date_range("2023-11-01", periods=5, freq="MS")
+series = pd.Series([11.0, 12.0, 1.0, None, 3.0], index=dates)
+
+table = calendar_table(series)
+table.to_excel("monthly_table.xlsx")
+table.to_csv("monthly_table.csv")
+```
+
+公共签名：
+
+```text
+calendar_table(data, *, col=None, freq=None, label_style="numeric")
+```
+
+输入接受带 `DatetimeIndex` 或 `PeriodIndex` 的 `Series` 和 `DataFrame`。单列
+`DataFrame` 可以省略 `col`；多列 `DataFrame` 必须用 `col` 明确选择一列。函数
+只负责重塑并返回 `DataFrame`，不负责文件写出，不修改输入，也不进行插值或聚合。
+
+| 输入频率 | 行 | 列 |
+|---|---|---|
+| 年度 | 单行 `value` | 自然年 |
+| 自然季度 | `1–4` | 自然年 |
+| 月度 | `1–12` | 自然年 |
+| 周度 | 月内第 `1–5` 周 | 两级列：自然年、月份 |
+| 日度/工作日 | `1–31` | 两级列：自然年、月份 |
+
+周度观测按其七天周期内的**周三**所属自然年和月份归类，而不是按原始周标签日期
+归类。行号表示该周三是当月第几个周三。函数拒绝财政季度、财政年度、日内频率和
+倍数频率；所有季度和年份都只采用自然年度语义。
+
+索引存在缺期且无法自动识别频率时，应显式传入 pandas 频率字符串。函数在首尾
+观测之间补出缺少的日期位置，但其值保持 `NaN`：
+
+```python
+gapped_dates = pd.DatetimeIndex(["2024-01-01", "2024-03-01"])
+gapped = pd.Series([1.0, 3.0], index=gapped_dates)
+table = calendar_table(gapped, freq="MS")
+```
+
+默认 `label_style="numeric"` 使用便于计算和排序的整数标签。面向展示或直接导出
+时，可以改用中文文本标签：
+
+```python
+display_table = calendar_table(series, label_style="text")
+```
+
+文本模式使用 `"1月"`、`"第1周"`、`"1日"` 和 `"2024年"` 等标签；数值、缺失
+位置和时间顺序不变。原始缺失值和补齐出的缺期均保留为 `NaN`。
 
 ## 季节虚拟变量
 

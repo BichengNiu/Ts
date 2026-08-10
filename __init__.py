@@ -17,11 +17,13 @@ Quick start
 -----------
 >>> from Ts import (
 ...     ADFTest, AutoSARIMAX, SARIMAX, STL, eacf,
-...     interpolate_missing, seasonal_dummies,
+...     calendar_table, interpolate_missing, seasonal_dummies,
 ... )
 >>> from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
->>> from Ts.TsUtils import STL, interpolate_missing, eacf, seasonal_dummies
+>>> from Ts.TsUtils import (
+...     STL, calendar_table, eacf, interpolate_missing, seasonal_dummies,
+... )
 >>> from Ts.TsModels import SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
 >>> from Ts.TsMetrics import Holdout, RollingOrigin, evaluate_forecasts, rmse
 >>> from Ts.TsTests import ADFTest, KPSSTest, LjungBoxTest

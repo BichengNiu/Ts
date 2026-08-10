@@ -66,7 +66,9 @@ def _complete_series(series, offset):
     else:
         complete_index = pd.date_range(index[0], index[-1], freq=offset)
     if not index.isin(complete_index).all():
-        raise ValueError(f"time index is incompatible with frequency {offset.freqstr!r}")
+        raise ValueError(
+            f"time index is incompatible with frequency {offset.freqstr!r}"
+        )
     return series.reindex(complete_index)
 
 
@@ -204,8 +206,64 @@ def _apply_label_style(table, *, family, label_style):
 
 
 def calendar_table(data, *, col=None, freq=None, label_style="numeric") -> pd.DataFrame:
-    """Reshape one dated series into a calendar-oriented table."""
-    if label_style not in {"numeric", "text"}:
+    """Reshape one dated series into a calendar-oriented table.
+
+    Parameters
+    ----------
+    data : pandas.Series or pandas.DataFrame
+        One finite real numeric time series with a unique, increasing
+        ``DatetimeIndex`` or ``PeriodIndex``. A DataFrame may contain multiple
+        columns only when ``col`` selects one unambiguously.
+    col : hashable, optional
+        DataFrame column to reshape. A one-column DataFrame is selected
+        automatically. This argument is invalid for Series input.
+    freq : str, optional
+        Pandas frequency string used to validate and complete a gapped index.
+        When omitted, frequency metadata and then ``pandas.infer_freq()`` are
+        used. Supported unit families are natural annual, natural quarterly,
+        monthly, weekly, daily, and business daily.
+    label_style : {"numeric", "text"}, default "numeric"
+        Keep machine-friendly integer calendar labels or use presentation
+        labels such as ``"1月"``, ``"第1周"``, and ``"2024年"``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A fixed-row calendar table. Annual, quarterly, and monthly data use
+        natural-year columns. Weekly, daily, and business-daily data use
+        ``(year, month)`` MultiIndex columns. Missing observations remain
+        ``NaN``.
+
+    Raises
+    ------
+    TypeError
+        If the input container, selected values, or ``freq`` type is invalid.
+    ValueError
+        If selection is ambiguous; the index is invalid; the frequency is
+        unsupported, incompatible, or unidentified; values are non-finite; or
+        ``label_style`` is invalid.
+
+    Notes
+    -----
+    Weekly observations are assigned to the natural year and month containing
+    the Wednesday of their seven-day period. The function never interpolates,
+    aggregates, writes files, or modifies ``data``.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsUtils import calendar_table
+    >>> months = pd.date_range("2024-01-01", periods=3, freq="MS")
+    >>> monthly = calendar_table(pd.Series([1.0, 2.0, 3.0], index=months))
+    >>> (monthly.shape, monthly.loc[1, 2024])
+    ((12, 1), np.float64(1.0))
+
+    >>> weeks = pd.date_range("2024-02-04", periods=2, freq="W-SUN")
+    >>> weekly = calendar_table(pd.Series([10.0, 20.0], index=weeks))
+    >>> weekly.loc[5, (2024, 1)]
+    np.float64(10.0)
+    """
+    if not isinstance(label_style, str) or label_style not in {"numeric", "text"}:
         raise ValueError("label_style must be 'numeric' or 'text'")
     series = _select_series(data, col=col)
     _validate_series_values(series)

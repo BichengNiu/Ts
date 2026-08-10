@@ -184,14 +184,16 @@ def test_text_labels_cover_quarterly_weekly_and_daily_rows(
     )
 
     assert result.index.tolist() == expected_rows
-    assert all(str(column[0]).endswith("年") for column in result.columns) if isinstance(
-        result.columns, pd.MultiIndex
-    ) else all(str(column).endswith("年") for column in result.columns)
+    assert (
+        all(str(column[0]).endswith("年") for column in result.columns)
+        if isinstance(result.columns, pd.MultiIndex)
+        else all(str(column).endswith("年") for column in result.columns)
+    )
     if isinstance(result.columns, pd.MultiIndex):
         assert all(str(column[1]).endswith("月") for column in result.columns)
 
 
-@pytest.mark.parametrize("label_style", [None, True, "labels"])
+@pytest.mark.parametrize("label_style", [None, True, [], "labels"])
 def test_label_style_must_be_numeric_or_text(label_style):
     """Unknown display modes fail instead of silently changing labels."""
     index = pd.date_range("2024-01-01", periods=3, freq="MS")
@@ -207,6 +209,20 @@ def test_explicit_frequency_must_match_every_observed_timestamp():
     index = pd.DatetimeIndex(["2024-01-01", "2024-01-31"])
     with pytest.raises(ValueError, match="incompatible"):
         calendar_table(pd.Series([1.0, 2.0], index=index), freq="MS")
+
+
+@pytest.mark.parametrize(
+    ("freq", "error", "match"),
+    [
+        (12, TypeError, "freq must be"),
+        ("not-a-frequency", ValueError, "invalid frequency"),
+    ],
+)
+def test_explicit_frequency_must_be_a_valid_pandas_string(freq, error, match):
+    """Malformed frequency overrides fail with argument-specific errors."""
+    index = pd.date_range("2024-01-01", periods=3, freq="MS")
+    with pytest.raises(error, match=match):
+        calendar_table(pd.Series([1.0, 2.0, 3.0], index=index), freq=freq)
 
 
 @pytest.mark.parametrize(
@@ -275,7 +291,10 @@ def test_invalid_containers_and_time_indexes_are_rejected(data, error, match):
 def test_invalid_time_series_values_are_rejected(values):
     """Only finite real numeric observations and ordinary missing values pass."""
     index = pd.date_range("2024-01-01", periods=3, freq="MS")
-    with pytest.raises((TypeError, ValueError), match="numeric|Boolean|complex|finite"):
+    with pytest.raises(
+        (TypeError, ValueError),
+        match=r"numeric|Boolean|complex|finite",
+    ):
         calendar_table(pd.Series(values, index=index))
 
 
