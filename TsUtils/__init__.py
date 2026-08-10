@@ -6,6 +6,7 @@ without estimating predictive models.
 
 from ._difference import difference
 from ._boxcox import BoxCoxResult, boxcox
+from ._calendar_table import calendar_table
 from ._eacf import EACFResult, eacf
 from ._interpolation import InterpolationResult, interpolate_missing
 from ._seasonal_dummies import seasonal_dummies
@@ -20,6 +21,7 @@ __all__ = [
     "STLResult",
     "TimeSeriesSummary",
     "boxcox",
+    "calendar_table",
     "difference",
     "eacf",
     "interpolate_missing",

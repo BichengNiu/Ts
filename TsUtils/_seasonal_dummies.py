@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 from pandas.tseries.offsets import (
     BMonthBegin,
     BMonthEnd,
@@ -19,47 +18,16 @@ from pandas.tseries.offsets import (
     Week,
 )
 
-
-def _resolve_time_index(data) -> pd.DatetimeIndex | pd.PeriodIndex:
-    """Return and validate the time index carried by a public input."""
-    if isinstance(data, (pd.DatetimeIndex, pd.PeriodIndex)):
-        index = data
-    elif isinstance(data, (pd.Series, pd.DataFrame)):
-        index = data.index
-    else:
-        raise TypeError(
-            "data must be a Series, DataFrame, DatetimeIndex, or PeriodIndex"
-        )
-
-    if not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
-        raise TypeError("data must have a DatetimeIndex or PeriodIndex")
-    if index.empty:
-        raise ValueError("time index must not be empty")
-    if index.hasnans:
-        raise ValueError("time index must not contain missing dates")
-    if not index.is_unique:
-        raise ValueError("time index must contain unique dates")
-    if not index.is_monotonic_increasing:
-        raise ValueError("time index must be sorted in increasing order")
-    return index
+from ._calendar import resolve_frequency, resolve_time_index
 
 
 def _resolve_frequency(index):
     """Return a supported seasonal family and its unit pandas offset."""
-    frequency = index.freq
-    if frequency is None:
-        try:
-            frequency = pd.infer_freq(index)
-        except ValueError as error:
-            raise ValueError(
-                "time index must have a regular frequency that can be inferred"
-            ) from error
-    if frequency is None:
-        raise ValueError("time index must have a regular frequency that can be inferred")
-
-    offset = to_offset(frequency)
+    offset = resolve_frequency(index)
     if offset.n != 1:
-        raise ValueError(f"seasonal_dummies does not support frequency {frequency!r}")
+        raise ValueError(
+            f"seasonal_dummies does not support frequency {offset.freqstr!r}"
+        )
 
     if isinstance(offset, BusinessDay):
         family = "business_daily"
@@ -75,7 +43,9 @@ def _resolve_frequency(index):
     ):
         family = "quarterly"
     else:
-        raise ValueError(f"seasonal_dummies does not support frequency {frequency!r}")
+        raise ValueError(
+            f"seasonal_dummies does not support frequency {offset.freqstr!r}"
+        )
     return family, offset
 
 
@@ -156,7 +126,7 @@ def seasonal_dummies(data, *, drop_first=True) -> pd.DataFrame:
     """
     if not isinstance(drop_first, (bool, np.bool_)):
         raise TypeError("drop_first must be a boolean")
-    index = _resolve_time_index(data)
+    index = resolve_time_index(data)
     family, offset = _resolve_frequency(index)
     labels, categories, prefix = _seasonal_categories(index, family, offset)
     categorical = pd.Categorical(labels, categories=categories, ordered=True)
