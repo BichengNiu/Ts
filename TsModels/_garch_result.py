@@ -606,6 +606,13 @@ def _scale_params_back(fitted, scale, form):
         -> Const* = Const_s * s, kappa* = kappa_s (invariant), omega* = omega_s * s^2
 
     alpha, beta, nu: always unchanged.
+
+    Returns
+    -------
+    dict
+        Multiplicative transformation from the fitted scale to the public
+        scale for every transformed parameter. This lets callers transform
+        the complete covariance matrix consistently.
     """
     s = scale
     s2 = s * s
@@ -623,6 +630,11 @@ def _scale_params_back(fitted, scale, form):
 
     fitted.resid = np.asarray(fitted.resid) * s
     fitted.conditional_volatility = np.asarray(fitted.conditional_volatility) * s
+    return _param_scale | {
+        name: s
+        for name in fitted.params.index
+        if name in ("Const", "mu") or name.startswith("phi")
+    }
 
 
 def _get_dist_object(dist):

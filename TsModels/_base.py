@@ -387,6 +387,164 @@ class BaseModelResult:
     fitted_values: np.ndarray | None
     nobs: int
     data: np.ndarray
+    _parameter_covariance: np.ndarray | None = None
+    _parameter_names: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        """Copy and validate optional parameter-inference metadata."""
+        self._parameter_names = tuple(self._parameter_names)
+        if self._parameter_covariance is None:
+            if self._parameter_names:
+                raise ValueError(
+                    "parameter names require a parameter covariance matrix"
+                )
+            return
+
+        covariance = np.array(self._parameter_covariance, dtype=float, copy=True)
+        expected = len(self._parameter_names)
+        if covariance.shape != (expected, expected):
+            raise ValueError(
+                "parameter covariance shape must match the parameter names"
+            )
+        if len(set(self._parameter_names)) != expected:
+            raise ValueError("parameter names must be unique")
+        self._parameter_covariance = covariance
+
+    def _parameter_positions(self, parameters):
+        """Resolve an optional public parameter subset to covariance positions."""
+        if self._parameter_covariance is None:
+            raise NotImplementedError(
+                f"parameter correlation is not available for {self.model_type}"
+            )
+        if parameters is None:
+            return list(range(len(self._parameter_names)))
+        if isinstance(parameters, str):
+            raise TypeError("parameters must be a sequence of parameter names")
+        try:
+            selected = tuple(parameters)
+        except TypeError as error:
+            raise TypeError(
+                "parameters must be a sequence of parameter names"
+            ) from error
+        if not selected:
+            raise ValueError("parameters must not be empty")
+        if any(not isinstance(name, str) for name in selected):
+            raise TypeError("every parameter name must be a string")
+        if len(set(selected)) != len(selected):
+            raise ValueError("parameters must not contain duplicates")
+
+        positions = {name: index for index, name in enumerate(self._parameter_names)}
+        unknown = [name for name in selected if name not in positions]
+        if unknown:
+            raise ValueError("unknown parameter names: " + ", ".join(unknown))
+        return [positions[name] for name in selected]
+
+    def parameter_correlation(self, parameters=None) -> pd.DataFrame:
+        """Return the estimated-parameter correlation matrix.
+
+        The matrix describes joint estimation uncertainty. Large absolute
+        correlations can indicate weak parameter identification or redundant
+        dynamics, but they do not replace stationarity roots, invertibility
+        roots, or volatility-persistence diagnostics.
+
+        Parameters
+        ----------
+        parameters : sequence of str, optional
+            Ordered subset of estimated parameter names. By default all
+            estimated parameters are returned.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Symmetric correlation matrix with parameter names on both axes.
+
+        Raises
+        ------
+        NotImplementedError
+            If the fitted model does not expose parameter covariance.
+        ValueError
+            If covariance is non-finite, non-symmetric, has non-positive
+            marginal variances, or a selected parameter name is unknown.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=80, order=(1, 0, 0), seed=42).data
+        >>> result = SARIMAX(data, order=(1, 0, 0)).fit()
+        >>> result.parameter_correlation().shape[0] == len(result.params)
+        True
+        """
+        selected = self._parameter_positions(parameters)
+        covariance = self._parameter_covariance[np.ix_(selected, selected)].copy()
+        names = [self._parameter_names[index] for index in selected]
+
+        if not np.all(np.isfinite(covariance)):
+            raise ValueError("parameter covariance must contain only finite values")
+        scale = max(1.0, float(np.max(np.abs(covariance))))
+        tolerance = np.finfo(float).eps * scale * max(100.0, len(names) * 10.0)
+        if not np.allclose(covariance, covariance.T, rtol=1e-7, atol=tolerance):
+            raise ValueError("parameter covariance must be symmetric")
+        covariance = (covariance + covariance.T) / 2.0
+
+        variances = np.diag(covariance)
+        if np.any(variances <= 0.0):
+            raise ValueError("parameter variances must be positive")
+        standard_errors = np.sqrt(variances)
+        correlation = covariance / np.outer(standard_errors, standard_errors)
+        correlation = np.clip(correlation, -1.0, 1.0)
+        np.fill_diagonal(correlation, 1.0)
+        return pd.DataFrame(correlation, index=names, columns=names)
+
+    def plot_parameter_correlation(
+        self,
+        parameters=None,
+        *,
+        annotate=True,
+        decimals=2,
+        title=None,
+        ax=None,
+    ):
+        """Plot the estimated-parameter correlation matrix.
+
+        Parameters
+        ----------
+        parameters : sequence of str, optional
+            Ordered subset of estimated parameter names. By default all
+            estimated parameters are plotted.
+        annotate : bool, default True
+            Whether to write each correlation value inside its cell.
+        decimals : int, default 2
+            Number of decimal places used for cell annotations.
+        title : str, optional
+            Chart title. Defaults to ``"<model> Parameter Correlation"``.
+        ax : matplotlib.axes.Axes, optional
+            Existing axes. A new figure and axes are created when omitted.
+
+        Returns
+        -------
+        tuple
+            ``(figure, axes)`` containing the correlation heatmap.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import GARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> data = simulate_garch(n=150, seed=42).data
+        >>> result = GARCH(data).fit()
+        >>> fig, ax = result.plot_parameter_correlation(annotate=False)
+        """
+        from Ts.TsPlots import plot_correlation_matrix
+
+        matrix = self.parameter_correlation(parameters=parameters)
+        resolved_title = title or f"{self.model_type} Parameter Correlation"
+        return plot_correlation_matrix(
+            matrix,
+            annotate=annotate,
+            decimals=decimals,
+            title=resolved_title,
+            ax=ax,
+        )
 
     @property
     def standardized_residuals(self) -> np.ndarray:

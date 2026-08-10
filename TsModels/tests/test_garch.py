@@ -67,6 +67,17 @@ class TestGARCH:
         assert len(vol) == 200
         assert np.all(vol > 0)
 
+    def test_arch_exposes_parameter_correlation(self, arch_data):
+        """Pure ARCH results retain covariance for every estimated lag."""
+        from Ts.TsModels._garch import GARCH
+
+        result = GARCH(arch_data, p=2, q=0).fit()
+        correlation = result.parameter_correlation()
+
+        assert correlation.index.tolist() == list(result.params)
+        assert {"alpha[1]", "alpha[2]"} <= set(correlation.index)
+        np.testing.assert_allclose(np.diag(correlation), 1.0)
+
     def test_garch_q0_lag_selection(self, arch_data):
         """GARCH(p>1, q=0) stores per-lag AIC/BIC."""
         from Ts.TsModels._garch import GARCH
@@ -112,6 +123,21 @@ class TestGARCH:
         result = model.fit()
         assert isinstance(result, GARCHResult)
         assert result.model_type == "GARCH"
+
+    def test_garch11_exposes_parameter_correlation(self, garch11_data):
+        """GARCH correlations preserve arch's labelled parameter order."""
+        from Ts.TsModels._garch import GARCH
+
+        result = GARCH(garch11_data, p=1, q=1).fit()
+        correlation = result.parameter_correlation()
+        raw_covariance = result._arch_result.param_cov
+        names = list(result._arch_result.params.index)
+        covariance = raw_covariance.loc[names, names].to_numpy(dtype=float)
+        scale = np.sqrt(np.diag(covariance))
+        expected = covariance / np.outer(scale, scale)
+
+        assert correlation.index.tolist() == names
+        np.testing.assert_allclose(correlation.to_numpy(), expected)
 
     def test_arch_class_removed(self):
         """ARCH class no longer exists in _garch module."""
@@ -316,6 +342,15 @@ class TestGARCHInMean:
         model = GARCH(garch11_data, p=1, q=1, garch_m=True, garch_m_form="var")
         result = model.fit()
         assert result.garch_m_form == "var"
+        covariance_se = np.sqrt(np.diag(result._parameter_covariance))
+        reported_se = np.array(
+            [result.std_errors[name] for name in result._parameter_names]
+        )
+        np.testing.assert_allclose(covariance_se, reported_se)
+        np.testing.assert_allclose(
+            np.diag(result.parameter_correlation()),
+            1.0,
+        )
 
     def test_garch_m_form_log(self, garch11_data):
         """GARCH-M with garch_m_form='log' uses log-variance form."""
@@ -424,6 +459,16 @@ class TestGJR_GARCH:
         model = GARCH(gjrgarch_data, p=1, o=1, q=1)
         result = model.fit()
         assert "gamma[1]" in result.params
+
+    def test_gjrgarch_parameter_correlation_includes_asymmetry(self, gjrgarch_data):
+        """GJR-GARCH joint inference includes the leverage coefficient."""
+        from Ts.TsModels._garch import GARCH
+
+        result = GARCH(gjrgarch_data, p=1, o=1, q=1).fit()
+        correlation = result.parameter_correlation()
+
+        assert "gamma[1]" in correlation.index
+        np.testing.assert_allclose(correlation, correlation.T)
 
     def test_gjrgarch_summary_label(self, gjrgarch_data):
         """GJR-GARCH summary shows correct model label."""
@@ -556,6 +601,18 @@ class TestEGARCH:
         result = model.fit()
         assert "gamma[1]" in result.params
 
+    def test_egarch_parameter_correlation_includes_log_variance_terms(
+        self, egarch_data
+    ):
+        """EGARCH correlations cover alpha, gamma, and beta jointly."""
+        from Ts.TsModels._garch import GARCH
+
+        result = GARCH(egarch_data, p=1, o=1, q=1, vol="EGARCH").fit()
+        correlation = result.parameter_correlation()
+
+        assert {"alpha[1]", "gamma[1]", "beta[1]"} <= set(correlation.index)
+        np.testing.assert_allclose(np.diag(correlation), 1.0)
+
     def test_egarch_summary_label(self, egarch_data):
         """EGARCH summary shows EGARCH label."""
         from Ts.TsModels._garch import GARCH
@@ -660,6 +717,20 @@ class TestIGARCH:
         alpha_sum = sum(v for k, v in result.params.items() if k.startswith("alpha"))
         beta_sum = sum(v for k, v in result.params.items() if k.startswith("beta"))
         assert abs(alpha_sum + beta_sum - 1.0) < 1e-10
+
+    def test_igarch11_correlation_reflects_exact_constraint(self, igarch11_data):
+        """The derived beta covariance follows the IGARCH equality Jacobian."""
+        from Ts.TsModels._garch import GARCH
+
+        result = GARCH(igarch11_data, p=1, q=1, igarch=True).fit()
+        correlation = result.parameter_correlation(["alpha[1]", "beta[1]"])
+
+        np.testing.assert_allclose(
+            correlation.to_numpy(),
+            [[1.0, -1.0], [-1.0, 1.0]],
+            atol=1e-10,
+        )
+        assert np.linalg.matrix_rank(result._parameter_covariance) < len(result.params)
 
     def test_igarch11_summary_shows_igarch(self, igarch11_data):
         """IGARCH summary() displays IGARCH model label."""

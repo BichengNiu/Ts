@@ -36,6 +36,10 @@ class TestBaseModelResult:
             fitted_values=fitted,
             nobs=n,
             data=data,
+            _parameter_covariance=np.array(
+                [[0.01, 0.0025], [0.0025, 0.0025]],
+            ),
+            _parameter_names=("ar.L1", "sigma2"),
         )
 
     def test_fields_assigned(self, result):
@@ -76,6 +80,91 @@ class TestBaseModelResult:
         assert isinstance(result.params, dict)
         assert "ar.L1" in result.params
         assert result.params["ar.L1"] == 0.5
+
+    def test_parameter_correlation_returns_labelled_dataframe(self, result):
+        """Shared covariance metadata is converted to labelled correlations."""
+        correlation = result.parameter_correlation()
+
+        assert correlation.index.tolist() == ["ar.L1", "sigma2"]
+        assert correlation.columns.tolist() == ["ar.L1", "sigma2"]
+        np.testing.assert_allclose(
+            correlation.to_numpy(),
+            [[1.0, 0.5], [0.5, 1.0]],
+        )
+
+    def test_parameter_correlation_supports_ordered_subset(self, result):
+        """A requested subset controls both inclusion and display order."""
+        correlation = result.parameter_correlation(["sigma2", "ar.L1"])
+
+        assert correlation.index.tolist() == ["sigma2", "ar.L1"]
+        np.testing.assert_allclose(
+            correlation.to_numpy(),
+            [[1.0, 0.5], [0.5, 1.0]],
+        )
+
+    @pytest.mark.parametrize(
+        ("parameters", "error", "message"),
+        [
+            ("ar.L1", TypeError, "sequence"),
+            ([], ValueError, "must not be empty"),
+            (["ar.L1", "ar.L1"], ValueError, "duplicates"),
+            (["missing"], ValueError, "unknown parameter"),
+            ([1], TypeError, "must be a string"),
+        ],
+    )
+    def test_parameter_correlation_validates_selection(
+        self, result, parameters, error, message
+    ):
+        """Invalid parameter filters fail before matrix calculation."""
+        with pytest.raises(error, match=message):
+            result.parameter_correlation(parameters)
+
+    def test_parameter_correlation_reports_unavailable_model(self, result):
+        """Models not wired in this phase fail explicitly."""
+        unavailable = replace(
+            result,
+            model_type="VAR",
+            _parameter_covariance=None,
+            _parameter_names=(),
+        )
+
+        with pytest.raises(NotImplementedError, match="not available for VAR"):
+            unavailable.parameter_correlation()
+
+    def test_parameter_covariance_metadata_is_copied_and_validated(self, result):
+        """Result construction owns covariance and rejects name-shape drift."""
+        supplied = np.eye(2)
+        copied = replace(result, _parameter_covariance=supplied)
+        supplied[0, 0] = 99.0
+        assert copied._parameter_covariance[0, 0] == 1.0
+
+        from Ts.TsModels._base import BaseModelResult
+
+        with pytest.raises(ValueError, match="shape must match"):
+            BaseModelResult(
+                model_type="SARIMAX",
+                params={"ar.L1": 0.5},
+                std_errors={"ar.L1": 0.1},
+                p_values={"ar.L1": 0.0},
+                aic=1.0,
+                bic=1.0,
+                log_likelihood=-1.0,
+                residuals=np.ones(10),
+                fitted_values=np.ones(10),
+                nobs=10,
+                data=np.ones(10),
+                _parameter_covariance=np.eye(2),
+                _parameter_names=("ar.L1",),
+            )
+
+    def test_plot_parameter_correlation_returns_heatmap(self, result):
+        """The shared model method delegates matrix rendering to TsPlots."""
+        fig, ax = result.plot_parameter_correlation()
+
+        assert fig is ax.figure
+        assert ax.get_title() == "SARIMAX Parameter Correlation"
+        assert len(ax.images) == 1
+        assert len(ax.texts) == 4
 
     def test_summary_returns_string(self, result):
         """summary() returns a non-empty string with model info."""

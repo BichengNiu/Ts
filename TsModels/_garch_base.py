@@ -201,7 +201,12 @@ class _BaseVolModel(BaseModel):
         if not res.success or not np.isfinite(res.fun):
             raise RuntimeError(f"IGARCH optimization failed to converge: {res.message}")
 
-        std_errors, p_values = self._igarch_std_errors(res.x, self.data, self.p, self.q)
+        std_errors, p_values, parameter_covariance = self._igarch_std_errors(
+            res.x,
+            self.data,
+            self.p,
+            self.q,
+        )
 
         omega = res.x[0]
         alphas = res.x[1 : 1 + self.p]
@@ -233,7 +238,7 @@ class _BaseVolModel(BaseModel):
             params=param_series,
             std_err=se_series,
             pvalues=pv_series,
-            param_cov=None,
+            param_cov=parameter_covariance,
             aic=aic,
             bic=bic,
             loglikelihood=loglik,
@@ -311,6 +316,9 @@ class _BaseVolModel(BaseModel):
         -------
         std_errors : dict
         p_values : dict
+        parameter_covariance : pandas.DataFrame
+            Covariance of the reported parameters after applying the IGARCH
+            equality constraint to the final beta coefficient.
         """
         from scipy.stats import chi2 as chi2_dist
 
@@ -382,7 +390,7 @@ class _BaseVolModel(BaseModel):
             p_values[name] = float(1.0 - chi2_dist.cdf(stat, 1))
 
         if q >= 1:
-            grad = np.ones(n_params)
+            grad = -np.ones(n_params)
             grad[0] = 0.0
             var_beta_last = float(grad @ cov @ grad)
             std_errors[f"beta[{q}]"] = float(np.sqrt(max(var_beta_last, 0.0)))
@@ -390,7 +398,20 @@ class _BaseVolModel(BaseModel):
             stat = (beta_last / max(np.sqrt(max(var_beta_last, 0.0)), 1e-10)) ** 2
             p_values[f"beta[{q}]"] = float(1.0 - chi2_dist.cdf(stat, 1))
 
-        return std_errors, p_values
+        reported_names = ["omega"]
+        reported_names.extend(f"alpha[{index}]" for index in range(1, p + 1))
+        reported_names.extend(f"beta[{index}]" for index in range(1, q + 1))
+        jacobian = np.zeros((len(reported_names), n_params))
+        jacobian[:n_params, :] = np.eye(n_params)
+        if q >= 1:
+            jacobian[-1, :] = grad
+        reported_covariance = jacobian @ cov @ jacobian.T
+        parameter_covariance = pd.DataFrame(
+            reported_covariance,
+            index=reported_names,
+            columns=reported_names,
+        )
+        return std_errors, p_values, parameter_covariance
 
     def _fit_standard(self):
         """Fit standard GARCH/ARCH via :func:`arch.arch_model`."""
@@ -477,9 +498,16 @@ class _BaseVolModel(BaseModel):
             )
             fitted = aim.fit(disp="off")
 
-        _scale_params_back(fitted, scale, self.garch_m_form)
+        parameter_scale = _scale_params_back(fitted, scale, self.garch_m_form)
 
-        result = self._build_result(fitted, None, None, None, True)
+        result = self._build_result(
+            fitted,
+            None,
+            None,
+            None,
+            True,
+            parameter_scale=parameter_scale,
+        )
         self.result_ = result
         return result
 
@@ -494,11 +522,40 @@ class _BaseVolModel(BaseModel):
             return "EGARCH"
         return "GARCH" if self.q > 0 else "ARCH"
 
-    def _build_result(self, fitted, ind_lags, ind_aic, ind_bic, garch_m):
+    def _build_result(
+        self,
+        fitted,
+        ind_lags,
+        ind_aic,
+        ind_bic,
+        garch_m,
+        *,
+        parameter_scale=None,
+    ):
         """Construct a :class:`GARCHResult` from a fitted arch model."""
         params, std_errors, p_values = self._extract_params(fitted)
         resid = np.asarray(fitted.resid)
         cond_vol = np.asarray(fitted.conditional_volatility)
+        parameter_names = tuple(fitted.params.index)
+        raw_covariance = getattr(fitted, "param_cov", None)
+        parameter_covariance = None
+        if raw_covariance is not None:
+            if isinstance(raw_covariance, pd.DataFrame):
+                parameter_covariance = raw_covariance.loc[
+                    list(parameter_names), list(parameter_names)
+                ].to_numpy(dtype=float, copy=True)
+            else:
+                parameter_covariance = np.array(
+                    raw_covariance,
+                    dtype=float,
+                    copy=True,
+                )
+            if parameter_scale is not None:
+                multipliers = np.array(
+                    [parameter_scale.get(name, 1.0) for name in parameter_names],
+                    dtype=float,
+                )
+                parameter_covariance *= np.outer(multipliers, multipliers)
 
         if self.igarch:
             model_type = "IGARCH"
@@ -521,6 +578,10 @@ class _BaseVolModel(BaseModel):
             fitted_values=self.data - resid,
             nobs=len(resid),
             data=self.data,
+            _parameter_covariance=parameter_covariance,
+            _parameter_names=(
+                parameter_names if parameter_covariance is not None else ()
+            ),
             conditional_volatility=cond_vol,
             _p=self.p,
             _q=self.q,

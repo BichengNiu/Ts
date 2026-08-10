@@ -323,6 +323,81 @@ class AutoModelResult(BaseModelResult):
             raise RuntimeError("No best_result available")
         return self.best_result.predict(**kwargs)
 
+    def parameter_correlation(self, parameters=None):
+        """Return parameter correlations from the selected best model.
+
+        Parameters
+        ----------
+        parameters : sequence of str, optional
+            Ordered subset of parameter names. By default all estimated
+            parameters from the selected model are returned.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Correlation matrix delegated to ``best_result``.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoSARIMAX
+        >>> from Ts.TsSims import simulate_sarima
+        >>> data = simulate_sarima(n=60, seed=42).data
+        >>> result = AutoSARIMAX(data, p=(0, 1), q=(0, 0)).fit()
+        >>> result.parameter_correlation().shape[0] == len(result.params)
+        True
+        """
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        return self.best_result.parameter_correlation(parameters=parameters)
+
+    def plot_parameter_correlation(
+        self,
+        parameters=None,
+        *,
+        annotate=True,
+        decimals=2,
+        title=None,
+        ax=None,
+    ):
+        """Plot parameter correlations from the selected best model.
+
+        Parameters
+        ----------
+        parameters : sequence of str, optional
+            Ordered subset of parameter names. By default all estimated
+            parameters from the selected model are plotted.
+        annotate : bool, default True
+            Whether to write each correlation value inside its cell.
+        decimals : int, default 2
+            Number of decimal places used for cell annotations.
+        title : str, optional
+            Chart title. Uses the selected model's default when omitted.
+        ax : matplotlib.axes.Axes, optional
+            Existing axes. A new figure and axes are created when omitted.
+
+        Returns
+        -------
+        tuple
+            ``(figure, axes)`` containing the correlation heatmap.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import AutoGARCH
+        >>> from Ts.TsSims import simulate_garch
+        >>> data = simulate_garch(n=150, seed=42).data
+        >>> result = AutoGARCH(data, p=(1, 1), q=(1, 1)).fit()
+        >>> fig, ax = result.plot_parameter_correlation(annotate=False)
+        """
+        if self.best_result is None:
+            raise RuntimeError("No best_result available")
+        return self.best_result.plot_parameter_correlation(
+            parameters=parameters,
+            annotate=annotate,
+            decimals=decimals,
+            title=title,
+            ax=ax,
+        )
+
     @property
     def log(self):
         """Whether the selected model used a log-transformed response."""

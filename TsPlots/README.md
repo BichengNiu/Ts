@@ -1,7 +1,7 @@
 # Ts/TsPlots
 
 适用于时间序列计量经济学学习的 Python 绘图工具包。提供统一的字体、配色和坐标轴风格，
-支持时间序列折线图、散点图、自相关函数图和预计算相关图。
+支持时间序列折线图、散点图、自相关函数图、预计算相关图和相关矩阵热图。
 
 ## 交互式帮助
 
@@ -18,7 +18,8 @@ TsPlots/
 ├── ts_plot.py    # 时间序列绘图：plot_series
 ├── sc_plot.py    # 散点图绘图：plot_scatter
 ├── acf_plot.py   # 相关图：plot_acf, plot_pacf, plot_correlogram
-└── lag_plot.py   # 滞后柱线响应图：plot_lag_response
+├── lag_plot.py   # 滞后柱线响应图：plot_lag_response
+└── matrix_plot.py # 相关矩阵热图：plot_correlation_matrix
 ```
 
 ## 安装 / 导入
@@ -28,7 +29,7 @@ TsPlots/
 ```python
 from Ts.TsPlots import (
     plot_series, plot_scatter, plot_acf, plot_pacf,
-    plot_correlogram, plot_lag_response,
+    plot_correlogram, plot_correlation_matrix, plot_lag_response,
 )
 ```
 
@@ -348,6 +349,24 @@ fig, ax = plot_correlogram(
     residual_ccf,
     confidence_band=1.96 / np.sqrt(nobs),
     ytitle="Residual CCF",
+)
+```
+
+---
+
+## `plot_correlation_matrix` — 相关矩阵热图
+
+该函数只负责验证和绘制已计算好的相关矩阵，统一使用 `[-1, 1]` 色阶。传入
+DataFrame 时自动采用索引和列标签；数组输入可通过 `labels=` 指定标签。
+
+```python
+from Ts.TsPlots import plot_correlation_matrix
+
+matrix = [[1.0, -0.7], [-0.7, 1.0]]
+fig, ax = plot_correlation_matrix(
+    matrix,
+    labels=["ar.L1", "ma.L1"],
+    annotate=True,
 )
 ```
 
