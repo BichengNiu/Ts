@@ -58,3 +58,52 @@ def test_series_rejects_col_and_dataframe_requires_a_unique_existing_col():
     )
     with pytest.raises(ValueError, match="columns must be unique"):
         calendar_table(duplicate, col="sales")
+
+
+def test_annual_table_uses_one_value_row_and_natural_year_columns():
+    """Annual observations are transposed under their natural years."""
+    index = pd.date_range("2022-01-01", periods=3, freq="YS")
+
+    result = calendar_table(pd.Series([2.0, 3.0, 4.0], index=index))
+
+    assert result.index.equals(pd.Index(["value"], name="period"))
+    assert result.columns.equals(pd.Index([2022, 2023, 2024], name="year"))
+    assert result.loc["value", 2023] == 3.0
+
+
+def test_natural_quarterly_table_uses_q1_to_q4_rows():
+    """Calendar quarters are arranged within natural years."""
+    index = pd.period_range("2023Q4", periods=3, freq="Q-DEC")
+
+    result = calendar_table(pd.Series([4.0, 1.0, 2.0], index=index))
+
+    assert result.index.equals(pd.Index(range(1, 5), name="quarter"))
+    assert result.columns.equals(pd.Index([2023, 2024], name="year"))
+    assert result.loc[4, 2023] == 4.0
+    assert result.loc[1, 2024] == 1.0
+    assert result.loc[2, 2024] == 2.0
+
+
+def test_daily_table_uses_day_rows_and_year_month_columns():
+    """Daily values use days within chronological natural-year months."""
+    index = pd.date_range("2024-01-30", periods=4, freq="D")
+
+    result = calendar_table(pd.Series(range(4), index=index, dtype=float))
+
+    assert result.index.equals(pd.Index(range(1, 32), name="day"))
+    assert result.columns.names == ["year", "month"]
+    assert result.columns.tolist() == [(2024, 1), (2024, 2)]
+    assert result.loc[30, (2024, 1)] == 0.0
+    assert result.loc[2, (2024, 2)] == 3.0
+
+
+def test_business_daily_table_keeps_weekend_calendar_cells_missing():
+    """Business-day completion does not manufacture weekend observations."""
+    index = pd.date_range("2024-01-05", periods=2, freq="B")
+
+    result = calendar_table(pd.Series([5.0, 8.0], index=index))
+
+    assert result.loc[5, (2024, 1)] == 5.0
+    assert pd.isna(result.loc[6, (2024, 1)])
+    assert pd.isna(result.loc[7, (2024, 1)])
+    assert result.loc[8, (2024, 1)] == 8.0

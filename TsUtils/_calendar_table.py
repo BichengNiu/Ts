@@ -3,7 +3,21 @@
 from __future__ import annotations
 
 import pandas as pd
-from pandas.tseries.offsets import BMonthBegin, BMonthEnd, MonthBegin, MonthEnd
+from pandas.tseries.offsets import (
+    BMonthBegin,
+    BMonthEnd,
+    BQuarterBegin,
+    BQuarterEnd,
+    BusinessDay,
+    Day,
+    MonthBegin,
+    MonthEnd,
+    QuarterBegin,
+    QuarterEnd,
+    Week,
+    YearBegin,
+    YearEnd,
+)
 
 from ._calendar import resolve_frequency, resolve_time_index
 
@@ -40,29 +54,92 @@ def _complete_series(series, offset):
     return series.reindex(complete_index)
 
 
-def _reshape_monthly(series):
-    """Arrange monthly values by natural month and year."""
-    index = series.index
+def _classify_frequency(offset):
+    """Return the supported unit calendar family for a pandas offset."""
+    if offset.n != 1:
+        raise ValueError(
+            f"calendar_table does not support frequency {offset.freqstr!r}"
+        )
+    if isinstance(offset, BusinessDay):
+        return "business_daily"
+    if isinstance(offset, Day):
+        return "daily"
+    if isinstance(offset, Week):
+        return "weekly"
+    if isinstance(offset, (BMonthBegin, BMonthEnd, MonthBegin, MonthEnd)):
+        return "monthly"
+    if isinstance(
+        offset,
+        (BQuarterBegin, BQuarterEnd, QuarterBegin, QuarterEnd),
+    ):
+        if isinstance(offset, (BQuarterBegin, QuarterBegin)):
+            natural = offset.startingMonth == 1
+        else:
+            natural = offset.startingMonth == 12
+        if natural:
+            return "quarterly"
+    if isinstance(offset, YearBegin) and offset.month == 1:
+        return "annual"
+    if isinstance(offset, YearEnd) and offset.month == 12:
+        return "annual"
+    raise ValueError(f"calendar_table does not support frequency {offset.freqstr!r}")
+
+
+def _calendar_timestamps(index):
+    """Return timestamps carrying natural calendar coordinates."""
+    return index.start_time if isinstance(index, pd.PeriodIndex) else index
+
+
+def _reshape(series, family):
+    """Arrange values using the canonical schema for one frequency family."""
+    timestamps = _calendar_timestamps(series.index)
+    years = timestamps.year
+    if family == "annual":
+        row_name = "period"
+        rows = ["value"] * len(series)
+        row_schema = ["value"]
+        column_names = ["year"]
+        coordinates = {"year": years}
+    elif family == "quarterly":
+        row_name = "quarter"
+        rows = timestamps.quarter
+        row_schema = range(1, 5)
+        column_names = ["year"]
+        coordinates = {"year": years}
+    elif family == "monthly":
+        row_name = "month"
+        rows = timestamps.month
+        row_schema = range(1, 13)
+        column_names = ["year"]
+        coordinates = {"year": years}
+    elif family in {"daily", "business_daily"}:
+        row_name = "day"
+        rows = timestamps.day
+        row_schema = range(1, 32)
+        column_names = ["year", "month"]
+        coordinates = {"year": years, "month": timestamps.month}
+    else:
+        raise ValueError(f"calendar_table does not yet support family {family!r}")
+
     frame = pd.DataFrame(
         {
-            "month": index.month,
-            "year": index.year,
+            row_name: rows,
+            **coordinates,
             "value": series.to_numpy(),
         }
     )
-    result = frame.set_index(["month", "year"])["value"].unstack("year")
-    return result.reindex(pd.Index(range(1, 13), name="month"))
+    keys = [row_name, *column_names]
+    if frame.duplicated(keys).any():
+        raise ValueError("multiple observations map to the same calendar table cell")
+    result = frame.set_index(keys)["value"].unstack(column_names)
+    return result.reindex(pd.Index(row_schema, name=row_name))
 
 
 def calendar_table(data, *, col=None, freq=None, label_style="numeric") -> pd.DataFrame:
-    """Reshape one dated monthly series into a calendar-oriented table."""
+    """Reshape one dated series into a calendar-oriented table."""
     series = _select_series(data, col=col)
     index = resolve_time_index(series)
     offset = resolve_frequency(index, freq=freq)
-    if offset.n != 1 or not isinstance(
-        offset,
-        (BMonthBegin, BMonthEnd, MonthBegin, MonthEnd),
-    ):
-        raise ValueError(f"calendar_table does not support frequency {offset.freqstr!r}")
+    family = _classify_frequency(offset)
     complete = _complete_series(series, offset)
-    return _reshape_monthly(complete)
+    return _reshape(complete, family)
