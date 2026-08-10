@@ -90,9 +90,22 @@ def _calendar_timestamps(index):
     return index.start_time if isinstance(index, pd.PeriodIndex) else index
 
 
+def _weekly_wednesdays(index):
+    """Return the unique Wednesday within each anchored weekly period."""
+    if isinstance(index, pd.PeriodIndex):
+        starts = index.start_time.normalize()
+    else:
+        starts = index.normalize() - pd.to_timedelta(6, unit="D")
+    days_to_wednesday = (2 - starts.dayofweek) % 7
+    return starts + pd.to_timedelta(days_to_wednesday, unit="D")
+
+
 def _reshape(series, family):
     """Arrange values using the canonical schema for one frequency family."""
-    timestamps = _calendar_timestamps(series.index)
+    if family == "weekly":
+        timestamps = _weekly_wednesdays(series.index)
+    else:
+        timestamps = _calendar_timestamps(series.index)
     years = timestamps.year
     if family == "annual":
         row_name = "period"
@@ -112,6 +125,12 @@ def _reshape(series, family):
         row_schema = range(1, 13)
         column_names = ["year"]
         coordinates = {"year": years}
+    elif family == "weekly":
+        row_name = "week"
+        rows = ((timestamps.day - 1) // 7) + 1
+        row_schema = range(1, 6)
+        column_names = ["year", "month"]
+        coordinates = {"year": years, "month": timestamps.month}
     elif family in {"daily", "business_daily"}:
         row_name = "day"
         rows = timestamps.day

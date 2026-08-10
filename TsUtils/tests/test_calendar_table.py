@@ -107,3 +107,28 @@ def test_business_daily_table_keeps_weekend_calendar_cells_missing():
     assert pd.isna(result.loc[6, (2024, 1)])
     assert pd.isna(result.loc[7, (2024, 1)])
     assert result.loc[8, (2024, 1)] == 8.0
+
+
+@pytest.mark.parametrize("frequency", ["W-SUN", "W-MON"])
+def test_weekly_month_is_determined_by_wednesday_not_timestamp_label(frequency):
+    """A cross-month week follows its Wednesday, not its anchored label."""
+    first_label = "2024-02-04" if frequency == "W-SUN" else "2024-02-05"
+    index = pd.date_range(first_label, periods=2, freq=frequency)
+
+    result = calendar_table(pd.Series([10.0, 20.0], index=index))
+
+    assert result.index.equals(pd.Index(range(1, 6), name="week"))
+    assert result.columns.names == ["year", "month"]
+    assert result.columns.tolist() == [(2024, 1), (2024, 2)]
+    assert result.loc[5, (2024, 1)] == 10.0
+    assert result.loc[1, (2024, 2)] == 20.0
+
+
+def test_weekly_period_index_uses_the_periods_wednesday():
+    """Weekly PeriodIndex boundaries carry the same Wednesday semantics."""
+    index = pd.period_range("2024-02-04", periods=2, freq="W-SUN")
+
+    result = calendar_table(pd.Series([10.0, 20.0], index=index))
+
+    assert result.loc[5, (2024, 1)] == 10.0
+    assert result.loc[1, (2024, 2)] == 20.0
