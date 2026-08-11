@@ -27,6 +27,18 @@ def _normalise_nonnegative_integer(value, name):
     return value
 
 
+def _resolve_impulse_plot_steps(steps, sample_weights):
+    """Resolve an impulse-plot horizon without duplicating weight logic."""
+    if steps is not None:
+        return steps
+    if sample_weights is None:
+        return 20
+    try:
+        return len(sample_weights)
+    except TypeError as error:
+        raise TypeError("sample_weights must be a sized array-like object") from error
+
+
 def _normalise_polynomial_lags(value, name, *, include_zero, allow_empty):
     if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
         order = _normalise_nonnegative_integer(value, name)
@@ -415,7 +427,7 @@ class RationalLagResult:
 
     def plot_impulse_response(
         self,
-        steps=20,
+        steps=None,
         ax=None,
         sample_weights=None,
         **kwargs,
@@ -429,8 +441,9 @@ class RationalLagResult:
 
         Parameters
         ----------
-        steps : int, default 20
-            Strictly positive response horizon.
+        steps : int, optional
+            Strictly positive response horizon. When omitted, it is inferred
+            from ``sample_weights`` if supplied and otherwise defaults to 20.
         ax : matplotlib.axes.Axes, optional
             Existing axis to reuse.
         sample_weights : pandas.Series, optional
@@ -455,6 +468,7 @@ class RationalLagResult:
         """
         from Ts.TsPlots import plot_lag_response
 
+        steps = _resolve_impulse_plot_steps(steps, sample_weights)
         fitted_weights = self.weights(steps)
         if sample_weights is None:
             return plot_lag_response(fitted_weights, ax=ax, **kwargs)

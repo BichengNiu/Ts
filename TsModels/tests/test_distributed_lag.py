@@ -179,6 +179,20 @@ def test_rational_lag_result_plots_existing_impulse_weights_as_bars():
     plt.close(fig)
 
 
+def test_rational_lag_result_keeps_twenty_step_default_without_sample_weights():
+    result = RationalLagResult(
+        name="price",
+        spec=RationalLagSpec(numerator=0, denominator=1),
+        numerator={0: 2.0},
+        denominator={1: 0.5},
+    )
+
+    fig, ax = result.plot_impulse_response()
+
+    assert len(ax.patches) == 20
+    plt.close(fig)
+
+
 def test_rational_lag_result_overlays_fitted_weights_on_sample_bars():
     result = RationalLagResult(
         name="price",
@@ -199,6 +213,29 @@ def test_rational_lag_result_overlays_fitted_weights_on_sample_bars():
         line for line in ax.lines if line.get_label() == "Transfer-function weights"
     )
     np.testing.assert_allclose(transfer_line.get_ydata(), result.weights(4))
+    plt.close(fig)
+
+
+def test_rational_lag_result_infers_steps_from_sample_weights():
+    result = RationalLagResult(
+        name="price",
+        spec=RationalLagSpec(numerator=0, denominator=1),
+        numerator={0: 2.0},
+        denominator={1: 0.5},
+    )
+    sample = pd.Series(
+        [1.8, 1.2, 0.4, 0.3],
+        index=pd.RangeIndex(4, name="lag"),
+        name="price",
+    )
+
+    fig, ax = result.plot_impulse_response(sample_weights=sample)
+
+    transfer_line = next(
+        line for line in ax.lines if line.get_label() == "Transfer-function weights"
+    )
+    np.testing.assert_allclose(transfer_line.get_xdata(), sample.index)
+    np.testing.assert_allclose(transfer_line.get_ydata(), result.weights(len(sample)))
     plt.close(fig)
 
 
@@ -320,6 +357,31 @@ def test_sarimax_result_overlays_all_sample_weight_facets():
             if line.get_label() == "Transfer-function weights"
         )
         np.testing.assert_allclose(transfer_line.get_ydata(), result.weights(3)[name])
+    plt.close(fig)
+
+
+def test_sarimax_result_infers_steps_from_sample_weights():
+    result = _result_with_structured_lags()
+    sample = pd.DataFrame(
+        {
+            "price": [0.8, 0.6, 0.3],
+            "income": [-0.5, -0.3, -0.1],
+        },
+        index=pd.RangeIndex(3, name="lag"),
+    )
+
+    fig, axes = result.plot_impulse_response(sample_weights=sample)
+
+    for axis, name in zip(axes, sample.columns, strict=True):
+        transfer_line = next(
+            line
+            for line in axis.lines
+            if line.get_label() == "Transfer-function weights"
+        )
+        np.testing.assert_allclose(transfer_line.get_xdata(), sample.index)
+        np.testing.assert_allclose(
+            transfer_line.get_ydata(), result.weights(len(sample))[name]
+        )
     plt.close(fig)
 
 

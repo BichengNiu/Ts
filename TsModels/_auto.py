@@ -604,7 +604,7 @@ class AutoModelResult(BaseModelResult):
 
     def plot_impulse_response(
         self,
-        steps=20,
+        steps=None,
         inputs=None,
         sample_weights=None,
         **kwargs,
@@ -613,8 +613,10 @@ class AutoModelResult(BaseModelResult):
 
         Parameters
         ----------
-        steps : int, default 20
-            Strictly positive response horizon.
+        steps : int, optional
+            Strictly positive response horizon. When omitted, the selected
+            model infers it from ``sample_weights`` if supplied and otherwise
+            defaults to 20.
         inputs : str or sequence of str, optional
             RDL inputs to plot.
         sample_weights : pandas.Series or pandas.DataFrame, optional

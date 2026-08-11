@@ -125,7 +125,7 @@ result.test_residuals(lags=10)
 | | `.distributed_lag_coefficients` | 所有 RDL 多项式系数，包括固定为 0 的缺省阶 |
 | | `.steady_state_gains` | 各输入长期增益及 delta-method 区间 |
 | | `.weights(steps)` | 各输入的前 `steps` 个递归 impulse weights |
-| | `.plot_impulse_response(steps, inputs, sample_weights)` | 绘制 RDL weights；传入基础模型 weights 时以柱表示 sample response、以线表示最终传递函数响应 |
+| | `.plot_impulse_response(steps=None, inputs=None, sample_weights=None)` | 绘制 RDL weights；传入基础模型 weights 时以柱表示 sample response、以线表示最终传递函数响应；省略 `steps` 时自动采用 `sample_weights` 的长度，否则默认 20 |
 | | `.feedback_test(lags, inputs)` | 对原始外生输入运行条件反馈 OLS 与因变量滞后联合 F 检验 |
 | | `.residual_ccf_test(input_models, lags, inputs)` | 用显式输入 ARIMA 新息运行逐阶残差 CCF 与联合 S* 充分性检验 |
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |

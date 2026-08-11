@@ -310,6 +310,29 @@ class TestAutoModelResult:
         )
         assert calls == [(12, "price", sample_weights, {"grid": False})]
 
+    def test_plot_impulse_response_delegates_inferred_steps_to_best_result(
+        self, auto_result, base_result
+    ):
+        expected = object()
+        calls = []
+
+        def plot_impulse_response(
+            steps=None,
+            inputs=None,
+            sample_weights=None,
+            **kwargs,
+        ):
+            calls.append((steps, inputs, sample_weights, kwargs))
+            return expected
+
+        base_result.plot_impulse_response = plot_impulse_response
+        sample_weights = pd.Series([1.0, 0.5, 0.25])
+
+        assert (
+            auto_result.plot_impulse_response(sample_weights=sample_weights) is expected
+        )
+        assert calls == [(None, None, sample_weights, {})]
+
 
 # ============================================================
 # Test Group 3: AutoSARIMAX

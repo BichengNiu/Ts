@@ -31,6 +31,7 @@ from Ts.TsModels._distributed_lag import (
     RationalLagSpec,
     _make_rational_lag_results,
     _normalise_nonnegative_integer,
+    _resolve_impulse_plot_steps,
     _RationalLagSARIMAX,
 )
 from Ts.TsModels._intervention import (
@@ -1259,7 +1260,7 @@ class SARIMAXResult(BaseModelResult):
 
     def plot_impulse_response(
         self,
-        steps=20,
+        steps=None,
         inputs=None,
         sample_weights=None,
         **kwargs,
@@ -1274,8 +1275,9 @@ class SARIMAXResult(BaseModelResult):
 
         Parameters
         ----------
-        steps : int, default 20
-            Strictly positive response horizon.
+        steps : int, optional
+            Strictly positive response horizon. When omitted, it is inferred
+            from ``sample_weights`` if supplied and otherwise defaults to 20.
         inputs : str or sequence of str, optional
             RDL inputs to plot. The default plots every fitted RDL input.
         sample_weights : pandas.Series or pandas.DataFrame, optional
@@ -1324,6 +1326,7 @@ class SARIMAXResult(BaseModelResult):
 
         from Ts.TsPlots import plot_lag_response
 
+        steps = _resolve_impulse_plot_steps(steps, sample_weights)
         weights = pd.concat([results[name].weights(steps) for name in selected], axis=1)
         if sample_weights is None:
             return plot_lag_response(weights, **kwargs)
