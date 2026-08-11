@@ -329,6 +329,15 @@ class TestPlotACF:
         assert ax.title.get_fontfamily() == _title_font_family()
         plt.close(fig)
 
+    def test_default_missing_drop_uses_cleaned_sample_for_adaptive_nlags(self):
+        data = np.random.default_rng(42).normal(size=63)
+        data[[0, 17, 62]] = np.nan
+
+        fig, ax = plot_acf(data)
+
+        assert len(ax.patches) == 18
+        plt.close(fig)
+
 
 class TestPlotPACF:
     def test_default_nlags_adapts_to_sample_size(self):
@@ -348,6 +357,49 @@ class TestPlotPACF:
     def test_explicit_nlags_preserves_statsmodels_validation(self):
         with pytest.raises(ValueError, match="requested nlags 40"):
             plot_pacf(np.random.randn(60), nlags=40)
+
+    def test_default_missing_drop_uses_cleaned_sample_for_adaptive_nlags(self):
+        data = np.random.default_rng(42).normal(size=63)
+        data[[0, 17, 62]] = np.nan
+
+        fig, ax = plot_pacf(data)
+
+        assert len(ax.patches) == 17
+        plt.close(fig)
+
+
+@pytest.mark.parametrize("plotter", [plot_acf, plot_pacf])
+class TestCorrelogramMissingPolicy:
+    def test_default_drop_matches_explicitly_cleaned_series(self, plotter):
+        data = pd.Series(
+            [1.0, -0.5, np.nan, 0.25, np.inf, 1.5, -np.inf, -1.0, 0.75, 2.0]
+        )
+        original = data.copy()
+
+        fig, ax = plotter(data, nlags=2)
+        expected_fig, expected_ax = plotter(data[np.isfinite(data)], nlags=2)
+
+        np.testing.assert_allclose(
+            [patch.get_height() for patch in ax.patches],
+            [patch.get_height() for patch in expected_ax.patches],
+        )
+        pd.testing.assert_series_equal(data, original)
+        plt.close(fig)
+        plt.close(expected_fig)
+
+    def test_raise_reports_original_non_finite_positions(self, plotter):
+        data = np.array([1.0, np.nan, 2.0, np.inf, 3.0])
+
+        with pytest.raises(ValueError, match="row positions: 1, 3"):
+            plotter(data, missing="raise")
+
+    def test_unknown_policy_is_rejected(self, plotter):
+        with pytest.raises(ValueError, match="missing must be 'raise' or 'drop'"):
+            plotter(np.arange(20.0), missing="omit")
+
+    def test_all_non_finite_data_is_rejected(self, plotter):
+        with pytest.raises(ValueError, match="no finite observations"):
+            plotter(np.array([np.nan, np.inf, -np.inf]))
 
 
 class TestStyleConstants:

@@ -283,8 +283,8 @@ fig, ax = plot_scatter(
 ```text
 from Ts.TsPlots import plot_acf, plot_pacf
 
-fig, ax = plot_acf(data, nlags=None, *, ...)
-fig, ax = plot_pacf(data, nlags=None, *, ...)
+fig, ax = plot_acf(data, nlags=None, *, alpha=0.05, missing="drop", ...)
+fig, ax = plot_pacf(data, nlags=None, *, alpha=0.05, missing="drop", ...)
 ```
 
 基于 `statsmodels.tsa.stattools.acf` / `pacf` 绘制样本自相关和偏自相关函数图，
@@ -297,6 +297,7 @@ fig, ax = plot_pacf(data, nlags=None, *, ...)
 | `data` | array-like / Series / 单列 DataFrame | — | 一维时间序列 |
 | `nlags` | int / None | `None` | 计算并显示的滞后阶数；不设置时由 statsmodels 根据样本量自适应选择 |
 | `alpha` | float | `0.05` | 显著性水平（0.05 = 95% 置信带） |
+| `missing` | `"drop"` / `"raise"` | `"drop"` | 删除全部非有限观测，或报告其原始行位置并报错 |
 | `bartlett_confint` | bool | `True` | ACF: 使用 Bartlett 滞后变化公式（`True`）或均匀 ±z/√n 公式（`False`） |
 | `zero_lag` | bool | `True` | ACF: 是否包含滞后 0（ACF ≡ 1） |
 | `method` | str | `"ywm"` | PACF: 估计方法，可选 `"ywm"`、`"ols"`、`"ld"` |
@@ -312,6 +313,12 @@ fig, ax = plot_pacf(data, nlags=None, *, ...)
 | `ytitle` | str | `"ACF值"` / `"PACF值"` | y 轴标签 |
 | `ax` | Axes | `None` | 传入已有坐标轴（子图嵌入时使用） |
 
+### 缺失值处理
+
+- 默认 `missing="drop"` 在计算前删除 `NaN`、正无穷和负无穷，并使用清理后的有效样本量选择自适应 `nlags`。
+- `missing="raise"` 遇到任何非有限值时报告其在原始一维输入中的行位置，适合禁止静默改变样本的分析。
+- 删除内部缺口会压缩时间，使缺口两侧的观测被视为相邻时点。如果日历间隔具有统计含义，应使用 `missing="raise"`，并先插值或以其他方式显式处理缺口。
+
 ### 置信带说明
 
 - **ACF**：默认使用 Bartlett 公式（`bartlett_confint=True`），置信带宽度随滞后变化。
@@ -325,8 +332,8 @@ fig, ax = plot_pacf(data, nlags=None, *, ...)
 from Ts.TsPlots import plot_acf, plot_pacf
 
 # 基础用法
-fig, ax = plot_acf(residuals, nlags=20)
-fig, ax = plot_pacf(residuals, nlags=20, alpha=0.01)
+fig, ax = plot_acf(residuals, nlags=20, missing="drop")
+fig, ax = plot_pacf(residuals, nlags=20, alpha=0.01, missing="raise")
 
 # 嵌入子图网格
 import matplotlib.pyplot as plt

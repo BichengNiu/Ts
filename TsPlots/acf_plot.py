@@ -91,6 +91,23 @@ def _to_1d(data) -> np.ndarray:
     return arr
 
 
+def _resolve_missing(data: np.ndarray, missing: str) -> np.ndarray:
+    """Apply the correlogram missing-value policy to a 1-D array."""
+    if missing not in {"raise", "drop"}:
+        raise ValueError("missing must be 'raise' or 'drop'")
+
+    finite = np.isfinite(data)
+    positions = np.flatnonzero(~finite)
+    if positions.size and missing == "raise":
+        joined = ", ".join(str(int(position)) for position in positions)
+        raise ValueError(f"data contains non-finite values at row positions: {joined}")
+
+    cleaned = data[finite]
+    if cleaned.size == 0:
+        raise ValueError("data contains no finite observations")
+    return cleaned
+
+
 # ---------------------------------------------------------------------------
 # Shared rendering core
 # ---------------------------------------------------------------------------
@@ -323,7 +340,10 @@ def plot_correlogram(
         raise ValueError("ax cannot be supplied for multiple correlation sequences")
 
     if bar_color is None or is_color_like(bar_color):
-        colors = [bar_color or DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)] for index in range(count)]
+        colors = [
+            bar_color or DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)]
+            for index in range(count)
+        ]
     else:
         colors = list(bar_color)
         if len(colors) != count:
@@ -404,6 +424,7 @@ def plot_acf(
     nlags: int | None = None,
     *,
     alpha: float = 0.05,
+    missing: str = "drop",
     bartlett_confint: bool = True,
     zero_lag: bool = True,
     title: str | None = None,
@@ -431,6 +452,12 @@ def plot_acf(
     alpha : float
         Significance level for the confidence band. ``0.05`` gives a 95 % band
         (default), ``0.01`` gives 99 %, ``0.10`` gives 90 %, etc.
+    missing : {"drop", "raise"}
+        Non-finite-value policy. ``"drop"`` (default) removes ``NaN`` and
+        positive or negative infinity before computing the ACF. ``"raise"``
+        reports their original row positions. Dropping an interior gap
+        compresses time; use ``"raise"`` when that would be misleading. The
+        effective sample after removal controls the adaptive ``nlags`` default.
     bartlett_confint : bool
         Use Bartlett's lag-varying formula for the confidence interval width
         (``True``, default) rather than the uniform ±z / √n formula
@@ -468,6 +495,12 @@ def plot_acf(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
 
+    Raises
+    ------
+    ValueError
+        If ``missing`` is unknown, ``missing="raise"`` encounters a non-finite
+        value, or no finite observations remain.
+
     Examples
     --------
     >>> import numpy as np
@@ -476,9 +509,12 @@ def plot_acf(
     >>> fig, ax = plot_acf(rng.normal(size=100), nlags=12, zero_lag=False)
     >>> ax.get_xlabel()
     '滞后期数'
+    >>> fig, ax = plot_acf(np.r_[np.nan, rng.normal(size=100)], nlags=12)
+    >>> len(ax.patches)
+    13
     """
     _ensure_fonts()
-    x = _to_1d(data)
+    x = _resolve_missing(_to_1d(data), missing)
     color = bar_color if bar_color is not None else DEFAULT_PALETTE[0]
 
     acf_vals, confint = sm_acf(
@@ -531,6 +567,7 @@ def plot_pacf(
     nlags: int | None = None,
     *,
     alpha: float = 0.05,
+    missing: str = "drop",
     method: str = "ywm",
     title: str | None = None,
     xtitle: str = "滞后期数",
@@ -558,6 +595,12 @@ def plot_pacf(
     alpha : float
         Significance level for the confidence band. ``0.05`` gives a 95 % band
         (default), ``0.01`` gives 99 %, ``0.10`` gives 90 %, etc.
+    missing : {"drop", "raise"}
+        Non-finite-value policy. ``"drop"`` (default) removes ``NaN`` and
+        positive or negative infinity before computing the PACF. ``"raise"``
+        reports their original row positions. Dropping an interior gap
+        compresses time; use ``"raise"`` when that would be misleading. The
+        effective sample after removal controls the adaptive ``nlags`` default.
     method : str
         PACF estimation method passed to ``statsmodels``. Common choices:
         ``"ywm"`` (Yule-Walker with bias correction, default), ``"ols"``,
@@ -592,6 +635,12 @@ def plot_pacf(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
 
+    Raises
+    ------
+    ValueError
+        If ``missing`` is unknown, ``missing="raise"`` encounters a non-finite
+        value, or no finite observations remain.
+
     Examples
     --------
     >>> import numpy as np
@@ -600,9 +649,12 @@ def plot_pacf(
     >>> fig, ax = plot_pacf(rng.normal(size=100), nlags=12, method="ywm")
     >>> ax.get_xlabel()
     '滞后期数'
+    >>> fig, ax = plot_pacf(np.r_[np.nan, rng.normal(size=100)], nlags=12)
+    >>> len(ax.patches)
+    12
     """
     _ensure_fonts()
-    x = _to_1d(data)
+    x = _resolve_missing(_to_1d(data), missing)
     color = bar_color if bar_color is not None else DEFAULT_PALETTE[0]
 
     pacf_vals, confint = sm_pacf(
