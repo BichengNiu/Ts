@@ -401,7 +401,7 @@ def plot_correlogram(
 
 def plot_acf(
     data,
-    nlags: int = 40,
+    nlags: int | None = None,
     *,
     alpha: float = 0.05,
     bartlett_confint: bool = True,
@@ -424,8 +424,10 @@ def plot_acf(
     ----------
     data : array-like or pandas Series or single-column DataFrame
         The time series whose ACF is plotted.
-    nlags : int
-        Number of lags to compute and display. Defaults to 40.
+    nlags : int, optional
+        Number of lags to compute and display. If None (default), statsmodels
+        selects ``min(int(10 * log10(n)), n - 1)`` from the sample size
+        ``n``. Pass an integer to set the lag count explicitly.
     alpha : float
         Significance level for the confidence band. ``0.05`` gives a 95 % band
         (default), ``0.01`` gives 99 %, ``0.10`` gives 90 %, etc.
@@ -526,7 +528,7 @@ def plot_acf(
 
 def plot_pacf(
     data,
-    nlags: int = 40,
+    nlags: int | None = None,
     *,
     alpha: float = 0.05,
     method: str = "ywm",
@@ -548,9 +550,11 @@ def plot_pacf(
     ----------
     data : array-like or pandas Series or single-column DataFrame
         The time series whose PACF is plotted.
-    nlags : int
-        Number of lags to compute and display. Defaults to 40. Must be less
-        than ``len(data) // 2``.
+    nlags : int, optional
+        Number of lags to compute and display. If None (default), statsmodels
+        selects ``min(int(10 * log10(n)), n // 2 - 1)`` from the sample size
+        ``n``. Pass an integer to set the lag count explicitly; explicit
+        values must satisfy statsmodels' PACF sample-size limit.
     alpha : float
         Significance level for the confidence band. ``0.05`` gives a 95 % band
         (default), ``0.01`` gives 99 %, ``0.10`` gives 90 %, etc.

@@ -283,8 +283,8 @@ fig, ax = plot_scatter(
 ```text
 from Ts.TsPlots import plot_acf, plot_pacf
 
-fig, ax = plot_acf(data, nlags=40, *, ...)
-fig, ax = plot_pacf(data, nlags=40, *, ...)
+fig, ax = plot_acf(data, nlags=None, *, ...)
+fig, ax = plot_pacf(data, nlags=None, *, ...)
 ```
 
 基于 `statsmodels.tsa.stattools.acf` / `pacf` 绘制样本自相关和偏自相关函数图，
@@ -295,7 +295,7 @@ fig, ax = plot_pacf(data, nlags=40, *, ...)
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `data` | array-like / Series / 单列 DataFrame | — | 一维时间序列 |
-| `nlags` | int | `40` | 计算并显示的滞后阶数 |
+| `nlags` | int / None | `None` | 计算并显示的滞后阶数；不设置时由 statsmodels 根据样本量自适应选择 |
 | `alpha` | float | `0.05` | 显著性水平（0.05 = 95% 置信带） |
 | `bartlett_confint` | bool | `True` | ACF: 使用 Bartlett 滞后变化公式（`True`）或均匀 ±z/√n 公式（`False`） |
 | `zero_lag` | bool | `True` | ACF: 是否包含滞后 0（ACF ≡ 1） |
@@ -316,6 +316,7 @@ fig, ax = plot_pacf(data, nlags=40, *, ...)
 
 - **ACF**：默认使用 Bartlett 公式（`bartlett_confint=True`），置信带宽度随滞后变化。
 - **PACF**：使用均匀置信带 ±z/√n。
+- **默认滞后阶数**：`nlags=None` 时直接使用 statsmodels 的自适应规则。ACF 为 `min(int(10 * log10(n)), n - 1)`；PACF 为 `min(int(10 * log10(n)), n // 2 - 1)`。用户显式传入整数时严格使用该值，PACF 超过样本量限制时会明确报错。
 - `alpha=0.05` 对应 95% 置信带，`alpha=0.01` 对应 99%，`alpha=0.10` 对应 90%。
 
 ### 示例

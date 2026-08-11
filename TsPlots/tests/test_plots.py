@@ -303,6 +303,14 @@ class TestPlotScatter:
 
 
 class TestPlotACF:
+    def test_default_nlags_adapts_to_sample_size(self):
+        data = np.random.randn(60)
+
+        fig, ax = plot_acf(data)
+
+        assert len(ax.patches) == 18  # lag 0 through floor(10 * log10(60))
+        plt.close(fig)
+
     def test_returns_fig_ax(self):
         data = np.random.randn(100)
         fig, _ax = plot_acf(data, nlags=10)
@@ -323,11 +331,23 @@ class TestPlotACF:
 
 
 class TestPlotPACF:
+    def test_default_nlags_adapts_to_sample_size(self):
+        data = np.random.randn(60)
+
+        fig, ax = plot_pacf(data)
+
+        assert len(ax.patches) == 17  # lag 0 is computed but not displayed
+        plt.close(fig)
+
     def test_returns_fig_ax(self):
         data = np.random.randn(100)
         fig, _ax = plot_pacf(data, nlags=10)
         assert isinstance(fig, plt.Figure)
         plt.close(fig)
+
+    def test_explicit_nlags_preserves_statsmodels_validation(self):
+        with pytest.raises(ValueError, match="requested nlags 40"):
+            plot_pacf(np.random.randn(60), nlags=40)
 
 
 class TestStyleConstants:
