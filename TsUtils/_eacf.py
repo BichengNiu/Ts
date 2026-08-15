@@ -119,13 +119,8 @@ def _selected_data(data, variable):
 def _autocorrelation(values: np.ndarray, lag: int) -> float:
     """Return the biased sample autocorrelation used by classical EACF.
 
-    Delegates to statsmodels' biased ACF estimator; the constant-series
-    guard keeps the EACF-specific error path.
+    The public entry point rejects constant series before this helper runs.
     """
-    centered = values - np.mean(values)
-    denominator = float(centered @ centered)
-    if denominator <= np.finfo(float).eps:
-        raise ValueError("EACF is not defined for a constant series")
     return float(acf(values, nlags=lag, adjusted=False)[lag])
 
 

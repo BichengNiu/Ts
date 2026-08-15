@@ -528,6 +528,9 @@ class TestStyleConstants:
     def test_markers_has_eight(self):
         assert len(DEFAULT_MARKERS) == 8
 
+    def test_markers_are_distinct(self):
+        assert len(set(DEFAULT_MARKERS)) == len(DEFAULT_MARKERS)
+
 
 class TestPlotCorrelogram:
     def test_precomputed_series_uses_supplied_values_and_band(self):

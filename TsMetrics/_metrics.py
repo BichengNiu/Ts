@@ -8,6 +8,15 @@ import numpy as np
 ERROR_METRIC_NAMES = ("mae", "mse", "rmse", "mape", "smape", "theil_u1")
 
 
+def _validate_rank_metric(rank_by):
+    """Return *rank_by* after requiring one canonical error metric name."""
+    if rank_by not in ERROR_METRIC_NAMES:
+        raise ValueError(
+            f"rank_by must be one of {list(ERROR_METRIC_NAMES)}, got {rank_by!r}"
+        )
+    return rank_by
+
+
 def _paired_values(actual, predicted, nan_policy):
     """Return aligned finite float vectors under the requested NaN policy."""
     actual_array = np.asarray(actual, dtype=float)

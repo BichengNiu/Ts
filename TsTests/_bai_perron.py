@@ -18,6 +18,7 @@ from ._base import BaseTest, BaseTestResult
 from ._break_utils import _validate_trim
 from ._regression_break_utils import (
     RegressionBreakDesign,
+    _coefficient_dict,
     _prepare_regression_break_design,
 )
 from Ts.TsUtils._validation import validate_int
@@ -162,12 +163,7 @@ def _fit_partition(
             raise ValueError("selected partition contains a rank-deficient regime")
         fitted[start:stop] = x_segment @ beta
         residuals[start:stop] = y_segment - fitted[start:stop]
-        coefficients.append(
-            {
-                name: float(beta[position])
-                for position, name in enumerate(design.column_names)
-            }
-        )
+        coefficients.append(_coefficient_dict(beta, design.column_names))
     return coefficients, fitted, residuals
 
 

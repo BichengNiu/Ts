@@ -18,7 +18,6 @@ TsTests/
 ├── _utils.py             # 通用工具函数（输入解析、模型验证）
 ├── _break_utils.py       # 结构突变专用工具（虚拟变量、滞后选择、回归构建）
 ├── _critical_values.py   # 临界值表 + 插值函数
-├── _unitroot_plot.py     # 单位根绘图薄再导出（实现位于 TsPlots/unitroot_plot.py）
 ├── _adf.py               # ADFTest + ADFTestResult
 ├── _phillips_perron.py   # PhillipsPerronTest + PhillipsPerronTestResult
 ├── _kpss.py              # KPSSTest + KPSSTestResult
@@ -43,6 +42,7 @@ TsTests/
 │   ├── test_perron.py
 │   ├── test_zivot.py
 │   ├── test_lee_strazicich.py
+│   ├── test_regression_break_utils.py
 │   ├── test_chow.py
 │   ├── test_cusum.py
 │   ├── test_bai_perron.py
@@ -51,6 +51,12 @@ TsTests/
 │   ├── test_normality.py
 │   ├── test_johansen.py
 │   ├── test_toda_yamamoto.py
+│   ├── test_feedback.py
+│   ├── test_residual_ccf.py
+│   ├── test_input_validation.py
+│   ├── test_shared_infrastructure.py
+│   ├── test_structural_break_exports.py
+│   ├── test_structural_break_reference.py
 │   └── test_convenience.py
 └── README.md
 ```
@@ -251,7 +257,8 @@ ccf_result.plot_test()
 |------|------|--------|------|
 | `data` | array-like | — | 时间序列 |
 | `trend` | str | `"c"` | 趋势项: `"c"`, `"ct"` |
-| `nlags` | str \| int | `"auto"` | 带宽: `"auto"`, `"legacy"` 或整数 |
+| `lags` | int \| None | `None` | 固定 Newey-West 滞后阶数（None 时按 `nlags` 自动选择） |
+| `nlags` | str | `"legacy"` | 自动滞后选择方法: `"legacy"` 或 `"auto"` |
 
 ## 结构突变检验参数
 

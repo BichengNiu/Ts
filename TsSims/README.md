@@ -261,7 +261,8 @@ simulate_garch(
 simulate_igarch(
     n=200, p=1, q=1,
     omega=0.10, alpha=None, beta=None,
-    mean_const=0.0, dist="normal",
+    mean_model="constant", mean_const=0.0,
+    dist="normal", dist_params=None,
     seed=None, burn=100,
 ) -> SimGARCHResult
 ```

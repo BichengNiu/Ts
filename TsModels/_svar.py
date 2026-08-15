@@ -26,6 +26,7 @@ from Ts.TsModels._var import (
     _coefficient_draws,
     _ma_coefficients,
     _render_equation_tables,
+    _validate_min_obs,
 )
 
 
@@ -678,12 +679,7 @@ class SVAR(BaseModel):
         else:
             y = y.copy()
 
-        min_obs = lags + 10
-        if y.shape[0] < min_obs:
-            raise ValueError(
-                f"Need at least {min_obs} observations "
-                f"({lags} lags + 10), got {y.shape[0]}"
-            )
+        _validate_min_obs(lags, y.shape[0])
 
         if A is not None:
             A = np.asarray(A, dtype=float)

@@ -11,12 +11,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from Ts.TsTests._base import BaseTest, BaseTestResult
-from Ts.TsTests._unitroot_plot import (
+from Ts.TsPlots.unitroot_plot import (
     _render_critical_value_plot,
     _render_ic_plot,
     _render_tstat_plot,
 )
+from Ts.TsTests._base import BaseTest, BaseTestResult
 from Ts.TsTests._utils import _parse_input
 
 

@@ -26,6 +26,7 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.colors import is_color_like
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 # --- Fonts -----------------------------------------------------------------
@@ -144,7 +145,7 @@ DEFAULT_LINESTYLES = [
 ]
 
 # Distinct marker shapes to reinforce B&W distinction
-DEFAULT_MARKERS = ["o", "o", "^", "D", "v", "P", "X", "*"]
+DEFAULT_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*"]
 
 # Shared reference-line and shading cosmetics (single source of truth).
 REFERENCE_LINE_COLOR = "#d9534f"
@@ -217,6 +218,14 @@ def _validate_max_ticks(value, name="max_ticks"):
     if int(value) < 1:
         raise ValueError(f"{name} must be at least 1")
     return int(value)
+
+
+def _set_lag_ticks(ax, lags, max_ticks):
+    """Show every lag when there are few enough, otherwise thin to integers."""
+    if len(lags) <= max_ticks:
+        ax.set_xticks(lags)
+    else:
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks, integer=True))
 
 
 def _validate_positive_step(name, value, *, integer=False):
@@ -562,14 +571,8 @@ class _FigureContext:
     axis labels, legend drawing, unit labels, tight_layout, and note rendering.
     """
 
-    def __init__(self, ax=None, figsize=None):
-        if figsize is None:
-            figsize = FIGSIZE
-        if ax is None:
-            self.fig, self.ax = plt.subplots(figsize=figsize)
-        else:
-            self.ax = ax
-            self.fig = ax.figure
+    def __init__(self, ax=None):
+        self.fig, self.ax = _fig_axes(ax)
 
     def finalize(
         self,

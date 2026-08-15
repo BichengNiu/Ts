@@ -91,33 +91,33 @@ def _make_chinese_formatter(freq: str) -> FuncFormatter:
     """
     if freq == "day":
 
-        def _fmt(x, pos):
+        def _fmt(x, _pos):
             dt = mdates.num2date(x)
             return f"{dt.year}年{dt.month}月{dt.day}日"
 
     elif freq == "week":
 
-        def _fmt(x, pos):
+        def _fmt(x, _pos):
             dt = mdates.num2date(x)
             week_of_month = (dt.day - 1) // 7 + 1
             return f"{dt.year}年{dt.month}月第{week_of_month}周"
 
     elif freq == "month":
 
-        def _fmt(x, pos):
+        def _fmt(x, _pos):
             dt = mdates.num2date(x)
             return f"{dt.year}年{dt.month}月"
 
     elif freq == "quarter":
 
-        def _fmt(x, pos):
+        def _fmt(x, _pos):
             dt = mdates.num2date(x)
             quarter = (dt.month - 1) // 3 + 1
             return f"{dt.year}年第{quarter}季度"
 
     elif freq == "year":
 
-        def _fmt(x, pos):
+        def _fmt(x, _pos):
             dt = mdates.num2date(x)
             return f"{dt.year}年"
 
@@ -391,9 +391,9 @@ def _resolve_input(data, x, y) -> tuple[np.ndarray, dict, str]:
 
 def _validate_bool(name: str, value) -> bool:
     """Return a real boolean or reject ambiguous truthy/falsy values."""
-    if not isinstance(value, (bool, np.bool_)):
-        raise TypeError(f"{name} must be a boolean")
-    return bool(value)
+    from Ts.TsUtils._validation import validate_bool
+
+    return validate_bool(name, value)
 
 
 def _robust_scale(values) -> float | None:
@@ -915,6 +915,35 @@ def plot_series(
     vlines = _clip_vlines_to_data(vlines, x_values)
     resolved_bar_width = _resolve_bar_width(x_values, bar_width)
 
+    def _draw_one(target_ax, label, values, index):
+        """Draw reference regions and one series on *target_ax*."""
+        draw_shade(target_ax, shade, shade_color, shade_alpha)
+        draw_vlines(
+            target_ax,
+            vlines,
+            vline_color,
+            vline_linestyle,
+            vline_linewidth,
+        )
+        return _plot_one_series(
+            target_ax,
+            x_values,
+            values,
+            label,
+            index,
+            colors=colors,
+            linewidth=linewidth,
+            markersize=markersize,
+            marker_edge_width=marker_edge_width,
+            show_values=show_values,
+            value_decimals=value_decimals,
+            is_bar=label in bar_series,
+            bar_width=resolved_bar_width,
+            bar_edge_color=bar_edge_color,
+            bar_edge_linewidth=bar_edge_linewidth,
+            bar_alpha=bar_alpha,
+        )
+
     if facet and len(series) >= 2:
         if ax is not None:
             raise ValueError(
@@ -939,32 +968,7 @@ def plot_series(
         for index, ((label, values), panel_ax) in enumerate(
             zip(series.items(), axes, strict=True)
         ):
-            draw_shade(panel_ax, shade, shade_color, shade_alpha)
-            draw_vlines(
-                panel_ax,
-                vlines,
-                vline_color,
-                vline_linestyle,
-                vline_linewidth,
-            )
-            _plot_one_series(
-                panel_ax,
-                x_values,
-                values,
-                label,
-                index,
-                colors=colors,
-                linewidth=linewidth,
-                markersize=markersize,
-                marker_edge_width=marker_edge_width,
-                show_values=show_values,
-                value_decimals=value_decimals,
-                is_bar=label in bar_series,
-                bar_width=resolved_bar_width,
-                bar_edge_color=bar_edge_color,
-                bar_edge_linewidth=bar_edge_linewidth,
-                bar_alpha=bar_alpha,
-            )
+            _draw_one(panel_ax, label, values, index)
             if label in bar_series:
                 panel_ax.set_ylim(bottom=0)
             panel_ax.set_title(
@@ -1029,9 +1033,6 @@ def plot_series(
     ctx = _FigureContext(ax=ax)
     fig, ax = ctx.fig, ctx.ax
 
-    draw_shade(ax, shade, shade_color, shade_alpha)
-    draw_vlines(ax, vlines, vline_color, vline_linestyle, vline_linewidth)
-
     resolved_groups = _resolve_axis_groups(
         series,
         axis_groups=axis_groups,
@@ -1060,26 +1061,7 @@ def plot_series(
     lines = []
     for index, (label, values) in enumerate(series.items()):
         target_ax = axis_by_label[label]
-        lines.append(
-            _plot_one_series(
-                target_ax,
-                x_values,
-                values,
-                label,
-                index,
-                colors=colors,
-                linewidth=linewidth,
-                markersize=markersize,
-                marker_edge_width=marker_edge_width,
-                show_values=show_values,
-                value_decimals=value_decimals,
-                is_bar=label in bar_series,
-                bar_width=resolved_bar_width,
-                bar_edge_color=bar_edge_color,
-                bar_edge_linewidth=bar_edge_linewidth,
-                bar_alpha=bar_alpha,
-            )
-        )
+        lines.append(_draw_one(target_ax, label, values, index))
 
     for label in bar_series:
         axis_by_label[label].set_ylim(bottom=0)

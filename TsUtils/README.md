@@ -22,6 +22,7 @@ from Ts.TsUtils import (
     EACFResult,
     STL,
     STLResult,
+    TimeSeriesSummary,
     boxcox,
     calendar_table,
     difference,

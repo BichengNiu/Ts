@@ -76,6 +76,14 @@ def _as_exog_matrix(exog: Any, nobs: int) -> tuple[np.ndarray, list[str]]:
     return values, names
 
 
+def _coefficient_dict(params: np.ndarray, column_names) -> dict[str, float]:
+    """Map one flat coefficient vector onto the named regression columns."""
+    return {
+        name: float(params[position])
+        for position, name in enumerate(column_names)
+    }
+
+
 def _prepare_regression_break_design(
     data,
     *,

@@ -22,7 +22,7 @@ from scipy.stats import chi2, norm
 from statsmodels.tsa.stattools import ccf
 
 from ._base import BaseMultiTestResult, BaseTest
-from ._utils import _validate_alpha, _validate_lags
+from ._utils import _normalise_name_selection, _validate_alpha, _validate_lags
 
 
 def _clean_residuals(values, name):
@@ -422,24 +422,11 @@ class ResidualCCFTestResult(BaseMultiTestResult):
         >>> len(ax.patches)
         4
         """
-        if inputs is None:
-            selected = self.input_names
-        elif isinstance(inputs, str):
-            selected = (inputs,)
-        else:
-            try:
-                selected = tuple(inputs)
-            except TypeError as error:
-                raise TypeError(
-                    "inputs must be a name or an iterable of names"
-                ) from error
-        if not selected:
-            raise ValueError("inputs must contain at least one input")
-        if len(set(selected)) != len(selected):
-            raise ValueError("inputs must be unique")
-        unknown = [name for name in selected if name not in self.input_names]
-        if unknown:
-            raise ValueError(f"inputs contains unknown input {unknown[0]!r}")
+        selected = _normalise_name_selection(
+            inputs,
+            self.input_names,
+            label="inputs",
+        )
 
         items = [self.get(name) for name in selected]
         correlations = pd.concat([item.correlations for item in items], axis=1)

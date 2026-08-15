@@ -7,7 +7,7 @@ that go beyond the standard ARCH/GARCH/IGARCH in :mod:`_garch`.
 from __future__ import annotations
 
 import numpy as np
-from Ts.TsUtils._validation import validate_choice, validate_real
+from Ts.TsUtils._validation import validate_choice, validate_real, validate_sample
 
 from ._garch_core import (
     _make_standard_variance_fn,
@@ -72,7 +72,7 @@ def _simulate_gjr_garch(
 
     standard_variance = _make_standard_variance_fn(omega, alpha, beta, p, q)
 
-    def _variance_fn(t, eps_ar, sigma2_ar, state=None):
+    def _variance_fn(t, eps_ar, sigma2_ar, _state=None):
         var_t = standard_variance(t, eps_ar, sigma2_ar)
         for k in range(o):
             if eps_ar[t - 1 - k] < 0:
@@ -137,6 +137,10 @@ def _simulate_egarch(
 
     """
     from scipy.special import gamma as gamma_func
+
+    # Validate sample sizes before any allocation so invalid n/burn report
+    # the public contract error instead of a NumPy dimension error.
+    n, burn = validate_sample(n, burn)
 
     # Pre-compute E|z| for the chosen distribution
     if dist == "t":

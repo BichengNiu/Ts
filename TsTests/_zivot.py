@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from Ts.TsPlots.unitroot_plot import _render_ic_plot, _render_tstat_plot
+
 from ._base import BaseTest, BaseTestResult
 from ._critical_values import _za_crit
 from ._utils import _parse_input, _validate_model
@@ -28,7 +30,6 @@ from ._break_utils import (
     _validate_time_axis,
     _validate_trim,
 )
-from ._unitroot_plot import _render_tstat_plot, _render_ic_plot
 
 
 @dataclass

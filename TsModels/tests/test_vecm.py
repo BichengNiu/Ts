@@ -113,12 +113,7 @@ class TestVECMInit:
         with pytest.raises(ValueError):
             VECM(vecm_data_2d, lags=2, coint_rank=2)
 
-    @pytest.fixture
-    def _vecm_data_2d(self, vecm_data_2d):
-        """Pass-through fixture for injectable test."""
-        return vecm_data_2d
-
-    def test_1d_data_raises(self, _vecm_data_2d):
+    def test_1d_data_raises(self):
         """1-D data raises ValueError.
 
         covers: code/python/Ts/TsModels/_vecm.py::VECM.__init__ [function]

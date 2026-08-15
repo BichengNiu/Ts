@@ -28,7 +28,10 @@ from Ts.TsModels._var import (
     IRFResult,
     _GrangerEntry,
     _forecast_cov_se,
+    _normalise_granger_df,
+    _resolve_granger_request,
     _run_granger_all,
+    _validate_min_obs,
 )
 
 # Map user-facing trend names to statsmodels VECM deterministic.
@@ -556,42 +559,21 @@ class VECMResult(BaseModelResult):
 
         if caused is None and causing is None:
             return self._granger_causality_all(kind=kind)
-        if caused is None or causing is None:
-            raise ValueError(
-                "Both 'caused' and 'causing' must be specified, "
-                "or neither for all-pairs mode."
-            )
-
-        if isinstance(caused, str):
-            caused = self._data_names.index(caused)
-        if isinstance(causing, str):
-            causing = [causing]
-
-        causing_idx = []
-        for c in causing if isinstance(causing, list) else [causing]:
-            if isinstance(c, str):
-                causing_idx.append(self._data_names.index(c))
-            else:
-                causing_idx.append(c)
+        caused, causing_idx = _resolve_granger_request(
+            caused,
+            causing,
+            self._data_names,
+        )
 
         # statsmodels VECM: test_granger_causality(caused, causing, signif)
         sm = self._vecm_result
         sig_level = 0.05
         gc_result = sm.test_granger_causality(caused, causing_idx, sig_level)
 
-        test_stat = float(gc_result.test_statistic)
-        p_value = float(gc_result.pvalue)
-
-        df_val = gc_result.df
-        if isinstance(df_val, tuple):
-            df_val = (int(df_val[0]), int(df_val[1]))
-        else:
-            df_val = int(df_val)
-
         entry = _GrangerEntry(
-            test_statistic=test_stat,
-            p_value=p_value,
-            df=df_val,
+            test_statistic=float(gc_result.test_statistic),
+            p_value=float(gc_result.pvalue),
+            df=_normalise_granger_df(gc_result.df),
             caused=self._data_names[caused],
             causing=[self._data_names[i] for i in causing_idx],
         )
@@ -599,7 +581,7 @@ class VECMResult(BaseModelResult):
 
     def _granger_causality_all(self, kind="f"):
         """Run all pairwise Granger causality tests (internal)."""
-        return _run_granger_all(self, self.k, self._data_names, kind)
+        return _run_granger_all(self, self.k, kind)
 
     @property
     def is_stable(self):
@@ -810,12 +792,7 @@ class VECM(BaseModel):
                 f"coint_rank must be between 1 and {k - 1}, got {coint_rank}"
             )
 
-        min_obs = lags + 10
-        if y.shape[0] < min_obs:
-            raise ValueError(
-                f"Need at least {min_obs} observations "
-                f"({lags} lags + 10), got {y.shape[0]}"
-            )
+        _validate_min_obs(lags, y.shape[0])
 
         if cols is not None:
             if len(cols) != k:

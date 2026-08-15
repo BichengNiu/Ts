@@ -86,11 +86,6 @@ def _classify_frequency(offset):
     return family
 
 
-def _calendar_timestamps(index):
-    """Return timestamps carrying natural calendar coordinates."""
-    return index.start_time if isinstance(index, pd.PeriodIndex) else index
-
-
 def _weekly_wednesdays(index):
     """Return the unique Wednesday within each anchored weekly period."""
     if isinstance(index, pd.PeriodIndex):
@@ -106,7 +101,11 @@ def _reshape(series, family):
     if family == "weekly":
         timestamps = _weekly_wednesdays(series.index)
     else:
-        timestamps = _calendar_timestamps(series.index)
+        timestamps = (
+            series.index.start_time
+            if isinstance(series.index, pd.PeriodIndex)
+            else series.index
+        )
     years = timestamps.year
     if family == "annual":
         row_name = "period"
@@ -157,8 +156,6 @@ def _apply_label_style(table, *, family, label_style):
     """Apply optional presentation labels without changing table values."""
     if label_style == "numeric":
         return table
-    if label_style != "text":
-        raise ValueError("label_style must be 'numeric' or 'text'")
 
     result = table.copy(deep=False)
     if family == "quarterly":

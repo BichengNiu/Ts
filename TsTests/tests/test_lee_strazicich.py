@@ -102,6 +102,7 @@ def test_joint_two_dimensional_search_matches_manual_grid():
     assert result.statistic == pytest.approx(expected_statistic)
     assert result.break_indices == expected_pair
     assert len(result.all_candidate_statistics) == len(candidates)
+    assert len(result.all_candidate_break_indices) == len(candidates)
 
 
 @pytest.mark.parametrize(

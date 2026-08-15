@@ -31,7 +31,6 @@ Examples
 
 from __future__ import annotations
 
-from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.stattools import acf as sm_acf
@@ -48,6 +47,7 @@ from .style import (
     _fig_axes,
     _finalize_facet_figure,
     _resolve_bar_colors,
+    _set_lag_ticks,
     _validate_max_ticks,
     draw_note_and_bottom_title,
     style_axes,
@@ -95,15 +95,10 @@ def _to_1d(data) -> np.ndarray:
 
 def _resolve_missing(data: np.ndarray, missing: str) -> np.ndarray:
     """Apply the correlogram missing-value policy to a 1-D array."""
-    if missing not in {"raise", "drop"}:
-        raise ValueError("missing must be 'raise' or 'drop'")
+    from Ts.TsUtils._validation import _resolve_missing_rows
 
     finite = np.isfinite(data)
-    positions = np.flatnonzero(~finite)
-    if positions.size and missing == "raise":
-        joined = ", ".join(str(int(position)) for position in positions)
-        raise ValueError(f"data contains non-finite values at row positions: {joined}")
-
+    _resolve_missing_rows(finite, missing, name="data")
     cleaned = data[finite]
     if cleaned.size == 0:
         raise ValueError("data contains no finite observations")
@@ -210,10 +205,7 @@ def _draw_correlogram(
     # --- X-axis ticks ------------------------------------------------------
     # Show every lag when there are few enough; otherwise let MaxNLocator
     # choose an integer-valued subset (mirrors ts_plot's max_ticks logic).
-    if len(lags) <= max_ticks:
-        ax.set_xticks(lags)
-    else:
-        ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks, integer=True))
+    _set_lag_ticks(ax, lags, max_ticks)
 
     # --- Optional title ----------------------------------------------------
     if title is not None and title_position == "top":
@@ -252,8 +244,6 @@ def _normalise_correlogram_band(confidence_band, frame):
             values = np.repeat(values[:, None], frame.shape[1], axis=1)
         elif values.shape != frame.shape:
             raise ValueError("confidence_band shape must match the correlation data")
-    if values.shape != frame.shape:
-        raise ValueError("confidence_band shape must match the correlation data")
     if not np.all(np.isfinite(values)):
         raise ValueError("confidence_band must contain only finite values")
     if np.any(values < 0):

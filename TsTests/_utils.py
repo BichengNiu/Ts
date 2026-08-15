@@ -57,6 +57,29 @@ def _validate_alpha(alpha) -> float:
     return validate_alpha(alpha)
 
 
+def _normalise_name_selection(selection, valid_names, *, label):
+    """Resolve ``None``, one name, or an iterable of names into a unique tuple."""
+    if selection is None:
+        return tuple(valid_names)
+    if isinstance(selection, str):
+        selected = (selection,)
+    else:
+        try:
+            selected = tuple(selection)
+        except TypeError as error:
+            raise TypeError(
+                f"{label} must be a name or an iterable of names"
+            ) from error
+    if not selected:
+        raise ValueError(f"{label} must contain at least one input")
+    if len(set(selected)) != len(selected):
+        raise ValueError(f"{label} must be unique")
+    unknown = [name for name in selected if name not in valid_names]
+    if unknown:
+        raise ValueError(f"{label} contains unknown input {unknown[0]!r}")
+    return selected
+
+
 # ---------------------------------------------------------------------------
 # Input parsing
 # ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from ._metrics import ERROR_METRIC_NAMES, compute_metrics
+from ._metrics import ERROR_METRIC_NAMES, _validate_rank_metric, compute_metrics
 from ._schemes import ForecastSplit
 from Ts.TsUtils._validation import optional_array, validate_alpha
 
@@ -476,8 +476,7 @@ class ForecastComparisonResult:
             for result in self.results.values()
         ):
             raise TypeError("results must contain only ForecastEvaluationResult values")
-        if self.rank_by not in ERROR_METRIC_NAMES:
-            raise ValueError(f"rank_by must be one of {list(ERROR_METRIC_NAMES)}")
+        self.rank_by = _validate_rank_metric(self.rank_by)
         self.results = dict(self.results)
         reference = next(iter(self.results.values()))
         for name, result in self.results.items():
@@ -544,9 +543,7 @@ class ForecastComparisonResult:
             name: compute_metrics(result.actual[mask], result.mean[mask])
             for name, result in self.results.items()
         }
-        rank_metric = {
-            name: metrics[self.rank_by] for name, metrics in metrics_by_model.items()
-        }
+        rank_metric = self.scores
         ranking = _rank(rank_metric)
         rows = {}
         for name, result in self.results.items():
@@ -686,8 +683,6 @@ class ForecastComparisonResult:
         ...     "ar.L1", model="ARIMA", x="train_end"
         ... )
         """
-        from Ts.TsPlots import plot_series
-
         x_labels = {
             "split": "Split",
             "train_end": "Training sample end",
@@ -718,10 +713,8 @@ class ForecastComparisonResult:
         frame = table.pivot(index=x, columns="_series", values="estimate").reindex(
             columns=series_order
         )
-        return plot_series(
+        return self._plot_series(
             frame,
-            facet=False,
-            auto_dual_y=False,
             title=title,
             xtitle=x_labels[x] if xtitle is None else xtitle,
             ytitle="Estimate" if ytitle is None else ytitle,
@@ -804,6 +797,36 @@ class ForecastComparisonResult:
             raise ValueError(f"unknown series {series!r}")
         return series
 
+    def _plot_series(
+        self,
+        frame,
+        *,
+        title,
+        xtitle,
+        ytitle,
+        freq,
+        note,
+        grid,
+        ax,
+        show_legend=True,
+    ):
+        """Draw one frame with the shared historical-evaluation plot options."""
+        from Ts.TsPlots import plot_series
+
+        return plot_series(
+            frame,
+            facet=False,
+            auto_dual_y=False,
+            title=title,
+            xtitle=xtitle,
+            ytitle=ytitle,
+            freq=freq,
+            note=note,
+            grid=grid,
+            show_legend=show_legend,
+            ax=ax,
+        )
+
     def plot_forecasts(
         self,
         *,
@@ -855,8 +878,6 @@ class ForecastComparisonResult:
         --------
         >>> fig, ax = report.plot_forecasts(horizon=1)
         """
-        from Ts.TsPlots import plot_series
-
         reference = next(iter(self.results.values()))
         max_horizon = reference.mean.shape[1]
         if horizon is None and len(reference.splits) > 1 and max_horizon > 1:
@@ -892,10 +913,8 @@ class ForecastComparisonResult:
             axis=1,
         )
         old_lines = 0 if ax is None else len(ax.lines)
-        fig, ax = plot_series(
+        fig, ax = self._plot_series(
             frame,
-            facet=False,
-            auto_dual_y=False,
             title=title,
             xtitle=xtitle,
             ytitle=ytitle,
@@ -968,8 +987,6 @@ class ForecastComparisonResult:
         --------
         >>> fig, ax = report.plot_metric("rmse", by="origin")
         """
-        from Ts.TsPlots import plot_series
-
         if metric not in ERROR_METRIC_NAMES:
             raise ValueError(f"metric must be one of {list(ERROR_METRIC_NAMES)}")
         if by not in {"origin", "horizon"}:
@@ -978,10 +995,8 @@ class ForecastComparisonResult:
         frame = table.pivot(index=by, columns="model", values=metric).reindex(
             columns=list(self.results)
         )
-        return plot_series(
+        return self._plot_series(
             frame,
-            facet=False,
-            auto_dual_y=False,
             title=title,
             xtitle=xtitle,
             ytitle=metric.upper() if ytitle is None else ytitle,

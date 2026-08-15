@@ -45,6 +45,8 @@ testpaths = [
 
 [tool.coverage.run]
 branch = true
+# Stage-1 coverage gate: enforce thresholds on simulation and test packages
+# first; extend `source` as the other subpackages reach the same bar.
 source = ["TsSims", "TsTests"]
 omit = ["*/tests/*"]
 

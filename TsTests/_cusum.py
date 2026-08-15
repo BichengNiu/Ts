@@ -11,6 +11,7 @@ from statsmodels.stats.diagnostic import breaks_cusumolsresid
 from ._base import BaseTest, BaseTestResult
 from ._regression_break_utils import (
     RegressionBreakDesign,
+    _coefficient_dict,
     _prepare_regression_break_design,
 )
 
@@ -84,9 +85,9 @@ class CUSUMTestResult(BaseTestResult):
         >>> result = CUSUMTest(np.random.default_rng(42).normal(size=80)).fit()
         >>> fig, ax = result.plot_test()
         """
-        level = f"{int(alpha * 100)}%"
-        if level not in self.critical_values:
+        if alpha not in (0.01, 0.05, 0.10):
             raise ValueError("alpha must be one of 0.01, 0.05, or 0.10")
+        level = f"{int(alpha * 100)}%"
         from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
 
         context = _FigureContext(ax=ax)
@@ -202,10 +203,7 @@ class CUSUMTest(BaseTest):
         )
         cusum = np.cumsum(residuals) / scale
         critical_values = {f"{level}%": float(value) for level, value in critical}
-        coefficients = {
-            name: float(result.params[index])
-            for index, name in enumerate(self.design.column_names)
-        }
+        coefficients = _coefficient_dict(result.params, self.design.column_names)
         self.result_ = CUSUMTestResult(
             statistic=float(statistic),
             pvalue=float(pvalue),

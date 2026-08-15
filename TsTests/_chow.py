@@ -12,6 +12,7 @@ from ._base import BaseTest, BaseTestResult
 from ._break_utils import _locate_known_break
 from ._regression_break_utils import (
     RegressionBreakDesign,
+    _coefficient_dict,
     _prepare_regression_break_design,
 )
 
@@ -260,10 +261,7 @@ class ChowTest(BaseTest):
             raise FloatingPointError("invalid Chow test statistic")
 
         def coefficients(result) -> dict[str, float]:
-            return {
-                name: float(result.params[index])
-                for index, name in enumerate(self.design.column_names)
-            }
+            return _coefficient_dict(result.params, self.design.column_names)
 
         fitted_split = np.concatenate([before.fittedvalues, after.fittedvalues])
         residuals_split = np.concatenate([before.resid, after.resid])

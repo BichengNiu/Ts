@@ -28,12 +28,6 @@ def validated_model_dates(model, data):
     return _validated_dates(values, name="model.dates", expected_length=len(data))
 
 
-def _period_pair(name, period):
-    if not isinstance(period, (tuple, list)) or len(period) != 2:
-        raise TypeError(f"{name} must be a (start, end) pair")
-    return period[0], period[1]
-
-
 def _position_bound(name, bound, nobs):
     position = validate_int(name, bound, minimum=0)
     if position >= nobs:
@@ -59,7 +53,9 @@ def _date_bound(name, bound, dates):
 
 
 def _resolve_period(name, period, data, dates):
-    start_bound, end_bound = _period_pair(name, period)
+    if not isinstance(period, (tuple, list)) or len(period) != 2:
+        raise TypeError(f"{name} must be a (start, end) pair")
+    start_bound, end_bound = period
     if dates is None:
         start = _position_bound(f"{name} start", start_bound, len(data))
         end = _position_bound(f"{name} end", end_bound, len(data))

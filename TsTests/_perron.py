@@ -127,7 +127,7 @@ class PerronTestResult(BaseTestResult):
         >>> result = PerronTest(data, break_year=2040, time_index=years).fit()
         >>> fig, ax = result.plot_test()
         """
-        from ._unitroot_plot import _render_critical_value_plot
+        from Ts.TsPlots.unitroot_plot import _render_critical_value_plot
 
         return _render_critical_value_plot(self, "Perron (1989)", ax)
 
@@ -233,8 +233,6 @@ class PerronTest(BaseTest):
         """
         y = self.data
         T = len(y)
-        if not np.all(np.isfinite(y)):
-            raise ValueError("Perron test data must contain only finite values.")
         if np.ptp(y) == 0.0:
             raise ValueError("Perron test requires non-constant data.")
 

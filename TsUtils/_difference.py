@@ -9,24 +9,6 @@ from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 from ._validation import validate_bool, validate_int
 
 
-def _validate_order(order) -> int:
-    """Return a supported difference order after strict integer validation."""
-    order = validate_int("order", order, minimum=1)
-    if order not in {1, 2}:
-        raise ValueError(f"order must be 1 or 2, got {order}")
-    return order
-
-
-def _validate_lag(lag) -> int:
-    """Return a strictly positive positional lag."""
-    return validate_int("lag", lag, minimum=1)
-
-
-def _validate_log(log) -> bool:
-    """Return a genuine boolean log-transform flag."""
-    return validate_bool("log", log)
-
-
 def _as_float_data(data):
     """Validate a pandas time-series container and return a float copy."""
     if not isinstance(data, (pd.Series, pd.DataFrame)):
@@ -97,9 +79,11 @@ def difference(data, *, order=1, log=False, lag=1):
     >>> difference(quarterly, lag=4).tolist()
     [nan, nan, nan, nan, 5.0]
     """
-    order = _validate_order(order)
-    lag = _validate_lag(lag)
-    log = _validate_log(log)
+    order = validate_int("order", order, minimum=1)
+    if order not in {1, 2}:
+        raise ValueError(f"order must be 1 or 2, got {order}")
+    lag = validate_int("lag", lag, minimum=1)
+    log = validate_bool("log", log)
     transformed = _as_float_data(data)
 
     values = transformed.to_numpy(dtype=float, na_value=np.nan)

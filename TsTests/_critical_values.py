@@ -156,4 +156,6 @@ def _za_crit(model: str, significance: float) -> float:
         If *model* is not one of ``"intercept"``, ``"slope"``, or ``"both"``.
     """
     _validate_model(model)
+    if significance not in (0.01, 0.025, 0.05, 0.10):
+        raise ValueError("significance must be one of 0.01, 0.025, 0.05, or 0.10")
     return _ZA_CRIT_MAP[model][significance]

@@ -40,17 +40,25 @@ TsModels/
 ├── _svar.py            # SVAR + SVARResult — 结构向量自回归
 ├── _vecm.py            # VECM + VECMResult — 向量误差修正模型
 ├── _auto.py            # AutoSARIMAX + AutoGARCH + AutoModelResult
+├── _backcast.py        # BackcastResult + 反向时间样本前估计
+├── _intervention.py    # EventSpec + PolicyEffectResult — 政策干预分析
 ├── _compare.py         # compare_models — Stata 风格对比表格
 ├── _outlier.py         # OutlierDetector + OutlierDetectorResult（AO/LS/IO 异常检测）
 ├── tests/
 │   ├── __init__.py
 │   ├── test_base.py
 │   ├── test_sarimax.py
+│   ├── test_sarimax_api.py
+│   ├── test_sarimax_exog.py
+│   ├── test_distributed_lag.py
 │   ├── test_garch.py
 │   ├── test_auto.py
 │   ├── test_compare.py
-│   ├── test_garch_refactor.py
 │   ├── test_outlier.py
+│   ├── test_intervention.py
+│   ├── test_evaluation.py
+│   ├── test_evaluation_periods.py
+│   ├── test_missing_policy.py
 │   ├── test_var.py
 │   ├── test_svar.py
 │   └── test_vecm.py

@@ -85,7 +85,7 @@ def _validate_garch_inputs(
 def _make_standard_variance_fn(omega, alpha, beta, p, q):
     """Return a variance_fn closure for standard GARCH/ARCH/IGARCH/GARCH-M."""
 
-    def _variance_fn(t, eps_ar, sigma2_ar, state=None):
+    def _variance_fn(t, eps_ar, sigma2_ar, _state=None):
         var_t = omega
         for i in range(p):
             var_t += alpha[i] * eps_ar[t - 1 - i] ** 2
@@ -153,11 +153,12 @@ def _compute_mean(y, mean_model, mean_const, mean_ar, t):
     if mean_model == "zero":
         return 0.0
     mu = mean_const
-    if mean_model == "ar" and mean_ar and t > 0:
+    # The recursion starts at max(p, q, len(mean_ar)), so every requested
+    # lag is already inside the generated history.
+    if mean_model == "ar" and mean_ar:
         for k, phi in enumerate(mean_ar):
             lag = k + 1
-            if t - lag >= 0:
-                mu += phi * y[t - lag]
+            mu += phi * y[t - lag]
     return mu
 
 

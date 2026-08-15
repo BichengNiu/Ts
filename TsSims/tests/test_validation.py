@@ -69,6 +69,18 @@ def test_extended_garch_rejects_invalid_distribution(simulator):
         simulator(n=20, dist="gaussian-fallback")
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"n": 0}, "n"),
+        ({"burn": -1}, "burn"),
+    ],
+)
+def test_egarch_validates_sample_sizes_before_allocation(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        simulate_egarch(seed=1, **kwargs)
+
+
 def test_extended_garch_enforces_variant_coefficient_lengths():
     with pytest.raises(ValueError, match="gamma"):
         simulate_gjr_garch(n=20, o=2, gamma=[0.1])

@@ -89,10 +89,6 @@ def _render_critical_value_plot(result, test_name, ax=None):
     ax.set_xticks([])
     ax.set_ylabel("Statistic")
     ax.set_title(f"{test_name}: Test Statistic vs Critical Values")
-
-    # Determine legend location based on test direction
-    # KPSS: reject (non-stationary) when statistic > critical value (right tail)
-    # ADF/PP: reject (stationary) when statistic < critical value (left tail)
     ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
 
     style_axes(ax)

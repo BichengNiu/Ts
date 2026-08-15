@@ -11,7 +11,7 @@ import statsmodels.api as sm
 from Ts.TsUtils._validation import validate_choice
 
 from ._base import BaseMultiTestResult, BaseTest
-from ._utils import _validate_alpha, _validate_lags
+from ._utils import _normalise_name_selection, _validate_alpha, _validate_lags
 
 
 _TRENDS = frozenset({"n", "c", "t", "ct"})
@@ -74,26 +74,6 @@ def _normalise_y(y):
     except (TypeError, ValueError) as error:
         raise ValueError("y must contain numeric values") from error
     return series.rename(name)
-
-
-def _normalise_tested_inputs(tested_inputs, names):
-    if tested_inputs is None:
-        return tuple(names)
-    if isinstance(tested_inputs, str):
-        tested_inputs = (tested_inputs,)
-    else:
-        try:
-            tested_inputs = tuple(tested_inputs)
-        except TypeError as error:
-            raise TypeError("tested_inputs must be a name or an iterable of names") from error
-    if not tested_inputs:
-        raise ValueError("tested_inputs must contain at least one input")
-    if len(set(tested_inputs)) != len(tested_inputs):
-        raise ValueError("tested_inputs must be unique")
-    unknown = [name for name in tested_inputs if name not in names]
-    if unknown:
-        raise ValueError(f"tested_inputs contains unknown input {unknown[0]!r}")
-    return tested_inputs
 
 
 @dataclass
@@ -435,8 +415,10 @@ class FeedbackTest(BaseTest):
 
         self.y = y_series
         self.exog = exog_frame
-        self.tested_inputs = _normalise_tested_inputs(
-            tested_inputs, tuple(exog_frame.columns)
+        self.tested_inputs = _normalise_name_selection(
+            tested_inputs,
+            tuple(exog_frame.columns),
+            label="tested_inputs",
         )
         self.result_: FeedbackTestResult | None = None
 

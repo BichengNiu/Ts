@@ -100,7 +100,12 @@ def _public_objects():
     objects = {}
     for module in PUBLIC_MODULES:
         for name in module.__all__:
-            objects.setdefault(name, getattr(module, name))
+            if name in objects:
+                raise RuntimeError(
+                    f"public API name collision: {name} is exported by "
+                    "more than one subpackage"
+                )
+            objects[name] = getattr(module, name)
     return objects
 
 
@@ -174,91 +179,14 @@ def test_public_help_is_complete(name):
         assert _section(doc, "Returns"), f"{name} has no Returns section"
 
 
+# Only inherited demo-facing methods need manual registration: methods defined
+# directly on a public class are collected automatically by _public_methods().
 DEMO_METHODS = {
-    TsUtils.STL: ("fit", "summary"),
-    TsUtils.STLResult: ("summary", "plot"),
-    TsUtils.TimeSeriesSummary: ("summary", "plot"),
-    TsUtils.EACFResult: ("summary",),
-    TsUtils.InterpolationResult: ("summary",),
-    TsTests.BaseTest: ("summary",),
-    TsTests.ADFTest: ("fit",),
-    TsTests.ADFTestResult: ("plot_test",),
-    TsTests.PhillipsPerronTest: ("fit",),
-    TsTests.PhillipsPerronTestResult: ("plot_test",),
-    TsTests.KPSSTest: ("fit",),
-    TsTests.KPSSTestResult: ("plot_test",),
-    TsTests.PerronTest: ("fit",),
-    TsTests.PerronTestResult: ("plot_test",),
-    TsTests.ZivotAndrewsTest: ("fit",),
-    TsTests.ZivotAndrewsTestResult: ("plot_test",),
-    TsTests.LjungBoxTest: ("fit",),
-    TsTests.EngleLMTest: ("fit",),
-    TsTests.NormalityTest: ("fit",),
-    TsTests.NormalityTestResult: ("plot_test",),
-    TsTests.JohansenTest: ("fit",),
-    TsTests.TodaYamamotoTest: ("fit",),
-    TsTests.ResidualCCFTest: ("fit",),
-    TsTests.ResidualCCFInputResult: ("summary", "plot_test"),
-    TsTests.ResidualCCFTestResult: ("summary", "get", "plot_test"),
-    TsSims.BaseSimResult: ("get_data", "get_params", "summary", "plot"),
-    TsSims.SimSARIMAResult: ("summary", "plot"),
-    TsSims.SimGARCHResult: ("summary", "plot", "to_dataframe"),
-    TsSims.SimRDLResult: ("get_exog", "get_components", "summary"),
-    TsSims.SimCointegratedResult: ("summary", "plot"),
-    TsSims.SimTSDSResult: ("summary", "plot"),
-    TsModels.BaseModel: ("summary", "backcast"),
-    TsModels.BaseModelResult: (
-        "summary",
-        "plot_fit",
-        "plot_diagnostics",
-        "test_residuals",
-    ),
-    TsModels.SARIMAX: ("fit",),
-    TsModels.SARIMAXResult: (
-        "summary",
-        "predict",
-        "plot_roots",
-        "policy_effect",
-        "weights",
-        "cycle_period",
-        "long_run_equilibrium",
-        "residual_ccf_test",
-    ),
+    TsSims.SimSARIMAResult: ("plot",),
+    TsSims.SimTSDSResult: ("plot",),
     TsModels.GARCH: ("fit",),
-    TsModels.GARCHResult: ("summary", "predict", "test_persistence"),
-    TsModels.AutoModelResult: ("summary", "residual_ccf_test"),
-    TsModels.IRFResult: ("summary", "get"),
-    TsModels.FEVDResult: ("summary", "get"),
-    TsModels.VAROrderResult: ("summary",),
-    TsModels.VARResult: (
-        "summary",
-        "plot_fit",
-        "plot_diagnostics",
-        "test_residuals",
-        "irf",
-        "fevd",
-        "granger_causality",
-        "plot_irf",
-        "plot_roots",
-        "predict",
-    ),
-    TsModels.VAR: ("select_order", "fit"),
-    TsModels.VECM: ("fit",),
-    TsModels.VECMOrderResult: ("summary",),
-    TsModels.VECMResult: (
-        "summary",
-        "irf",
-        "fevd",
-        "granger_causality",
-        "plot_diagnostics",
-        "test_residuals",
-        "predict",
-        "plot_roots",
-    ),
-    TsModels.SVAR: ("fit",),
-    TsModels.SVARResult: ("summary", "irf", "plot_irf"),
-    TsModels.AutoSARIMAX: ("fit",),
-    TsModels.AutoGARCH: ("fit",),
+    TsModels.VARResult: ("plot_fit", "plot_diagnostics", "test_residuals"),
+    TsModels.VECMResult: ("plot_diagnostics", "test_residuals"),
 }
 
 

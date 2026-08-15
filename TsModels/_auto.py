@@ -22,16 +22,16 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from Ts.TsUtils._validation import _resolve_missing_rows
-
 from Ts.TsModels._base import (
-    _GARCH_M_FORMS,
-    _VOL_TYPES,
     BaseModel,
     BaseModelResult,
-    _normalise_model_dates,
+    _VOL_TYPES,
 )
-from Ts.TsModels._garch_base import _VolEvaluationMixin
+from Ts.TsModels._garch_base import (
+    _VolEvaluationMixin,
+    _prepare_vol_inputs,
+    _validate_vol_options,
+)
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
 
@@ -728,13 +728,11 @@ class _BaseAutoModel(BaseModel):
             )
         return y
 
-    def _run_grid_search(self, y, orders, build_model, criterion):
+    def _run_grid_search(self, orders, build_model, criterion):
         """Common grid search loop.
 
         Parameters
         ----------
-        y : np.ndarray
-            1D array of data.
         orders : iterable of tuple
             Parameter combinations to try.
         build_model : callable(tuple) -> BaseModel
@@ -1104,7 +1102,7 @@ class AutoSARIMAX(_BaseAutoModel):
             candidate_orders,
             n_attempted,
             search_messages,
-        ) = self._run_grid_search(self.data, orders, build_model, self.criterion)
+        ) = self._run_grid_search(orders, build_model, self.criterion)
 
         criterion_values = [
             _get_criterion_value(r, self.criterion) for r in candidate_results
@@ -1221,31 +1219,12 @@ class AutoGARCH(_VolEvaluationMixin, _BaseAutoModel):
         dates=None,
         missing="drop",
     ):
-        raw_data = np.asarray(data, dtype=float).ravel()
-        model_dates = _normalise_model_dates(data, dates, len(raw_data))
-        if exog is not None:
-            exog = np.asarray(exog, dtype=float)
-            if exog.ndim == 1:
-                exog = exog.reshape(-1, 1)
-            if exog.shape[0] != len(raw_data):
-                raise ValueError(
-                    f"exog must have {len(raw_data)} rows (same as data), "
-                    f"got {exog.shape[0]}"
-                )
-
-        valid_rows = np.isfinite(raw_data)
-        if exog is not None:
-            valid_rows &= np.all(np.isfinite(exog), axis=1)
-        dropped_positions = _resolve_missing_rows(
-            valid_rows,
+        raw_data, exog, model_dates, dropped_positions = _prepare_vol_inputs(
+            data,
+            exog,
+            dates,
             missing,
-            name="data or exog",
         )
-        if missing == "drop":
-            raw_data = raw_data[valid_rows]
-            exog = None if exog is None else exog[valid_rows]
-            if model_dates is not None:
-                model_dates = model_dates[valid_rows].copy()
         self.missing = missing
         self.dropped_positions = dropped_positions
         self.dates = model_dates
@@ -1256,18 +1235,12 @@ class AutoGARCH(_VolEvaluationMixin, _BaseAutoModel):
         # --- GARCH-specific validation ---
         if vol not in _VOL_TYPES:
             raise ValueError(f"vol must be one of {sorted(_VOL_TYPES)}, got {vol!r}")
-        if garch_m and garch_m_form not in _GARCH_M_FORMS:
-            raise ValueError(
-                f"garch_m_form must be one of {sorted(_GARCH_M_FORMS)}, "
-                f"got {garch_m_form!r}"
-            )
+        _validate_vol_options(garch_m, garch_m_form, igarch)
         if igarch and vol == "EGARCH":
             raise ValueError(
                 "IGARCH is not supported for EGARCH models. "
                 "Use vol='GARCH' for IGARCH estimation."
             )
-        if igarch and garch_m:
-            raise ValueError("IGARCH is not supported for GARCH-M (garch_m=True).")
         if garch_m and vol == "EGARCH":
             raise ValueError(
                 "GARCH-M is not supported for EGARCH models. "
@@ -1342,7 +1315,7 @@ class AutoGARCH(_VolEvaluationMixin, _BaseAutoModel):
             candidate_orders,
             n_attempted,
             search_messages,
-        ) = self._run_grid_search(self.data, orders, build_model, self.criterion)
+        ) = self._run_grid_search(orders, build_model, self.criterion)
 
         criterion_values = [
             _get_criterion_value(r, self.criterion) for r in candidate_results

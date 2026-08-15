@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from matplotlib.colors import is_color_like
-from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
@@ -15,6 +14,7 @@ from .style import (
     _fig_axes,
     _finalize_facet_figure,
     _resolve_bar_colors,
+    _set_lag_ticks,
     _validate_max_ticks,
     draw_note_and_bottom_title,
     style_axes,
@@ -185,10 +185,7 @@ def plot_lag_response(
             axis.legend(handles=[bars, transfer_line], frameon=False)
         axis.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)
         axis.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
-        if len(lags) <= max_ticks:
-            axis.set_xticks(lags)
-        else:
-            axis.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks, integer=True))
+        _set_lag_ticks(axis, lags, max_ticks)
         panel_title = title if count == 1 and title is not None else str(name)
         if panel_title != "response" or title is not None:
             axis.set_title(

@@ -44,6 +44,41 @@ def _resolve_name(names, key):
     return int(key)
 
 
+def _resolve_granger_request(caused, causing, data_names):
+    """Resolve a single-pair Granger request shared by VAR and VECM."""
+    if caused is None or causing is None:
+        raise ValueError(
+            "Both 'caused' and 'causing' must be specified, "
+            "or neither for all-pairs mode."
+        )
+    if isinstance(caused, str):
+        caused = data_names.index(caused)
+    if isinstance(causing, str):
+        causing = [causing]
+    causing_idx = [
+        data_names.index(item) if isinstance(item, str) else item
+        for item in (causing if isinstance(causing, list) else [causing])
+    ]
+    return caused, causing_idx
+
+
+def _normalise_granger_df(df):
+    """Return a statsmodels Granger degrees-of-freedom value as int or tuple."""
+    if isinstance(df, tuple):
+        return (int(df[0]), int(df[1]))
+    return int(df)
+
+
+def _validate_min_obs(lags, nobs):
+    """Require the shared ``lags + 10`` minimum sample for VAR-family models."""
+    min_obs = lags + 10
+    if nobs < min_obs:
+        raise ValueError(
+            f"Need at least {min_obs} observations "
+            f"({lags} lags + 10), got {nobs}"
+        )
+
+
 @dataclass
 class IRFResult:
     """Impulse response function result container.
@@ -132,7 +167,6 @@ class IRFResult:
             _render_pair_table(
                 self.names,
                 self.k,
-                self.periods,
                 col_label,
                 lambda h, i, j: _stata_fmt(self.values[h, i, j]),
                 range(self.periods + 1),
@@ -282,7 +316,6 @@ class FEVDResult:
             _render_pair_table(
                 self.names,
                 self.k,
-                self.periods,
                 "fevd",
                 lambda h, i, j: (
                     "0" if h == 0 else _stata_fmt(self.values[h - 1, i, j])
@@ -722,7 +755,7 @@ def _forecast_cov_se(ma_coefs, resid_cov, steps):
     return se
 
 
-def _render_pair_table(names, k, periods, header_label, value_cells, steps):
+def _render_pair_table(names, k, header_label, value_cells, steps):
     """Return bordered table lines for a (impulse, response) column layout.
 
     Parameters
@@ -731,8 +764,6 @@ def _render_pair_table(names, k, periods, header_label, value_cells, steps):
         Variable names used in the column legend.
     k : int
         Number of variables.
-    periods : int
-        Maximum displayed step.
     header_label : str
         Column label shown under "step".
     value_cells : callable (h, i, j) -> str
@@ -797,7 +828,7 @@ def _render_pair_table(names, k, periods, header_label, value_cells, steps):
     return lines
 
 
-def _run_granger_all(result_obj, k, data_names, kind):
+def _run_granger_all(result_obj, k, kind):
     """Run all pairwise Granger causality tests (shared by VAR and VECM).
 
     Parameters
@@ -807,8 +838,6 @@ def _run_granger_all(result_obj, k, data_names, kind):
         method returning ``GrangerCausalityResult``.
     k : int
         Number of endogenous variables.
-    data_names : list of str
-        Variable names.
     kind : str
         Test type: ``"f"`` for F-test, ``"chi2"`` for chi-squared.
 
@@ -1293,38 +1322,21 @@ class VARResult(BaseModelResult):
         # Dispatch: all-pairs mode vs single-test mode
         if caused is None and causing is None:
             return self._granger_causality_all(kind=kind)
-        if caused is None or causing is None:
-            raise ValueError(
-                "Both 'caused' and 'causing' must be specified, "
-                "or neither for all-pairs mode."
-            )
-
-        if isinstance(caused, str):
-            caused = self._data_names.index(caused)
-        if isinstance(causing, str):
-            causing = [causing]
-        causing_idx = []
-        for c in causing if isinstance(causing, list) else [causing]:
-            if isinstance(c, str):
-                causing_idx.append(self._data_names.index(c))
-            else:
-                causing_idx.append(c)
+        caused, causing_idx = _resolve_granger_request(
+            caused,
+            causing,
+            self._data_names,
+        )
 
         # statsmodels uses "wald" for chi-squared test
         sm_kind = "wald" if kind == "chi2" else kind
         test_result = self._var_result.test_causality(
             caused=caused, causing=causing_idx, kind=sm_kind
         )
-        df_val = test_result.df
-        if isinstance(df_val, tuple):
-            df_val = (int(df_val[0]), int(df_val[1]))
-        else:
-            df_val = int(df_val)
-
         entry = _GrangerEntry(
             test_statistic=float(test_result.test_statistic),
             p_value=float(test_result.pvalue),
-            df=df_val,
+            df=_normalise_granger_df(test_result.df),
             caused=self._data_names[caused],
             causing=[self._data_names[i] for i in causing_idx],
         )
@@ -1332,7 +1344,7 @@ class VARResult(BaseModelResult):
 
     def _granger_causality_all(self, kind="f"):
         """Run all pairwise Granger causality tests (internal)."""
-        return _run_granger_all(self, self._k, self._data_names, kind)
+        return _run_granger_all(self, self._k, kind)
 
     @property
     def is_stable(self):
@@ -1669,12 +1681,7 @@ class VAR(BaseModel):
             raise ValueError(
                 f"trend must be one of 'c', 'ct', 'ctt', 'n', got {trend!r}"
             )
-        min_obs = lags + 10
-        if y.shape[0] < min_obs:
-            raise ValueError(
-                f"Need at least {min_obs} observations "
-                f"({lags} lags + 10), got {y.shape[0]}"
-            )
+        _validate_min_obs(lags, y.shape[0])
 
         self.dates = model_dates
         self.data = y

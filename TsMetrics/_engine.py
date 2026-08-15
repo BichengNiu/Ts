@@ -19,7 +19,7 @@ from ._evaluation import (
     validate_fit_kwargs,
     validate_model_protocol,
 )
-from ._metrics import ERROR_METRIC_NAMES
+from ._metrics import _validate_rank_metric
 from ._periods import validated_model_dates
 from ._results import ForecastComparisonResult, ForecastEvaluationResult
 from ._schemes import Holdout, RollingOrigin
@@ -78,10 +78,7 @@ def _validated_request(
     """Validate every batch option before the first model fit."""
     if not isinstance(scheme, (Holdout, RollingOrigin)):
         raise TypeError("scheme must be a Holdout or RollingOrigin")
-    if rank_by not in ERROR_METRIC_NAMES:
-        raise ValueError(
-            f"rank_by must be one of {list(ERROR_METRIC_NAMES)}, got {rank_by!r}"
-        )
+    rank_by = _validate_rank_metric(rank_by)
     alpha = validate_alpha(alpha)
     if on_error not in {"raise", "record"}:
         raise ValueError("on_error must be either 'raise' or 'record'")

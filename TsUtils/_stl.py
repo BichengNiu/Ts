@@ -229,7 +229,7 @@ class STL:
         Validated series used for fitting.
     period : int
         Resolved seasonal period.
-    dropped_positions : numpy.ndarray
+    dropped_positions : tuple[int, ...]
         Original zero-based rows removed under ``missing="drop"``.
     result_ : STLResult or None
         Fitted result after :meth:`fit`.

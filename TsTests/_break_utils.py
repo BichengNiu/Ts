@@ -20,16 +20,22 @@ from Ts.TsUtils._validation import validate_int
 # ---------------------------------------------------------------------------
 
 
+def _break_level_and_trend(T: int, break_idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the shared positional index, level dummy, and trend dummy."""
+    t = np.arange(T)
+    dl = (t > break_idx).astype(float)
+    dt = np.maximum(t - break_idx, 0).astype(float)
+    return t, dl, dt
+
+
 def _make_perron_break_dummies(
     T: int,
     break_idx: int,
     model: str,
 ) -> dict[str, np.ndarray]:
     """Create the Perron known-break dummies for the selected model."""
-    t = np.arange(T)
-    dl = (t > break_idx).astype(float)
-    dp = (t == break_idx + 1).astype(float)
-    dt = np.maximum(t - break_idx, 0).astype(float)
+    _, dl, dt = _break_level_and_trend(T, break_idx)
+    dp = (np.arange(T) == break_idx + 1).astype(float)
     return {
         "intercept": {"DL": dl, "DP": dp},
         "slope": {"DL": dl, "DT": dt},
@@ -43,9 +49,7 @@ def _make_zivot_break_dummies(
     model: str,
 ) -> dict[str, np.ndarray]:
     """Create the Zivot-Andrews unknown-break dummies for the selected model."""
-    t = np.arange(T)
-    dl = (t > break_idx).astype(float)
-    dt = np.maximum(t - break_idx, 0).astype(float)
+    _, dl, dt = _break_level_and_trend(T, break_idx)
     return {
         "intercept": {"DL": dl},
         "slope": {"DT": dt},
@@ -199,8 +203,6 @@ def _select_lags_by_tstat(
     """
 
     def tstat_of(k: int) -> float | None:
-        if k == 0:
-            return 0.0
         fitted = _fit_unitroot_ols(y, break_dummies, k)
         if fitted is None:
             return None

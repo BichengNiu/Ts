@@ -13,11 +13,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from Ts.TsPlots.unitroot_plot import _render_critical_value_plot
 from Ts.TsUtils._validation import validate_choice
 
 from ._base import BaseTest, BaseTestResult
 from ._utils import _clean_1d
-from ._unitroot_plot import _render_critical_value_plot
 
 
 @dataclass

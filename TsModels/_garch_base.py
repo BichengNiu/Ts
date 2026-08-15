@@ -28,6 +28,50 @@ from Ts.TsModels._garch_result import (
 )
 
 
+def _prepare_vol_inputs(data, exog, dates, missing):
+    """Normalise data, exog, dates, and the missing policy for GARCH models."""
+    raw_data = np.asarray(data, dtype=float).ravel()
+    model_dates = _normalise_model_dates(data, dates, len(raw_data))
+    if exog is not None:
+        exog = np.asarray(exog, dtype=float)
+        if exog.ndim == 1:
+            exog = exog.reshape(-1, 1)
+        if exog.shape[0] != len(raw_data):
+            raise ValueError(
+                f"exog must have {len(raw_data)} rows (same as data), "
+                f"got {exog.shape[0]}"
+            )
+
+    valid_rows = np.isfinite(raw_data)
+    if exog is not None:
+        valid_rows &= np.all(np.isfinite(exog), axis=1)
+    dropped_positions = _resolve_missing_rows(
+        valid_rows,
+        missing,
+        name="data or exog",
+    )
+    if missing == "drop":
+        y = raw_data[valid_rows]
+        exog = None if exog is None else exog[valid_rows]
+        if model_dates is not None:
+            model_dates = model_dates[valid_rows].copy()
+    else:
+        y = raw_data.copy()
+
+    return y, exog, model_dates, dropped_positions
+
+
+def _validate_vol_options(garch_m, garch_m_form, igarch):
+    """Validate GARCH-family interaction options shared by GARCH and AutoGARCH."""
+    if garch_m and garch_m_form not in _GARCH_M_FORMS:
+        raise ValueError(
+            f"garch_m_form must be one of {sorted(_GARCH_M_FORMS)}, "
+            f"got {garch_m_form!r}"
+        )
+    if igarch and garch_m:
+        raise ValueError("IGARCH is not supported for GARCH-M (garch_m=True).")
+
+
 class _VolEvaluationMixin:
     """Evaluation-protocol members shared by GARCH and AutoGARCH."""
 
@@ -73,33 +117,12 @@ class _BaseVolModel(_VolEvaluationMixin, BaseModel):
         compare_lags=True,
         missing="drop",
     ):
-        raw_data = np.asarray(data, dtype=float).ravel()
-        model_dates = _normalise_model_dates(data, dates, len(raw_data))
-        if exog is not None:
-            exog = np.asarray(exog, dtype=float)
-            if exog.ndim == 1:
-                exog = exog.reshape(-1, 1)
-            if exog.shape[0] != len(raw_data):
-                raise ValueError(
-                    f"exog must have {len(raw_data)} rows (same as data), "
-                    f"got {exog.shape[0]}"
-                )
-
-        valid_rows = np.isfinite(raw_data)
-        if exog is not None:
-            valid_rows &= np.all(np.isfinite(exog), axis=1)
-        dropped_positions = _resolve_missing_rows(
-            valid_rows,
+        y, exog, model_dates, dropped_positions = _prepare_vol_inputs(
+            data,
+            exog,
+            dates,
             missing,
-            name="data or exog",
         )
-        if missing == "drop":
-            y = raw_data[valid_rows]
-            exog = None if exog is None else exog[valid_rows]
-            if model_dates is not None:
-                model_dates = model_dates[valid_rows].copy()
-        else:
-            y = raw_data.copy()
 
         if p < 1:
             raise ValueError(f"p must be >= 1, got {p}")
@@ -111,11 +134,7 @@ class _BaseVolModel(_VolEvaluationMixin, BaseModel):
             raise ValueError(f"vol must be one of {sorted(_VOL_TYPES)}, got {vol!r}")
         if len(y) < 10:
             raise ValueError(f"Need at least 10 observations, got {len(y)}")
-        if garch_m and garch_m_form not in _GARCH_M_FORMS:
-            raise ValueError(
-                f"garch_m_form must be one of {sorted(_GARCH_M_FORMS)}, "
-                f"got {garch_m_form!r}"
-            )
+        _validate_vol_options(garch_m, garch_m_form, igarch)
 
         if igarch:
             if vol == "EGARCH":
@@ -123,8 +142,6 @@ class _BaseVolModel(_VolEvaluationMixin, BaseModel):
                     "IGARCH is not supported for EGARCH models. "
                     "Use vol='GARCH' for IGARCH estimation."
                 )
-            if garch_m:
-                raise ValueError("IGARCH is not supported for GARCH-M (garch_m=True).")
             if q < 1:
                 raise ValueError(f"IGARCH requires q >= 1 (GARCH component), got q={q}")
 
