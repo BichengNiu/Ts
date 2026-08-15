@@ -252,6 +252,118 @@ class TestPlotSeries:
         with pytest.raises(ValueError, match="colors has 1 entries"):
             plot_series(data, colors=["red"])
 
+    def test_bar_series_draws_rectangles_without_lines(self):
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+            colors=["#aaaaaa", "#1f4e79"],
+        )
+
+        assert len(ax.patches) == 3
+        assert [patch.get_height() for patch in ax.patches] == [1, 2, 3]
+        assert [line.get_label() for line in ax.lines] == ["price"]
+        assert ax.get_ylim()[0] == 0
+        plt.close(fig)
+
+    def test_bar_series_on_secondary_axis_starts_at_zero(self):
+        data = {
+            "volume": [1, 2, 3],
+            "price": [1000, 2000, 3000],
+        }
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            axis_groups={"volume": "left", "price": "right"},
+            bar_series=["volume"],
+        )
+
+        assert len(ax.patches) == 3
+        assert ax.right_ax is not None
+        assert [line.get_label() for line in ax.right_ax.lines] == ["price"]
+        assert ax.get_ylim()[0] == 0
+        plt.close(fig)
+
+    def test_bar_series_in_facet_panels(self):
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, axes = plot_series(data, bar_series=["volume"])
+
+        assert len(axes[0].patches) == 3
+        assert len(axes[1].lines) == 1
+        assert axes[0].get_ylim()[0] == 0
+        plt.close(fig)
+
+    def test_bar_series_auto_width_uses_data_spacing(self):
+        dates = pd.date_range("2025-01-01", periods=3, freq="30D")
+
+        fig, ax = plot_series(
+            pd.Series([1, 2, 3], index=dates, name="volume"),
+            bar_series=["volume"],
+            facet=False,
+        )
+
+        assert ax.patches[0].get_width() == pytest.approx(0.6 * 30)
+        plt.close(fig)
+
+    def test_bar_series_rejects_unknown_labels(self):
+        with pytest.raises(ValueError, match="bar_series labels must be plotted"):
+            plot_series(
+                {"a": [1, 2]},
+                bar_series=["missing"],
+            )
+
+    def test_year_ruler_places_month_ticks_and_year_labels(self):
+        dates = pd.date_range("2025-01-31", periods=24, freq="ME")
+
+        fig, ax = plot_series(
+            pd.Series(range(24), index=dates, name="series"),
+            year_ruler=True,
+        )
+
+        labels = [label.get_text() for label in ax.get_xticklabels()]
+        assert "3月" in labels and "12月" in labels
+        assert all("2025" not in label for label in labels)
+        assert " 2025年 " in {
+            text.get_text() for text in ax.texts
+        }
+        assert " 2026年 " in {text.get_text() for text in ax.texts}
+        assert all(label.get_rotation() == 0 for label in ax.get_xticklabels())
+        plt.close(fig)
+
+    def test_vlines_outside_data_range_are_skipped(self):
+        fig, ax = plot_series(
+            pd.Series(range(10), index=range(10), name="series"),
+            vlines=50,
+        )
+
+        assert len(ax.get_lines()) == 1
+        plt.close(fig)
+
+    def test_vlines_inside_data_range_are_drawn(self):
+        fig, ax = plot_series(
+            pd.Series(range(10), index=range(10), name="series"),
+            vlines=5,
+        )
+
+        assert len(ax.get_lines()) == 2
+        plt.close(fig)
+
+    def test_vlines_with_dates_outside_range_are_skipped(self):
+        dates = pd.date_range("2025-01-31", periods=6, freq="ME")
+
+        fig, ax = plot_series(
+            pd.Series([1, 2, 3, 4, 5, 6], index=dates, name="series"),
+            vlines=pd.Timestamp("2026-03-01"),
+        )
+
+        assert len(ax.get_lines()) == 1
+        plt.close(fig)
+
 
 class TestPlotScatter:
     def test_returns_fig_ax(self):

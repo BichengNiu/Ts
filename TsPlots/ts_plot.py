@@ -40,6 +40,7 @@ Examples
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date, datetime
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -176,6 +177,156 @@ def _apply_freq_ticks(ax, x_values, freq: str, max_ticks: int = 12) -> None:
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(_make_chinese_formatter(freq))
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+
+def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
+    """Draw strict month ticks with a year ruler under the x-axis.
+
+    Only tick months that are multiples of three and that actually occur in
+    the data (labels are the bare month like ``3月``, not rotated). Below the
+    axis, a horizontal ruler spans each calendar year that appears in the
+    data, with the year label centred on the ruler. The x-limits are padded
+    ten days on both sides so the first and last bars/lines are not clipped.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+    x_values : array-like
+        The x data (datetime-like).
+    max_ticks : int
+        Upper bound on the number of month ticks. The default interval of
+        three months is widened when the data span would exceed this bound.
+    """
+    periods = (
+        pd.PeriodIndex(pd.to_datetime(x_values), freq="M")
+        .unique()
+        .sort_values()
+    )
+    if periods.empty:
+        return
+
+    interval = 3 * max(
+        1, int(np.ceil(len(periods) / 3 / max_ticks))
+    )
+    tick_periods = periods[periods.month % interval == 0]
+    tick_dates = tick_periods.to_timestamp(how="end").normalize()
+    ax.set_xticks(tick_dates)
+    ax.set_xticklabels(
+        [f"{period.month}月" for period in tick_periods],
+        rotation=0,
+        ha="center",
+        fontsize=9,
+    )
+    ax.tick_params(axis="x", pad=5)
+
+    year_line_y = -0.18
+    cap_height = 0.018
+    xaxis_transform = ax.get_xaxis_transform()
+    for year in periods.year.unique():
+        year_periods = periods[periods.year == year]
+        start_date = year_periods[0].to_timestamp(how="end").normalize()
+        end_date = year_periods[-1].to_timestamp(how="end").normalize()
+        middle_date = start_date + (end_date - start_date) / 2
+        ax.hlines(
+            year_line_y,
+            start_date,
+            end_date,
+            color="#555555",
+            linewidth=0.8,
+            transform=xaxis_transform,
+            clip_on=False,
+        )
+        ax.vlines(
+            [start_date, end_date],
+            year_line_y - cap_height,
+            year_line_y + cap_height,
+            color="#555555",
+            linewidth=0.8,
+            transform=xaxis_transform,
+            clip_on=False,
+        )
+        ax.text(
+            middle_date,
+            year_line_y,
+            f" {year}年 ",
+            ha="center",
+            va="center",
+            fontsize=9,
+            color="#333333",
+            backgroundcolor="white",
+            transform=xaxis_transform,
+            clip_on=False,
+        )
+    first_date = periods[0].to_timestamp(how="start").normalize()
+    last_date = periods[-1].to_timestamp(how="end").normalize()
+    ax.set_xlim(
+        first_date - pd.Timedelta(days=10),
+        last_date + pd.Timedelta(days=10),
+    )
+
+
+def _resolve_bar_width(x_values, bar_width) -> float:
+    """Return the bar width; auto-sizes to 60% of the median x spacing."""
+    if bar_width is not None:
+        return float(bar_width)
+    try:
+        if np.issubdtype(np.asarray(x_values).dtype, np.datetime64):
+            diffs = np.diff(
+                np.sort(np.asarray(pd.to_datetime(x_values), dtype="datetime64[ns]"))
+            )
+            steps = diffs / np.timedelta64(1, "D")
+        else:
+            diffs = np.diff(np.sort(np.asarray(x_values, dtype=float)))
+            steps = diffs
+    except (TypeError, ValueError):
+        return 1.0
+    step = float(np.median(steps)) if steps.size else 1.0
+    return 0.6 * max(step, 1e-9)
+
+
+def _clip_vlines_to_data(vlines, x_values):
+    """Drop vline positions that fall outside the plotted data range."""
+    if vlines is None:
+        return None
+    positions = (
+        list(vlines)
+        if isinstance(vlines, (list, tuple, np.ndarray))
+        else [vlines]
+    )
+    x_array = np.asarray(x_values)
+    is_datetime = np.issubdtype(x_array.dtype, np.datetime64) or (
+        x_array.size and isinstance(x_array[0], (date, datetime))
+    )
+    try:
+        if is_datetime:
+            x_nums = np.asarray(mdates.date2num(x_values), dtype=float)
+        else:
+            x_nums = np.asarray(x_values, dtype=float)
+    except (TypeError, ValueError):
+        return positions
+    if not np.isfinite(x_nums).any():
+        return positions
+    data_min, data_max = float(np.nanmin(x_nums)), float(np.nanmax(x_nums))
+    clipped = []
+    for position in positions:
+        if isinstance(
+            position,
+            (date, datetime, str, np.datetime64),
+        ):
+            try:
+                value = float(mdates.date2num(position))
+            except (TypeError, ValueError):
+                clipped.append(position)
+                continue
+        else:
+            try:
+                value = float(position)
+            except (TypeError, ValueError):
+                clipped.append(position)
+                continue
+        if not np.isfinite(value) or data_min <= value <= data_max:
+            clipped.append(position)
+    return clipped
 
 
 def _resolve_input(data, x, y) -> tuple[np.ndarray, dict, str]:
@@ -395,9 +546,26 @@ def _plot_one_series(
     marker_edge_width,
     show_values,
     value_decimals,
+    is_bar=False,
+    bar_width=None,
+    bar_edge_color=None,
+    bar_edge_linewidth=0.6,
+    bar_alpha=1.0,
 ):
-    """Draw one series and its optional point-value annotations."""
+    """Draw one series, either as a bar chart or as a line."""
     color = _series_color(colors, index)
+    if is_bar:
+        return ax.bar(
+            x_values,
+            values,
+            width=bar_width,
+            color=color,
+            edgecolor=bar_edge_color,
+            linewidth=bar_edge_linewidth,
+            alpha=bar_alpha,
+            label=label,
+        )[0]
+
     linestyle = DEFAULT_LINESTYLES[index % len(DEFAULT_LINESTYLES)]
     marker = DEFAULT_MARKERS[index % len(DEFAULT_MARKERS)]
     is_even = index % 2 == 0
@@ -446,7 +614,15 @@ def _plot_one_series(
     return line
 
 
-def _configure_x_axis(ax, x_values, *, xtick_step, max_ticks, freq) -> None:
+def _configure_x_axis(
+    ax,
+    x_values,
+    *,
+    xtick_step,
+    max_ticks,
+    freq,
+    year_ruler=False,
+) -> None:
     """Apply datetime or numeric tick selection to one axes."""
     x_array = np.asarray(x_values)
     is_datetime = np.issubdtype(x_array.dtype, np.datetime64) or (
@@ -454,8 +630,11 @@ def _configure_x_axis(ax, x_values, *, xtick_step, max_ticks, freq) -> None:
     )
     is_numeric = np.issubdtype(x_array.dtype, np.number)
 
-    if is_datetime and freq is not None:
-        _apply_freq_ticks(ax, x_values, freq, max_ticks=max_ticks)
+    if is_datetime and (freq is not None or year_ruler):
+        if year_ruler:
+            _apply_year_ruler_ticks(ax, x_values, max_ticks=max_ticks)
+        else:
+            _apply_freq_ticks(ax, x_values, freq, max_ticks=max_ticks)
     elif is_numeric and xtick_step is not None:
         x_min, x_max = int(np.min(x_values)), int(np.max(x_values))
         ax.set_xticks(range(x_min, x_max + 1, xtick_step))
@@ -491,6 +670,7 @@ def plot_series(
     xtick_step: int | None = None,
     max_ticks: int = 12,
     freq: str | None = None,
+    year_ruler: bool = False,
     ymin: float | None = None,
     show_legend: bool = True,
     legend_labels=None,
@@ -519,6 +699,11 @@ def plot_series(
     max_y_axes: int = 3,
     ax=None,
     unit: str | None = None,
+    bar_series: str | list[str] | None = None,
+    bar_width: float | None = None,
+    bar_edge_color: str | None = None,
+    bar_edge_linewidth: float = 0.6,
+    bar_alpha: float = 1.0,
 ) -> tuple[plt.Figure, plt.Axes | np.ndarray]:
     """Plot an arbitrary number of time series with cycling styles.
 
@@ -563,6 +748,13 @@ def plot_series(
         ``'month'``, ``'quarter'``, or ``'year'``. When set, the appropriate
         ``matplotlib.dates`` locator and formatter are applied and tick labels
         are auto-rotated 45°.
+    year_ruler : bool
+        When ``True``, draw strict month ticks (only months that are multiples
+        of three and that occur in the data, labelled as ``3月`` with no
+        rotation) plus a year ruler below the x-axis spanning each calendar
+        year in the data. The x-limits are padded ten days on both sides.
+        This replaces the ``freq``-based locator for monthly datetime axes.
+        Defaults to ``False``.
     ymin : float or None
         Lower limit of the y-axis. Defaults to None (automatic); pass a float to set a fixed minimum.
     show_legend : bool
@@ -637,6 +829,21 @@ def plot_series(
     unit : str, optional
         Unit label appended to the y-axis label, formatted as
         ``（单位：XX）``. Defaults to None.
+    bar_series : str or list of str, optional
+        Labels of series to draw as bars instead of lines. Bars inherit their
+        face colour from ``colors`` (or the palette) and are drawn on the
+        axis assigned by ``axis_groups``/``auto_dual_y``; the containing axes
+        is forced to start at zero. Defaults to None (all series are lines).
+    bar_width : float, optional
+        Bar width in data units. For datetime axes the unit is days. When
+        None, the width is 60% of the median spacing between consecutive x
+        values. Defaults to None.
+    bar_edge_color : str, optional
+        Edge colour of the bars. Defaults to None (same as the face colour).
+    bar_edge_linewidth : float
+        Width of the bar edges. Defaults to 0.6.
+    bar_alpha : float
+        Opacity of the bars (0–1). Defaults to 1.0.
 
     Returns
     -------
@@ -695,6 +902,19 @@ def plot_series(
         scale_ratio_threshold,
     )
     max_y_axes = _validate_max_y_axes(max_y_axes)
+    year_ruler = _validate_bool("year_ruler", year_ruler)
+
+    if bar_series is None:
+        bar_series = []
+    else:
+        bar_series = (
+            [bar_series] if isinstance(bar_series, str) else list(bar_series)
+        )
+        unknown = sorted(set(bar_series) - set(series))
+        if unknown:
+            raise ValueError(
+                f"bar_series labels must be plotted series; unknown={unknown}"
+            )
 
     if labels is not None:
         labels = list(labels)
@@ -708,6 +928,9 @@ def plot_series(
 
     if axis_groups is not None and facet and len(series) >= 2:
         raise ValueError("axis_groups requires facet=False for multiple series")
+
+    vlines = _clip_vlines_to_data(vlines, x_values)
+    resolved_bar_width = _resolve_bar_width(x_values, bar_width)
 
     if facet and len(series) >= 2:
         if ax is not None:
@@ -753,7 +976,14 @@ def plot_series(
                 marker_edge_width=marker_edge_width,
                 show_values=show_values,
                 value_decimals=value_decimals,
+                is_bar=label in bar_series,
+                bar_width=resolved_bar_width,
+                bar_edge_color=bar_edge_color,
+                bar_edge_linewidth=bar_edge_linewidth,
+                bar_alpha=bar_alpha,
             )
+            if label in bar_series:
+                panel_ax.set_ylim(bottom=0)
             panel_ax.set_title(
                 display_labels[index],
                 fontsize=AXIS_LABEL_FONTSIZE,
@@ -772,6 +1002,7 @@ def plot_series(
                 xtick_step=xtick_step,
                 max_ticks=max_ticks,
                 freq=freq,
+                year_ruler=year_ruler,
             )
             if ymin is not None:
                 panel_ax.set_ylim(bottom=ymin)
@@ -859,8 +1090,16 @@ def plot_series(
                 marker_edge_width=marker_edge_width,
                 show_values=show_values,
                 value_decimals=value_decimals,
+                is_bar=label in bar_series,
+                bar_width=resolved_bar_width,
+                bar_edge_color=bar_edge_color,
+                bar_edge_linewidth=bar_edge_linewidth,
+                bar_alpha=bar_alpha,
             )
         )
+
+    for label in bar_series:
+        axis_by_label[label].set_ylim(bottom=0)
 
     ax.set_xlabel(
         xtitle if xtitle is not None else default_xlabel,
@@ -875,6 +1114,7 @@ def plot_series(
         xtick_step=xtick_step,
         max_ticks=max_ticks,
         freq=freq,
+        year_ruler=year_ruler,
     )
 
     if ymin is not None:

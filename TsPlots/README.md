@@ -68,6 +68,7 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `unit` | str | `None` | y 轴单位，显示为「（单位：XX）」 |
 | `ymin` | float / None | `None` | y 轴下限；`None` 为自动 |
 | `freq` | str | `None` | datetime 轴频率：`'day'` / `'week'` / `'month'` / `'quarter'` / `'year'` |
+| `year_ruler` | bool | `False` | 月度数据的严格刻度：只标数据中实际出现的 3 的倍数月份（标签为「3月」，不旋转），并在 x 轴下方为每个出现的年份绘制年度标尺；x 轴两端各留 10 天。与 `freq` 互斥使用，替代其 locator |
 | `xtick_step` | int | `None` | 数值 x 轴刻度间隔 |
 | `max_ticks` | int | `12` | 自动刻度上限 |
 | `linewidth` | float | `3` | 线宽 |
@@ -81,7 +82,12 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `grid` | bool | `False` | 是否显示网格 |
 | `show_values` | bool | `False` | 是否在每个数据点标注数值；标注自动放在局部极小值上方、局部极大值下方，避免与相邻线段重叠 |
 | `value_decimals` | int | `1` | 数值标注小数位数 |
-| `vlines` | float / list | `None` | 垂直参考线位置 |
+| `vlines` | float / list | `None` | 垂直参考线位置；落在数据范围之外的位置自动跳过 |
+| `bar_series` | str / list | `None` | 以柱状图绘制的系列标签；其余系列仍为折线。柱色继承 `colors`，所在轴强制从 0 起 |
+| `bar_width` | float | `None` | 柱宽（数据单位；日期轴单位为天）。`None` 时取相邻 x 间距中位数的 60% |
+| `bar_edge_color` | str | `None` | 柱边框色；`None` 时与柱同色 |
+| `bar_edge_linewidth` | float | `0.6` | 柱边框线宽 |
+| `bar_alpha` | float | `1.0` | 柱透明度（0–1） |
 | `shade` | tuple / list | `None` | 阴影区间，如 `(2008, 2009)` 或 `[(2008,2009),(2020,2021)]` |
 | `note` | str | `None` | 图表左下角注释文字；当 `title_position="bottom"` 时，note 显示在 bottom title **上方** |
 | `title_position` | str | `"top"` | `"top"` 或 `"bottom"` |
@@ -175,6 +181,41 @@ fig, ax = plot_series(
     shade=[(pd.Timestamp("2020-06"), pd.Timestamp("2020-09"))],
     vlines=pd.Timestamp("2021-01"),
     note="数据来源：模拟数据",
+)
+
+# 月度数据使用严格月刻度 + 年度标尺
+fig, ax = plot_series(
+    s,
+    year_ruler=True,
+    title="月度指数（严格刻度）",
+)
+
+# 柱状图：产量柱在左轴，钻机数折线在右轴
+frame = pd.DataFrame(
+    {
+        "原油产量": [300, 310, 320, 315],
+        "活跃钻机数": [45, 47, 50, 52],
+    },
+    index=dates[:4],
+)
+fig, ax = plot_series(
+    frame,
+    facet=False,
+    axis_groups={"原油产量": "left", "活跃钻机数": "right"},
+    bar_series=["原油产量"],
+    colors=["#B8BDC6", "#1F4E79"],
+    bar_edge_color="#6B7280",
+    bar_alpha=0.72,
+    grid=True,
+    year_ruler=True,
+    title="产量与钻机数",
+)
+# 柱状图参考线：落在数据范围之外的 vlines 自动跳过
+fig, ax = plot_series(
+    frame["原油产量"],
+    bar_series=["原油产量"],
+    facet=False,
+    vlines=pd.Timestamp("2021-03"),
 )
 ```
 

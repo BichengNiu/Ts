@@ -304,7 +304,11 @@ def draw_vlines(ax, vlines, color, linestyle, linewidth):
     """
     if vlines is None:
         return
-    positions = [vlines] if np.isscalar(vlines) else list(vlines)
+    positions = (
+        list(vlines)
+        if isinstance(vlines, (list, tuple, np.ndarray))
+        else [vlines]
+    )
     for xpos in positions:
         ax.axvline(
             xpos,
