@@ -38,6 +38,59 @@ def _validate_model(model: str) -> None:
         )
 
 
+def _validate_lags(lags) -> int:
+    """Validate that *lags* is a positive integer.
+
+    Parameters
+    ----------
+    lags : int
+
+    Returns
+    -------
+    int
+        The validated lag count.
+
+    Raises
+    ------
+    TypeError
+        If *lags* is not an integer (or a bool).
+    ValueError
+        If *lags* is less than one.
+    """
+    if isinstance(lags, (bool, np.bool_)) or not isinstance(lags, (int, np.integer)):
+        raise TypeError("lags must be a positive integer")
+    lags = int(lags)
+    if lags < 1:
+        raise ValueError("lags must be a positive integer")
+    return lags
+
+
+def _validate_alpha(alpha) -> float:
+    """Validate that *alpha* is a significance level in (0, 1).
+
+    Parameters
+    ----------
+    alpha : float
+
+    Returns
+    -------
+    float
+        The validated alpha value.
+
+    Raises
+    ------
+    ValueError
+        If *alpha* is not strictly between 0 and 1.
+    """
+    if (
+        isinstance(alpha, (bool, np.bool_))
+        or not isinstance(alpha, (int, float, np.integer, np.floating))
+        or not 0.0 < float(alpha) < 1.0
+    ):
+        raise ValueError("alpha must be between 0 and 1")
+    return float(alpha)
+
+
 # ---------------------------------------------------------------------------
 # Input parsing
 # ---------------------------------------------------------------------------

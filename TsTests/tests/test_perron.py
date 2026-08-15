@@ -38,8 +38,6 @@ class TestPerronResultBaseline:
         assert hasattr(result, "pvalues")
         assert hasattr(result, "residuals")
         assert hasattr(result, "fitted")
-        assert hasattr(result, "rsquared")
-        assert hasattr(result, "rmse")
 
     def test_result_types(self):
         """Verify field types."""
@@ -65,8 +63,6 @@ class TestPerronResultBaseline:
         assert isinstance(result.pvalues, dict)
         assert isinstance(result.residuals, np.ndarray)
         assert isinstance(result.fitted, np.ndarray)
-        assert isinstance(result.rsquared, float)
-        assert isinstance(result.rmse, float)
 
     def test_str_contains_keywords(self):
         """str(result) must contain expected keywords."""
@@ -251,4 +247,4 @@ class TestPerronTestBaseline:
         monkeypatch.setattr("Ts.TsTests._break_utils.sm.OLS", raise_unexpected)
         data = np.arange(30, dtype=float) + np.sin(np.arange(30))
         with pytest.raises(RuntimeError, match="unexpected selection error"):
-            _select_lags_by_tstat(data, {}, 1, np.arange(30), 1.6)
+            _select_lags_by_tstat(data, {}, 1, 1.6)

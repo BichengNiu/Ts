@@ -40,8 +40,6 @@ class TestZivotResultBaseline:
         assert hasattr(result, "pvalues")
         assert hasattr(result, "residuals")
         assert hasattr(result, "fitted")
-        assert hasattr(result, "rsquared")
-        assert hasattr(result, "rmse")
 
     def test_result_types(self):
         """Verify field types."""

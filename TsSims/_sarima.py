@@ -154,7 +154,7 @@ def _expand_seasonal_poly(coeffs, period):
     return poly
 
 
-def _build_ar_ma_polynomials(order, seasonal_order, ar, ma, seasonal_ar, seasonal_ma):
+def _build_ar_ma_polynomials(seasonal_period, ar, ma, seasonal_ar, seasonal_ma):
     """Build full AR and MA polynomials for a SARIMA model.
 
     The SARIMA(p,d,q)(P,D,Q,s) model is:
@@ -164,21 +164,27 @@ def _build_ar_ma_polynomials(order, seasonal_order, ar, ma, seasonal_ar, seasona
     polynomial is theta(B)*Theta(B^s).  Differencing operators are applied later
     via cumulative summation.
 
+    Parameters
+    ----------
+    seasonal_period : int
+        Seasonal period (s).
+    ar : list of float
+        Non-seasonal AR coefficients.
+    ma : list of float
+        Non-seasonal MA coefficients.
+    seasonal_ar : list of float
+        Seasonal AR coefficients.
+    seasonal_ma : list of float
+        Seasonal MA coefficients.
+
     Returns
     -------
     ar_poly : np.ndarray
         Full AR polynomial coefficients (including leading 1).
     ma_poly : np.ndarray
         Full MA polynomial coefficients (including leading 1).
-    d : int
-        Regular differencing order.
-    D : int
-        Seasonal differencing order.
-    s : int
-        Seasonal period.
     """
-    _p, _d, _q = order
-    _P, _D, _Q, s = seasonal_order
+    s = seasonal_period
 
     # Non-seasonal AR polynomial: 1 - phi_1 B - phi_2 B^2 - ...
     ar_poly = np.array([1.0])
@@ -339,8 +345,7 @@ def simulate_sarima(
 
     # Build full AR / MA polynomials
     ar_poly, ma_poly = _build_ar_ma_polynomials(
-        order,
-        seasonal_order,
+        s,
         ar,
         ma,
         seasonal_ar,

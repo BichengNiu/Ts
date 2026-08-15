@@ -28,7 +28,6 @@ from Ts.TsModels._var import (
     IRFResult,
     _GrangerEntry,
     _run_granger_all,
-    _stata_fmt,
 )
 
 # Map user-facing trend names to statsmodels VECM deterministic.
@@ -45,6 +44,29 @@ _TREND_TO_DETERMINISTIC = {
     "rtrend": "coli",
     "ct": "colo",
 }
+
+
+def _build_companion(var_rep):
+    """Build the companion matrix from the VECM's VAR-level representation.
+
+    Parameters
+    ----------
+    var_rep : np.ndarray
+        VAR coefficient matrix of shape (p, k, k): [A_1, A_2, ..., A_p].
+
+    Returns
+    -------
+    np.ndarray
+        Companion matrix of shape (k*p, k*p).
+    """
+    var_rep = np.asarray(var_rep)
+    k, p = var_rep.shape[1], var_rep.shape[0]
+    companion = np.zeros((k * p, k * p))
+    for lag_i in range(p):
+        companion[:k, lag_i * k : (lag_i + 1) * k] = var_rep[lag_i]
+    if p > 1:
+        companion[k:, : k * (p - 1)] = np.eye(k * (p - 1))
+    return companion
 
 
 def _deterministic_labels(deterministic):
@@ -141,45 +163,6 @@ class VECMOrderResult:
 
     def __repr__(self) -> str:
         return self.summary()
-
-
-def _compute_equation_stats(resid_i, fitted_i, n_params_i, nobs):
-    """Compute per-equation summary statistics.
-
-    Parameters
-    ----------
-    resid_i : np.ndarray
-        Residuals for equation i, shape (nobs,).
-    fitted_i : np.ndarray
-        Fitted values for equation i, shape (nobs,).
-    n_params_i : int
-        Number of parameters in equation i.
-    nobs : int
-        Effective number of observations.
-
-    Returns
-    -------
-    dict
-        Keys: ``"rmse"``, ``"r_squared"``, ``"chi2"``, ``"p_chi2"``.
-    """
-    ssr = np.sum(resid_i**2)
-    tss = np.sum((fitted_i + resid_i - np.mean(fitted_i + resid_i)) ** 2)
-    rmse = float(np.sqrt(ssr / (nobs - n_params_i)))
-    r_sq = float(1.0 - ssr / tss) if tss > 1e-15 else 0.0
-    # Overall F → chi2 = k * F (Wald test, all coefficients zero)
-    if n_params_i > 1 and tss > 1e-15:
-        f_stat = ((tss - ssr) / (n_params_i - 1)) / (ssr / (nobs - n_params_i))
-        chi2 = f_stat * (n_params_i - 1)
-        p_chi2 = float(1.0 - scipy_stats.chi2.cdf(chi2, n_params_i - 1))
-    else:
-        chi2 = 0.0
-        p_chi2 = 1.0
-    return {
-        "rmse": rmse,
-        "r_squared": r_sq,
-        "chi2": float(chi2),
-        "p_chi2": float(p_chi2),
-    }
 
 
 @dataclass
@@ -633,16 +616,8 @@ class VECMResult(BaseModelResult):
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
 
-        k = self.k
-        p = self._lags
         var_rep = np.asarray(self._vecm_result.var_rep)
-        # var_rep has shape (p, k, k): [A_1, A_2, ..., A_p]
-        companion = np.zeros((k * p, k * p))
-        for lag_i in range(p):
-            companion[:k, lag_i * k : (lag_i + 1) * k] = var_rep[lag_i]
-        if p > 1:
-            companion[k:, : k * (p - 1)] = np.eye(k * (p - 1))
-        evals = np.linalg.eigvals(companion)
+        evals = np.linalg.eigvals(_build_companion(var_rep))
         return bool(np.all(np.abs(evals) <= 1.0 + 1e-10))
 
     def plot_diagnostics(self, title=None):
@@ -841,12 +816,12 @@ class VECMResult(BaseModelResult):
 
         _ensure_fonts()
 
-        # Use companion matrix eigenvalues from VAR representation
-        # Simplified: use gamma eigenvalues
-        k = self.k
-        companion = np.zeros((k, k))
-        companion[:k, :k] = np.eye(k) + self.alpha @ self.beta.T + self.gamma
-        roots = np.linalg.eigvals(companion)
+        if self._vecm_result is None:
+            raise RuntimeError("No fitted VECM result available")
+
+        # Inverse roots from the VAR-representation companion matrix
+        var_rep = np.asarray(self._vecm_result.var_rep)
+        roots = np.linalg.eigvals(_build_companion(var_rep))
         inv_roots = 1.0 / roots
 
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -885,38 +860,6 @@ class VECMResult(BaseModelResult):
 
     def __repr__(self) -> str:
         return self.summary()
-
-
-def _add_coef_row(lines, label, coef, se, z_crit):
-    """Format a single coefficient row for summary output.
-
-    Parameters
-    ----------
-    lines : list
-        Output lines accumulator.
-    label : str
-        Row label (e.g. "L1.", "LD.").
-    coef : float
-        Coefficient value.
-    se : float
-        Standard error.
-    z_crit : float
-        Critical z-value for CI.
-    """
-    z_val = coef / se if abs(se) > 1e-15 else 0.0
-    p_val = 2.0 * (1.0 - scipy_stats.norm.cdf(abs(z_val)))
-    ci_low = coef - z_crit * se
-    ci_high = coef + z_crit * se
-
-    lines.append(
-        f"  {label:<8s} | "
-        f"{_stata_fmt(coef):>10s}  "
-        f"{_stata_fmt(se):>10s}  "
-        f"{z_val:>6.2f}  "
-        f"{p_val:>6.3f}  "
-        f"{_stata_fmt(ci_low):>10s}  "
-        f"{_stata_fmt(ci_high):>10s}"
-    )
 
 
 class VECM(BaseModel):

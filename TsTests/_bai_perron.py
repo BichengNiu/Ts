@@ -297,10 +297,6 @@ class BaiPerronTestResult(BaseTestResult):
         Fitted values under the selected partition.
     time_index, observed : numpy.ndarray or None
         Original time labels and response observations.
-    inference_method : str
-        Bootstrap procedure label.
-    heteroskedasticity_robust, serial_correlation_robust : bool
-        Reported inference assumptions.
     n_bootstrap : int
         Number of bootstrap replications.
 
@@ -344,9 +340,6 @@ class BaiPerronTestResult(BaseTestResult):
     fitted: np.ndarray | None = None
     time_index: np.ndarray | None = None
     observed: np.ndarray | None = None
-    inference_method: str = "rademacher_wild_bootstrap"
-    heteroskedasticity_robust: bool = True
-    serial_correlation_robust: bool = False
     n_bootstrap: int = 0
 
     def __str__(self) -> str:

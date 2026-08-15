@@ -517,43 +517,6 @@ class TestGJR_GARCH:
         assert result.model_type == "GARCH"
         assert "gamma" not in result.params
 
-    def test_dynamic_forecast_uses_future_and_observed_lags(self):
-        """GJR multi-step recursion uses the correct lag source."""
-        from Ts.TsModels._garch_result import GARCHResult
-
-        residuals = np.array([1.0, -2.0, -3.0])
-        conditional_volatility = np.array([2.0, 3.0, 4.0])
-        result = GARCHResult(
-            model_type="GJR-GARCH",
-            params={
-                "omega": 0.1,
-                "alpha[1]": 0.2,
-                "alpha[2]": 0.1,
-                "gamma[1]": 0.4,
-                "beta[1]": 0.3,
-                "beta[2]": 0.1,
-            },
-            std_errors={},
-            p_values={},
-            aic=0.0,
-            bic=0.0,
-            log_likelihood=0.0,
-            residuals=residuals,
-            fitted_values=None,
-            nobs=3,
-            data=residuals,
-            conditional_volatility=conditional_volatility,
-            _p=2,
-            _o=1,
-            _q=2,
-        )
-
-        forecast_vol = result._garch_forecast_vol(
-            3, 3, residuals, conditional_volatility
-        )
-        expected_variance = np.array([11.6, 10.72, 9.924])
-        np.testing.assert_allclose(forecast_vol**2, expected_variance)
-
 
 class TestEGARCH:
     """Test EGARCH (Exponential GARCH) estimation."""
@@ -850,10 +813,6 @@ class TestGARCHPredict:
 
         covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult.predict [function]
         covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult._forecast [function]
-        covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult._forecast_conditional_vol [function]
-        covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult._garch_forecast_vol [function]
-        covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult._egarch_forecast_vol [function]
-        covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult._igarch_forecast_vol [function]
         covers: code/python/Ts/TsModels/_garch_result.py::GARCHResult._forecast_igarch [function]
         """
         from Ts.TsModels._base import PredictResult

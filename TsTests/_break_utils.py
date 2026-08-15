@@ -89,7 +89,6 @@ def _select_lags_by_tstat(
     y: np.ndarray,
     break_dummies: dict[str, np.ndarray],
     max_lags: int,
-    time_index: np.ndarray | None = None,
     crit: float = 1.60,
 ) -> int:
     """Select lag length by the general-to-specific t-statistic method.
@@ -106,9 +105,6 @@ def _select_lags_by_tstat(
         Break dummy variables.
     max_lags : int
         Maximum number of lagged differences to consider.
-    time_index : np.ndarray, optional
-        Actual time index for the trend variable. If None, a 0-based
-        integer sequence is used.
     crit : float
         Critical value for the t-statistic threshold. Default 1.60.
 
@@ -121,7 +117,7 @@ def _select_lags_by_tstat(
     dy = np.diff(y)
     y_lag1 = y[:-1]  # y_{t-1}
 
-    # Deterministic trend is positional. ``time_index`` is a display label only.
+    # Deterministic trend is positional (0-based).
     trend = np.arange(T, dtype=float)
 
     for k in range(max_lags, -1, -1):
@@ -136,7 +132,7 @@ def _select_lags_by_tstat(
         )
         # Add lagged differences
         regs.extend(dy[k - j : T - 1 - j] for j in range(1, k + 1))
-        # Add time trend using actual time_index
+        # Add time trend (positional)
         regs.append(trend[k + 1 :])
 
         X = np.column_stack(regs)
@@ -168,7 +164,6 @@ def _select_lags_by_ic(
     y: np.ndarray,
     break_dummies: dict[str, np.ndarray],
     max_lags: int,
-    time_index: np.ndarray,
     ic_type: str,
 ) -> tuple[int, np.ndarray]:
     """Select lag length by AIC or BIC criterion.
@@ -185,8 +180,6 @@ def _select_lags_by_ic(
         Break dummy variables.
     max_lags : int
         Maximum number of lagged differences to consider.
-    time_index : np.ndarray
-        Time index for the trend variable.
     ic_type : str
         ``"aic"`` or ``"bic"``.
 
@@ -202,7 +195,7 @@ def _select_lags_by_ic(
     ic_values = np.full(max_lags + 1, np.nan)
 
     for k in range(max_lags + 1):
-        df = _build_regression_data(y, break_dummies, k, time_index)
+        df = _build_regression_data(y, break_dummies, k)
 
         reg_cols = _get_regression_columns(break_dummies, k)
 
@@ -245,7 +238,6 @@ def _build_regression_data(
     y: np.ndarray,
     break_dummies: dict[str, np.ndarray],
     lags: int,
-    time_index: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Build a DataFrame with all regressors for the ADF-type regression.
 
@@ -262,8 +254,6 @@ def _build_regression_data(
         Break dummy variables.
     lags : int
         Number of lagged differences to include.
-    time_index : np.ndarray, optional
-        Time index for the trend variable.
 
     Returns
     -------
@@ -279,7 +269,7 @@ def _build_regression_data(
     # Constant
     data["const"] = np.ones(T - 1)
 
-    # Deterministic trend is positional. ``time_index`` is a display label only.
+    # Deterministic trend is positional (0-based).
     data["trend"] = np.arange(1, T, dtype=float)
 
     # Break dummies (t=2..T)

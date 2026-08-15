@@ -239,8 +239,6 @@ def _normalise_input_specs(distributed_lags):
     for name, spec in distributed_lags.items():
         if not isinstance(name, str) or not name.strip():
             raise ValueError("distributed-lag input names must be non-empty strings")
-        if name in result:
-            raise ValueError(f"duplicate distributed-lag input name {name!r}")
         if not isinstance(spec, RDLInputSpec):
             raise TypeError(f"distributed_lags[{name!r}] must be an RDLInputSpec")
         result[name] = spec

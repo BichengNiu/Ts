@@ -17,6 +17,12 @@ from ._base import BaseSimResult
 from ._validation import validate_real, validate_sample
 
 
+_PROCESS_LABELS = {
+    "trend_stationary": "Trend-Stationary (TS)",
+    "difference_stationary": "Difference-Stationary (DS)",
+}
+
+
 @dataclass
 class SimTSDSResult(BaseSimResult):
     """Container for TS / DS simulation results.
@@ -60,10 +66,7 @@ class SimTSDSResult(BaseSimResult):
         """
         p = self.params
         process_type = p.get("process_type", "N/A")
-        label = {
-            "trend_stationary": "TS (Trend-Stationary)",
-            "difference_stationary": "DS (Difference-Stationary)",
-        }.get(process_type, process_type)
+        label = _PROCESS_LABELS.get(process_type, process_type)
 
         lines = [
             f"{label} Simulation Result",
@@ -107,10 +110,7 @@ class SimTSDSResult(BaseSimResult):
         """
         if title is None:
             process_type = self.params.get("process_type", "TS/DS")
-            label = {
-                "trend_stationary": "Trend-Stationary (TS)",
-                "difference_stationary": "Difference-Stationary (DS)",
-            }.get(process_type, process_type)
+            label = _PROCESS_LABELS.get(process_type, process_type)
             title = f"{label} Process Simulation"
 
         fig, ax = plot_series(

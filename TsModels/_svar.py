@@ -323,6 +323,7 @@ class SVARResult(VARResult):
             and self._sirf_cache["periods"] == periods
             and self._sirf_cache.get("alpha") == alpha
             and self._sirf_cache.get("n_draws") == n_draws
+            and self._sirf_cache.get("seed") == seed
         )
 
         if not cache_hit:
@@ -338,6 +339,7 @@ class SVARResult(VARResult):
                 "periods": periods,
                 "alpha": alpha,
                 "n_draws": n_draws,
+                "seed": seed,
                 "values": np.asarray(sirf_vals),
                 "lower": lower,
                 "upper": upper,

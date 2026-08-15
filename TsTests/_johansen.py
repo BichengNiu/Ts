@@ -124,8 +124,6 @@ class JohansenTestResult(BaseTestResult):
         Number of endogenous variables.
     trend_spec : str
         Deterministic trend specification used.
-    cols : list of str
-        Variable names.
     statistic, pvalue, lags, nobs, residuals : see BaseTestResult
         Compatibility fields inherited from ``BaseTestResult``; Johansen
         conclusions use the rank statistics and critical-value matrices.
@@ -150,7 +148,6 @@ class JohansenTestResult(BaseTestResult):
     rank: int = 0
     k: int = 1
     trend_spec: str = ""
-    cols: list | None = None
 
     def summary(self, alpha_idx=1):
         """Return formatted Johansen cointegration test results.
@@ -272,8 +269,6 @@ class JohansenTest(BaseTest):
         Deterministic trend specification:
         ``"none"`` (no deterministic terms), ``"constant"`` (constant,
         default), or ``"trend"`` (linear trend).
-    cols : list of str, optional
-        Variable names for display. Auto-generated if None.
 
     Attributes
     ----------
@@ -285,15 +280,15 @@ class JohansenTest(BaseTest):
     >>> from Ts.TsSims import simulate_cointegrated
     >>> from Ts.TsTests import JohansenTest
     >>> data = simulate_cointegrated(n=120, k=2, coint_rank=1, seed=42).data
-    >>> test = JohansenTest(data, lags=2, cols=["y1", "y2"])
+    >>> test = JohansenTest(data, lags=2)
     >>> result = test.fit()
-    >>> result.cols
-    ['y1', 'y2']
+    >>> result.k
+    2
     """
 
     _VALID_TRENDS = frozenset(_TREND_TO_DET_ORDER)
 
-    def __init__(self, data, lags=2, trend="constant", cols=None):
+    def __init__(self, data, lags=2, trend="constant"):
         y = _clean_2d(data)
         if y.shape[1] < 2:
             raise ValueError(
@@ -305,16 +300,6 @@ class JohansenTest(BaseTest):
             )
         if lags < 1:
             raise ValueError(f"lags must be >= 1, got {lags}")
-
-        if cols is not None:
-            if len(cols) != y.shape[1]:
-                raise ValueError(
-                    f"cols length ({len(cols)}) must match "
-                    f"number of variables ({y.shape[1]})"
-                )
-            self.cols = list(cols)
-        else:
-            self.cols = [f"y{i}" for i in range(y.shape[1])]
 
         self.result_: JohansenTestResult | None = None
         self.data = y
@@ -377,7 +362,6 @@ class JohansenTest(BaseTest):
             rank=rank,
             k=k,
             trend_spec=self.trend,
-            cols=list(self.cols),
         )
 
         self.result_ = result

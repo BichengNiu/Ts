@@ -55,8 +55,6 @@ class PerronTestResult(BaseTestResult):
         Regression estimates and p-values by term.
     fitted : numpy.ndarray or None
         Fitted test-regression values.
-    rsquared, rmse : float
-        Regression fit diagnostics.
 
     Examples
     --------
@@ -81,8 +79,6 @@ class PerronTestResult(BaseTestResult):
     coefficients: dict[str, float] = field(default_factory=dict)
     pvalues: dict[str, float] = field(default_factory=dict)
     fitted: np.ndarray | None = None
-    rsquared: float = 0.0
-    rmse: float = 0.0
 
     def __str__(self) -> str:
         return (
@@ -258,7 +254,6 @@ class PerronTest(BaseTest):
         if np.ptp(y) == 0.0:
             raise ValueError("Perron test requires non-constant data.")
 
-        time_idx = self.time_index
         break_idx = self.break_index
 
         # Create break dummies
@@ -267,18 +262,14 @@ class PerronTest(BaseTest):
         # Lag selection
         if self.lags is None:
             if self.lag_method == "tstat":
-                k = _select_lags_by_tstat(
-                    y, dummies, self.max_lags, time_idx, self.lag_crit
-                )
+                k = _select_lags_by_tstat(y, dummies, self.max_lags, self.lag_crit)
             else:
-                k, _ = _select_lags_by_ic(
-                    y, dummies, self.max_lags, time_idx, self.lag_method
-                )
+                k, _ = _select_lags_by_ic(y, dummies, self.max_lags, self.lag_method)
         else:
             k = self.lags
 
         # Build regression data
-        df = _build_regression_data(y, dummies, k, time_idx)
+        df = _build_regression_data(y, dummies, k)
 
         # Define regressors
         reg_cols = _get_regression_columns(dummies, k)
@@ -341,7 +332,5 @@ class PerronTest(BaseTest):
             coefficients=coefs,
             pvalues=pvals,
             fitted=res.fittedvalues,
-            rsquared=res.rsquared,
-            rmse=np.sqrt(res.mse_resid),
         )
         return self.result_

@@ -170,23 +170,15 @@ def _check_stability(alpha: np.ndarray, beta: np.ndarray) -> None:
 def _validate_params(
     k: int,
     coint_rank: int,
-    alpha: np.ndarray | None,
-    beta: np.ndarray | None,
+    alpha: np.ndarray,
+    beta: np.ndarray,
 ) -> None:
-    """Validate all simulation parameters."""
-    if k < 2:
-        raise ValueError(f"k must be >= 2, got {k}")
-    if coint_rank < 1:
-        raise ValueError(f"coint_rank must be >= 1, got {coint_rank}")
-    if coint_rank >= k:
-        raise ValueError(f"coint_rank ({coint_rank}) must be < k ({k})")
-
-    if alpha is not None and (alpha.ndim != 2 or alpha.shape != (k, coint_rank)):
+    """Validate the shapes of the alpha and beta matrices."""
+    if alpha.ndim != 2 or alpha.shape != (k, coint_rank):
         raise ValueError(
             f"alpha must have shape ({k}, {coint_rank}), got {alpha.shape}"
         )
-
-    if beta is not None and (beta.ndim != 2 or beta.shape != (k, coint_rank)):
+    if beta.ndim != 2 or beta.shape != (k, coint_rank):
         raise ValueError(f"beta must have shape ({k}, {coint_rank}), got {beta.shape}")
 
 

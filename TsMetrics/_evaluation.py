@@ -9,6 +9,7 @@ import numpy as np
 
 
 from ._protocols import EvaluationModelProtocol
+from ._results import _normalise_names
 
 
 def validate_fit_kwargs(model, fit_kwargs, *, model_name=None):
@@ -64,19 +65,7 @@ def model_series_names(model, data):
     names = getattr(model, "data_names", None)
     if names is None:
         return None
-    if isinstance(names, str):
-        raise TypeError("model.data_names must be a sequence of strings")
-    try:
-        resolved = tuple(names)
-    except TypeError as error:
-        raise TypeError("model.data_names must be a sequence of strings") from error
-    if len(resolved) != data.shape[1]:
-        raise ValueError("model.data_names must contain one name per data series")
-    if not all(isinstance(name, str) and name for name in resolved):
-        raise TypeError("model.data_names must contain non-empty strings")
-    if len(set(resolved)) != len(resolved):
-        raise ValueError("model.data_names must be unique")
-    return resolved
+    return _normalise_names(names, data.shape[1], "model.data_names")
 
 
 def expected_forecast_shape(data, horizon):

@@ -160,7 +160,6 @@ def _reduce_coefficients(matrix: np.ndarray) -> np.ndarray:
             )
 
         shifted = np.empty(nrows, dtype=float)
-        shifted[0] = np.nan
         shifted[1:] = matrix[:-1, column]
         shifted[0] = -1.0
         ratio = matrix[column + 1, column + 1] / pivot

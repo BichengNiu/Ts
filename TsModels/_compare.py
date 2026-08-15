@@ -164,8 +164,6 @@ def compare_models(models):
                     est_str = f"{val:.8f}{stars}"
                 elif abs(val) < 0.001:
                     est_str = f"{val:.6f}{stars}"
-                elif abs(val) < 1:
-                    est_str = f"{val:.4f}{stars}"
                 else:
                     est_str = f"{val:.4f}{stars}"
 

@@ -60,8 +60,6 @@ class ZivotAndrewsTestResult(BaseTestResult):
         Selected regression estimates and p-values.
     fitted : numpy.ndarray or None
         Fitted values at the selected break.
-    rsquared, rmse : float
-        Regression fit diagnostics.
 
     Examples
     --------
@@ -89,8 +87,6 @@ class ZivotAndrewsTestResult(BaseTestResult):
     coefficients: dict[str, float] = field(default_factory=dict)
     pvalues: dict[str, float] = field(default_factory=dict)
     fitted: np.ndarray | None = None
-    rsquared: float = 0.0
-    rmse: float = 0.0
 
     def __str__(self) -> str:
         return (
@@ -291,17 +287,17 @@ class ZivotAndrewsTest(BaseTest):
             if self.lags is None:
                 if self.lag_method == "tstat":
                     k = _select_lags_by_tstat(
-                        y, dummies, self.max_lags, time_idx, self.lag_crit
+                        y, dummies, self.max_lags, self.lag_crit
                     )
                 else:
                     k, ic_values = _select_lags_by_ic(
-                        y, dummies, self.max_lags, time_idx, self.lag_method
+                        y, dummies, self.max_lags, self.lag_method
                     )
             else:
                 k = self.lags
 
             # Build regression
-            df = _build_regression_data(y, dummies, k, time_idx)
+            df = _build_regression_data(y, dummies, k)
 
             reg_cols = _get_regression_columns(dummies, k)
 
@@ -375,7 +371,5 @@ class ZivotAndrewsTest(BaseTest):
             coefficients=coefs,
             pvalues=pvals,
             fitted=best_res.fittedvalues,
-            rsquared=best_res.rsquared,
-            rmse=np.sqrt(best_res.mse_resid),
         )
         return self.result_

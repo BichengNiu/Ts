@@ -174,9 +174,6 @@ def test_reports_supf_sequential_double_max_and_bootstrap_inference(
     assert set(result.wdmax_weights) == {1, 2}
     assert "UDmax" in result.bootstrap_critical_values
     assert "WDmax" in result.bootstrap_critical_values
-    assert result.inference_method == "rademacher_wild_bootstrap"
-    assert result.heteroskedasticity_robust is True
-    assert result.serial_correlation_robust is False
 
 
 def test_bootstrap_break_intervals_and_plot_are_auditable(

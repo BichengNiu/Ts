@@ -9,6 +9,7 @@ import pandas as pd
 
 from ._metrics import ERROR_METRIC_NAMES, compute_metrics
 from ._schemes import ForecastSplit
+from Ts.TsUtils._validation import validate_alpha
 
 
 PARAMETER_ESTIMATE_COLUMNS = (
@@ -45,9 +46,23 @@ def _validate_alpha(alpha):
         alpha = float(alpha)
     except (TypeError, ValueError) as error:
         raise TypeError("alpha must be a number strictly between 0 and 1") from error
-    if not np.isfinite(alpha) or not 0 < alpha < 1:
-        raise ValueError("alpha must be strictly between 0 and 1")
-    return alpha
+    return validate_alpha(alpha)
+
+
+def _normalise_names(names, count, label):
+    if isinstance(names, str):
+        raise TypeError(f"{label} must be a sequence of strings")
+    try:
+        names = tuple(names)
+    except TypeError as error:
+        raise TypeError(f"{label} must be a sequence of strings") from error
+    if len(names) != count:
+        raise ValueError(f"{label} must contain one name per series")
+    if not all(isinstance(name, str) and name for name in names):
+        raise TypeError(f"{label} must contain non-empty strings")
+    if len(set(names)) != len(names):
+        raise ValueError(f"{label} must be unique")
+    return names
 
 
 def _validate_series_names(names, mean):
@@ -55,19 +70,7 @@ def _validate_series_names(names, mean):
         return None
     if mean.ndim != 3:
         raise ValueError("series_names is only valid for multivariate results")
-    if isinstance(names, str):
-        raise TypeError("series_names must be a sequence of strings")
-    try:
-        names = tuple(names)
-    except TypeError as error:
-        raise TypeError("series_names must be a sequence of strings") from error
-    if len(names) != mean.shape[2]:
-        raise ValueError("series_names must contain one name per series")
-    if not all(isinstance(name, str) and name for name in names):
-        raise TypeError("series_names must contain non-empty strings")
-    if len(set(names)) != len(names):
-        raise ValueError("series_names must be unique")
-    return names
+    return _normalise_names(names, mean.shape[2], "series_names")
 
 
 def _same_split(left, right):

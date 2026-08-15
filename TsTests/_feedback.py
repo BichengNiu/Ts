@@ -9,28 +9,10 @@ import pandas as pd
 import statsmodels.api as sm
 
 from ._base import BaseMultiTestResult, BaseTest
+from ._utils import _validate_alpha, _validate_lags
 
 
 _TRENDS = frozenset({"n", "c", "t", "ct"})
-
-
-def _validate_lags(lags):
-    if isinstance(lags, (bool, np.bool_)) or not isinstance(lags, (int, np.integer)):
-        raise TypeError("lags must be a positive integer")
-    lags = int(lags)
-    if lags < 1:
-        raise ValueError("lags must be a positive integer")
-    return lags
-
-
-def _validate_alpha(alpha):
-    if (
-        isinstance(alpha, (bool, np.bool_))
-        or not isinstance(alpha, (int, float, np.integer, np.floating))
-        or not 0.0 < float(alpha) < 1.0
-    ):
-        raise ValueError("alpha must be between 0 and 1")
-    return float(alpha)
 
 
 def _normalise_exog(exog, exog_names):
