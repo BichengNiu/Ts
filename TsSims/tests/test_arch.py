@@ -212,6 +212,24 @@ class TestSimulateGARCH:
                 seed=42,
             )
 
+    def test_ar_mean_equation(self):
+        """mean_model='ar' drives the conditional mean with mean_ar lags."""
+        from Ts.TsSims._garch import simulate_garch
+
+        result = simulate_garch(
+            n=2000,
+            p=1,
+            q=1,
+            mean_model="ar",
+            mean_ar=[0.9],
+            seed=42,
+        )
+        assert result.params["mean_ar"] == [0.9]
+        data = result.data
+        lag1 = np.corrcoef(data[:-1], data[1:])[0, 1]
+        assert lag1 > 0.5
+        assert data.shape == (2000,)
+
 
 class TestSimulateGJRGARCH:
     """Test simulate_gjr_garch() — asymmetric GJR-GARCH simulation."""
@@ -448,6 +466,23 @@ class TestSimulateEGARCH:
         result = simulate_egarch(n=100, p=1, q=1, o=1, seed=42)
         text = result.summary()
         assert "EGARCH" in text
+
+    def test_student_t_innovations(self):
+        """EGARCH with Student-t innovations uses the analytic E|z| branch."""
+        from Ts.TsSims._garch_ext import simulate_egarch
+
+        result = simulate_egarch(
+            n=500,
+            p=1,
+            q=1,
+            o=1,
+            dist="t",
+            dist_params={"df": 8},
+            seed=42,
+        )
+        assert result.params["dist"] == "t"
+        assert result.get_data().shape[0] == 500
+        assert np.all(result.conditional_volatility > 0)
 
 
 class TestSimulateGARCHM:

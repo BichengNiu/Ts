@@ -10,8 +10,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from Ts.TsUtils._validation import validate_int, validate_real, validate_sample
+
 from ._base import BaseSimResult
-from ._validation import validate_int, validate_real, validate_sample
 
 
 @dataclass
@@ -115,10 +116,13 @@ class SimCointegratedResult(BaseSimResult):
         2
         """
         from Ts.TsPlots import plot_series
+        from Ts.TsPlots.style import FIGSIZE
         import matplotlib.pyplot as plt
 
         k = self.data.shape[1]
-        fig, axes = plt.subplots(k, 1, figsize=(10, 2.5 * k), sharex=True)
+        fig, axes = plt.subplots(
+            k, 1, figsize=(FIGSIZE[0], FIGSIZE[1] * 0.8 * k), sharex=True
+        )
 
         if title is None:
             title = self._default_title()

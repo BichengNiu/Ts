@@ -10,6 +10,17 @@ from statsmodels.tsa.seasonal import STL as _StatsmodelsSTL
 from ._validation import _resolve_missing_rows
 
 
+def _validate_period(period) -> int:
+    """Return a non-boolean integer seasonal period of at least two."""
+    if (
+        isinstance(period, (bool, np.bool_))
+        or not isinstance(period, (int, np.integer))
+        or period < 2
+    ):
+        raise ValueError("period must be a non-boolean integer >= 2")
+    return int(period)
+
+
 @dataclass
 class STLResult:
     """Result container for STL decomposition components.
@@ -67,13 +78,7 @@ class STLResult:
         component_lengths = {getattr(self, name).size for name in component_names}
         if len(component_lengths) != 1:
             raise ValueError("all STL components must have the same length")
-        if (
-            isinstance(self.period, (bool, np.bool_))
-            or not isinstance(self.period, (int, np.integer))
-            or self.period < 2
-        ):
-            raise ValueError("period must be a non-boolean integer >= 2")
-        self.period = int(self.period)
+        self.period = _validate_period(self.period)
         if self.observed.size < 2 * self.period:
             raise ValueError("STL results must contain at least two complete cycles")
         if np.any((self.weights < 0.0) | (self.weights > 1.0)):
@@ -269,12 +274,7 @@ class STL:
             self.data = self.data.copy()
         self.missing = missing
         self.dropped_positions = dropped_positions
-        if (
-            isinstance(period, (bool, np.bool_))
-            or not isinstance(period, (int, np.integer))
-            or period < 2
-        ):
-            raise ValueError("period must be a non-boolean integer >= 2")
+        period = _validate_period(period)
         if self.data.size < 2 * period:
             raise ValueError(
                 "data must contain at least two complete cycles: "

@@ -18,7 +18,7 @@ TsTests/
 ├── _utils.py             # 通用工具函数（输入解析、模型验证）
 ├── _break_utils.py       # 结构突变专用工具（虚拟变量、滞后选择、回归构建）
 ├── _critical_values.py   # 临界值表 + 插值函数
-├── _unitroot_plot.py     # 单位根检验共享绘图工具
+├── _unitroot_plot.py     # 单位根绘图薄再导出（实现位于 TsPlots/unitroot_plot.py）
 ├── _adf.py               # ADFTest + ADFTestResult
 ├── _phillips_perron.py   # PhillipsPerronTest + PhillipsPerronTestResult
 ├── _kpss.py              # KPSSTest + KPSSTestResult

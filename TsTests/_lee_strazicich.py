@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import matplotlib.pyplot as plt
 import numpy as np
 import statsmodels.api as sm
 
@@ -330,19 +329,30 @@ class LeeStrazicichTwoBreakTestResult(BaseTestResult):
         >>> result = LeeStrazicichTwoBreakTest(data, model="A", lags=0).fit()
         >>> fig, ax = result.plot_test()
         """
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 5))
-        else:
-            fig = ax.figure
-        ax.plot(self.time_index, self.observed, color="black", label="Observed")
+        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+
+        context = _FigureContext(ax=ax)
+        ax = context.ax
+        ax.plot(
+            self.time_index,
+            self.observed,
+            color=DEFAULT_PALETTE[0],
+            label="Observed",
+        )
         for position, break_year in enumerate(self.break_years):
             label = "Estimated breaks" if position == 0 else None
-            ax.axvline(break_year, color="red", linestyle="--", label=label)
-        ax.set_title("Lee-Strazicich Two-Unknown-Break LM Test")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Value")
-        ax.legend()
-        return fig, ax
+            ax.axvline(
+                break_year,
+                color=DEFAULT_PALETTE[4],
+                linestyle="--",
+                label=label,
+            )
+        context.finalize(
+            title="Lee-Strazicich Two-Unknown-Break LM Test",
+            xtitle="Time",
+            ytitle="Value",
+        )
+        return context.fig, context.ax
 
 
 class LeeStrazicichTwoBreakTest(BaseTest):

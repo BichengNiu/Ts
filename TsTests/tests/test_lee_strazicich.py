@@ -209,6 +209,9 @@ def test_result_contract_labels_and_plot():
         (index + 1) / 50 for index in result.break_indices
     )
     assert result.critical_values["5%"] == -3.842
+    assert result.regression_time_index.shape == result.residuals.shape
+    assert result.regression_time_index[0] == labels[1]  # drops lags + 1 head
+    assert result.regression_time_index[-1] == labels[-1]
     assert "H0: Unit root with two structural breaks" in str(result)
     fig, ax = result.plot_test()
     assert ax.get_title() == "Lee-Strazicich Two-Unknown-Break LM Test"

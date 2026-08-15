@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import pairwise
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from ._base import BaseTest, BaseTestResult
@@ -397,23 +396,39 @@ class BaiPerronTestResult(BaseTestResult):
         >>> result = BaiPerronTest(data, breaks=1, max_breaks=1, n_bootstrap=19).fit()
         >>> fig, ax = result.plot_test()
         """
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(11, 5))
-        else:
-            fig = ax.figure
-        ax.plot(self.time_index, self.observed, color="black", label="Observed")
-        ax.plot(self.time_index, self.fitted, label="Piecewise regression fit")
+        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+
+        context = _FigureContext(ax=ax)
+        ax = context.ax
+        ax.plot(
+            self.time_index,
+            self.observed,
+            color=DEFAULT_PALETTE[0],
+            label="Observed",
+        )
+        ax.plot(
+            self.time_index,
+            self.fitted,
+            label="Piecewise regression fit",
+            color=DEFAULT_PALETTE[1],
+        )
         for position, break_year in enumerate(self.break_years):
             label = "Estimated breaks" if position == 0 else None
-            ax.axvline(break_year, color="red", linestyle="--", label=label)
+            ax.axvline(
+                break_year,
+                color=DEFAULT_PALETTE[4],
+                linestyle="--",
+                label=label,
+            )
             if position < len(self.break_confidence_years):
                 lower, upper = self.break_confidence_years[position]
-                ax.axvspan(lower, upper, color="red", alpha=0.10)
-        ax.set_title("Bai-Perron Global Multiple-Break Partition")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Value")
-        ax.legend()
-        return fig, ax
+                ax.axvspan(lower, upper, color=DEFAULT_PALETTE[4], alpha=0.10)
+        context.finalize(
+            title="Bai-Perron Global Multiple-Break Partition",
+            xtitle="Time",
+            ytitle="Value",
+        )
+        return context.fig, context.ax
 
 
 class BaiPerronTest(BaseTest):

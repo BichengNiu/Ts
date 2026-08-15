@@ -252,6 +252,10 @@ class TestPlotSeries:
         with pytest.raises(ValueError, match="colors has 1 entries"):
             plot_series(data, colors=["red"])
 
+    def test_rejects_y_for_non_dataframe_input(self):
+        with pytest.raises(TypeError, match="y requires a DataFrame"):
+            plot_series([1, 2, 3], y="series")
+
     def test_bar_series_draws_rectangles_without_lines(self):
         data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
 

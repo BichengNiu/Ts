@@ -23,8 +23,9 @@ from Ts.TsModels._var import (
     IRFResult,
     VAR,
     VARResult,
-    _ensure_positive_definite,
+    _coefficient_draws,
     _ma_coefficients,
+    _render_equation_tables,
 )
 
 
@@ -282,42 +283,13 @@ class SVARResult(VARResult):
 
         # Per-equation parameter tables
         if self._var_result is not None:
-            params_flat = self.params
-            se_flat = self.std_errors
-            for eq_idx in range(self._k):
-                var_name = self._data_names[eq_idx]
-                lines.append(f"Equation: {var_name}")
-                lines.append("-" * 40)
-                for name in sorted(params_flat):
-                    parts = name.split(".")
-                    eq_var = parts[-1]
-                    if eq_var != var_name:
-                        continue
-                    prefix = parts[0]
-                    if prefix in ("const", "trend", "trend2"):
-                        continue
-                    # Strip redundant dependent-variable suffix
-                    display = ".".join(parts[:-1])
-                    if len(parts) <= 1:
-                        display = name
-                    val = params_flat[name]
-                    se = se_flat.get(name)
-                    pv = self.p_values.get(name)
-                    se_s = f"{se:.4f}" if se is not None else "N/A"
-                    pv_s = f"{pv:.4f}" if pv is not None else "N/A"
-                    lines.append(f"  {display:<30s} {val:>10.4f}  ({se_s})  p={pv_s}")
-                for prefix in ("const", "trend", "trend2"):
-                    det_name = f"{prefix}.{var_name}"
-                    if det_name in params_flat:
-                        val = params_flat[det_name]
-                        se = se_flat.get(det_name)
-                        pv = self.p_values.get(det_name)
-                        se_s = f"{se:.4f}" if se is not None else "N/A"
-                        pv_s = f"{pv:.4f}" if pv is not None else "N/A"
-                        lines.append(
-                            f"  {prefix:<30s} {val:>10.4f}  ({se_s})  p={pv_s}"
-                        )
-                lines.append("")
+            lines += _render_equation_tables(
+                self._data_names,
+                self.params,
+                self.std_errors,
+                self.p_values,
+                self._k,
+            )
         return "\n".join(lines)
 
     def irf(self, periods=10, orth=False, alpha=0.05, n_draws=200, seed=None):
@@ -472,7 +444,6 @@ class SVARResult(VARResult):
         lags = self._lags
         fitted = self._var_result
 
-        all_params = np.asarray(fitted.params)  # (n_regressors, k)
         endog = np.asarray(fitted.endog)  # (T, k)
         n_obs = endog.shape[0]
         n_eff = n_obs - lags
@@ -480,7 +451,6 @@ class SVARResult(VARResult):
         has_const = self._trend != "n"
         has_trend = self._trend in ("ct", "ctt")
         has_trend2 = self._trend == "ctt"
-        n_det = int(has_const) + int(has_trend) + int(has_trend2)
 
         # Build fixed regressor matrix Z
         Z_parts = []
@@ -497,32 +467,17 @@ class SVARResult(VARResult):
         Z = np.column_stack(Z_parts)  # (n_eff, n_regressors)
         y_eff = endog[lags:]  # (n_eff, k)
 
-        # Coefficient covariance
-        beta_flat = all_params.ravel()
-        cov_beta = np.asarray(fitted.cov_params())
-
-        # Ensure positive definite
-        cov_beta = _ensure_positive_definite(cov_beta)
-
-        rng = np.random.default_rng(seed)
+        draw = _coefficient_draws(fitted, self._trend, k, lags, seed)
 
         sirf_draws = np.zeros((n_draws, periods + 1, k, k))
         n_bad = 0
 
         for d in range(n_draws):
-            beta_d = rng.multivariate_normal(beta_flat, cov_beta)
-            params_d = beta_d.reshape(all_params.shape)  # (n_regressors, k)
+            params_d, A_mats = draw()
 
             # Residuals and sigma_u from drawn coefficients
             resid_d = y_eff - Z @ params_d
             sigma_u_d = (resid_d.T @ resid_d) / n_eff
-
-            # Lag coefficient matrices from drawn coefficients
-            A_mats = []
-            for lag_i in range(lags):
-                start = n_det + lag_i * k
-                A_lag = params_d[start : start + k, :].T  # (k, k)
-                A_mats.append(A_lag)
 
             # --- Re-estimate A, B from sigma_u_d ---
             if self._C_lr is not None:
@@ -916,8 +871,3 @@ class SVAR(BaseModel):
 
         self.result_ = result
         return result
-
-    def summary(self) -> str:
-        if self.result_ is None:
-            self.fit()
-        return self.result_.summary()

@@ -8,14 +8,12 @@ For GJR-GARCH, EGARCH, and GARCH-M, see :mod:`._garch_ext`.
 
 from __future__ import annotations
 
-from ._garch_core import _make_standard_variance_fn, _run_garch_simulation
-from ._garch_result import SimGARCHResult
-from ._validation import (
-    normalize_coefficients,
-    validate_choice,
-    validate_int,
-    validate_real,
+from ._garch_core import (
+    _make_standard_variance_fn,
+    _run_garch_simulation,
+    _validate_garch_inputs,
 )
+from ._garch_result import SimGARCHResult
 
 
 def simulate_garch(
@@ -99,15 +97,16 @@ def simulate_garch(
     >>> garch.conditional_volatility.shape
     (50,)
     """
-    p = validate_int("p", p, minimum=1)
-    q = validate_int("q", q, minimum=0)
-    omega = validate_real("omega", omega, positive=True)
-    validate_choice("mean_model", mean_model, ("constant", "zero", "ar"))
-    alpha = normalize_coefficients(
-        "alpha", alpha, length=p, default=0.2, nonnegative=True
-    )
-    beta = normalize_coefficients(
-        "beta", beta, length=q, default=0.5, nonnegative=True
+    p, q, _, omega, alpha, _, beta = _validate_garch_inputs(
+        p,
+        q,
+        omega,
+        alpha,
+        beta,
+        mean_model=mean_model,
+        mean_choices=("constant", "zero", "ar"),
+        alpha_default=0.2,
+        beta_default=0.5,
     )
 
     model_type = "ARCH" if q == 0 else "GARCH"
@@ -194,16 +193,17 @@ def simulate_igarch(
     >>> sum(result.params["alpha"]) + sum(result.params["beta"])
     1.0
     """
-    p = validate_int("p", p, minimum=1)
-    q = validate_int("q", q, minimum=1)
-    omega = validate_real("omega", omega, positive=True)
-    validate_choice("mean_model", mean_model, ("constant", "zero"))
-
-    alpha = normalize_coefficients(
-        "alpha", alpha, length=p, default=0.2, nonnegative=True
-    )
-    beta = normalize_coefficients(
-        "beta", beta, length=q, default=0.5, nonnegative=True
+    p, q, _, omega, alpha, _, beta = _validate_garch_inputs(
+        p,
+        q,
+        omega,
+        alpha,
+        beta,
+        mean_model=mean_model,
+        mean_choices=("constant", "zero"),
+        q_minimum=1,
+        alpha_default=0.2,
+        beta_default=0.5,
     )
 
     alpha_sum = sum(alpha)

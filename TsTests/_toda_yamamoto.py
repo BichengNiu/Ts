@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import stats as scipy_stats
 
-from Ts.TsUtils._validation import significance_stars
+from Ts.TsUtils._validation import significance_stars, validate_choice
 from Ts.TsTests._base import BaseMultiTestResult, BaseTest
 from Ts.TsTests._utils import _clean_2d
 
@@ -215,10 +215,7 @@ class TodaYamamotoTest(BaseTest):
             raise ValueError(f"p must be >= 1, got {p}")
         if d_max is not None and d_max not in (0, 1, 2):
             raise ValueError(f"d_max must be 0, 1, or 2, got {d_max}")
-        if trend not in _VALID_TRENDS:
-            raise ValueError(
-                f"trend must be one of {sorted(_VALID_TRENDS)}, got {trend!r}"
-            )
+        validate_choice("trend", trend, tuple(sorted(_VALID_TRENDS)))
 
         if cols is not None:
             if len(cols) != k:
@@ -328,12 +325,12 @@ class TodaYamamotoTest(BaseTest):
                     continue
 
                 causing_name = [self.cols[causing_idx]]
-                wald, p_val = _wald_test_single(
+                wald, p_val = _wald_test(
                     all_params,
                     cov_full,
                     k,
                     eq_idx,
-                    causing_idx,
+                    [causing_idx],
                     n_det,
                     self.p,
                 )
@@ -351,7 +348,7 @@ class TodaYamamotoTest(BaseTest):
             # Joint ALL test
             other_idx = [j for j in range(k) if j != eq_idx]
             if len(other_idx) > 1:
-                wald, p_val = _wald_test_multi(
+                wald, p_val = _wald_test(
                     all_params,
                     cov_full,
                     k,
@@ -455,39 +452,20 @@ def _build_restriction_matrix(n_regressors, k, eq_idx, causing_indices, n_det, p
     return R
 
 
-def _wald_test_single(all_params, cov_full, k, eq_idx, causing_idx, n_det, p_lags):
-    """Wald test: a single causing variable does not Granger-cause caused.
+def _wald_test(all_params, cov_full, k, eq_idx, causing_indices, n_det, p_lags):
+    """Wald test: causing variables do not Granger-cause the caused equation.
 
-    H0: The first *p_lags* lags of *causing_idx* are zero in the
-    equation for *eq_idx*.
+    H0: The first *p_lags* lags of every variable in *causing_indices* are
+    zero in the equation for *eq_idx*.
     """
     n_regressors = all_params.shape[0]
     param_vec = all_params.ravel()
+    n_restrictions = p_lags * len(causing_indices)
     R = _build_restriction_matrix(
         n_regressors,
         k,
         eq_idx,
-        [causing_idx],
-        n_det,
-        p_lags,
-    )
-    return _compute_wald(R, param_vec, cov_full, p_lags)
-
-
-def _wald_test_multi(all_params, cov_full, k, eq_idx, causing_idx_list, n_det, p_lags):
-    """Wald test: multiple causing variables jointly do not Granger-cause.
-
-    H0: The first *p_lags* lags of all variables in *causing_idx_list*
-    are zero in the equation for *eq_idx*.
-    """
-    n_regressors = all_params.shape[0]
-    param_vec = all_params.ravel()
-    n_restrictions = p_lags * len(causing_idx_list)
-    R = _build_restriction_matrix(
-        n_regressors,
-        k,
-        eq_idx,
-        causing_idx_list,
+        causing_indices,
         n_det,
         p_lags,
     )

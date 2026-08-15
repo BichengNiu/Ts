@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import stats as scipy_stats
+from statsmodels.stats.diagnostic import het_arch
 
 from ._base import BaseTest, BaseTestResult
 from ._utils import _as_1d_float
@@ -207,31 +208,18 @@ class EngleLMTest(BaseTest):
         T = len(e2)
         p = self.lags
 
-        # Build auxiliary regression: e2[t] on [1, e2[t-1], ..., e2[t-p]]
+        # Joint LM / F statistics from statsmodels' het_arch (same n·R² form).
         n_eff = T - p
-        y_dep = e2[p:]  # dependent variable: e2[t] for t = p+1 .. T
-
-        X = np.ones((n_eff, p + 1))
-        for j in range(1, p + 1):
-            X[:, j] = e2[p - j : T - j]
-
-        # OLS auxiliary regression
-        ssr = _run_aux_regression(y_dep, X)
-        sst = np.sum((y_dep - np.mean(y_dep)) ** 2)
-        r_squared = 1.0 - ssr / sst if sst > 0 else 0.0
-
-        # LM statistic
-        lm_stat = n_eff * r_squared
-        lm_pval = 1.0 - scipy_stats.chi2.cdf(lm_stat, p)
-
-        # F-statistic: ( (SST-SSR)/p ) / ( SSR/(n-p-1) )
-        ssr_restricted = sst  # SST under H0 (all slope coefs = 0)
+        sst = np.sum((e2[p:] - np.mean(e2[p:])) ** 2)
         if sst == 0:
-            f_stat = np.nan
-            f_pval = np.nan
+            # Constant squared residuals: R² is undefined; report no ARCH.
+            lm_stat, lm_pval, f_stat, f_pval = 0.0, 1.0, np.nan, np.nan
+            r_squared = 0.0
         else:
-            f_stat = ((ssr_restricted - ssr) / p) / (ssr / (n_eff - p - 1))
-            f_pval = 1.0 - scipy_stats.f.cdf(f_stat, p, n_eff - p - 1)
+            lm_stat, lm_pval, f_stat, f_pval = (
+                float(value) for value in het_arch(e, nlags=p)
+            )
+            r_squared = lm_stat / n_eff
 
         # Per-lag: run auxiliary regression for k = 1, 2, ..., p
         ind_lags = np.arange(1, p + 1, dtype=int)

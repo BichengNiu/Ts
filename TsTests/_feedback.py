@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
+from Ts.TsUtils._validation import validate_choice
+
 from ._base import BaseMultiTestResult, BaseTest
 from ._utils import _validate_alpha, _validate_lags
 
@@ -403,11 +405,9 @@ class FeedbackTest(BaseTest):
     ):
         self.lags = _validate_lags(lags)
         self.alpha = _validate_alpha(alpha)
-        if trend not in _TRENDS:
-            raise ValueError("trend must be one of 'n', 'c', 't', or 'ct'")
+        self.trend = validate_choice("trend", trend, tuple(sorted(_TRENDS)))
         if missing not in {"raise", "drop"}:
             raise ValueError("missing must be 'raise' or 'drop'")
-        self.trend = trend
         self.missing = missing
 
         y_series = _normalise_y(y)

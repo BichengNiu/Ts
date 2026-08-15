@@ -2,8 +2,8 @@
 
 Provides:
 
-- :class:`BaseModelResult` 鈥?common result container (dataclass).
-- :class:`BaseModel` 鈥?abstract base class enforcing the ``fit()`` / ``summary()``
+- :class:`BaseModelResult` — common result container (dataclass).
+- :class:`BaseModel` — abstract base class enforcing the ``fit()`` / ``summary()``
   / ``result_`` contract.
 """
 
@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
+from Ts.TsUtils._calendar import validate_time_index
 
 
 # Shared constants used by _garch.py and _auto.py
@@ -39,12 +41,7 @@ def _normalise_model_dates(data, dates, expected_length):
         raise ValueError(
             f"dates must contain {expected_length} entries, got {len(index)}"
         )
-    if index.hasnans:
-        raise ValueError("dates must not contain missing values")
-    if not index.is_unique:
-        raise ValueError("dates must be unique")
-    if not index.is_monotonic_increasing:
-        raise ValueError("dates must be strictly increasing")
+    validate_time_index(index, name="dates")
     return index.copy()
 
 
@@ -169,13 +166,15 @@ class PredictResult:
         from Ts.TsPlots.style import (
             AXIS_LABEL_FONTSIZE,
             DEFAULT_PALETTE,
+            FIGSIZE,
+            LEGEND_FONTSIZE,
             TITLE_FONTSIZE,
             _ensure_fonts,
             style_axes,
         )
 
         _ensure_fonts()
-        fig, ax = plt.subplots(figsize=(10, 5.5))
+        fig, ax = plt.subplots(figsize=FIGSIZE)
 
         has_any = False
 
@@ -324,7 +323,7 @@ class PredictResult:
             ax.set_xlim(xlim)
 
         if has_any:
-            ax.legend(frameon=False, fontsize=14)
+            ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
 
         fig.tight_layout(pad=1.5)
         return fig, ax
@@ -655,6 +654,7 @@ class BaseModelResult:
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots import plot_series
+        from Ts.TsPlots.style import TITLE_FONTSIZE
 
         if title is None:
             title = f"{self.model_type}: Actual vs Fitted"
@@ -694,7 +694,7 @@ class BaseModelResult:
                 ytitle="Value",
             )
 
-        fig.suptitle(title, fontsize=14, fontweight="bold")
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
         fig.tight_layout()
         return fig, axes
 
@@ -771,7 +771,7 @@ class BaseModelResult:
                     title=f"{label} Standardized Residual PACF",
                 )
 
-            fig.suptitle(title, fontsize=14, fontweight="bold")
+            fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
             fig.tight_layout()
             return fig, axes
 
@@ -788,17 +788,10 @@ class BaseModelResult:
         )
 
         # Run white noise and normality tests for annotation
-        from Ts.TsTests import LjungBoxTest, NormalityTest
-
         wn_lags = min(10, max(1, len(diagnostic_residuals) // 5))
-        wn = LjungBoxTest(
-            diagnostic_residuals,
-            lags=wn_lags,
-            apply_squared=False,
+        wn_result, nm_result = self._white_noise_and_normality(
+            diagnostic_residuals, wn_lags
         )
-        wn_result = wn.fit()
-        nm = NormalityTest(diagnostic_residuals)
-        nm_result = nm.fit()
 
         ax_histogram.hist(
             diagnostic_residuals,
@@ -869,6 +862,14 @@ class BaseModelResult:
         fig.tight_layout()
         return fig, (ax_residuals, ax_histogram, ax_acf, ax_pacf)
 
+    def _white_noise_and_normality(self, residuals, lags):
+        """Run the shared Ljung-Box white-noise and Jarque-Bera tests."""
+        from Ts.TsTests import LjungBoxTest, NormalityTest
+
+        wn = LjungBoxTest(residuals, lags=lags, apply_squared=False)
+        norm = NormalityTest(residuals)
+        return wn.fit(), norm.fit()
+
     def test_residuals(self, lags=10):
         """Run residual diagnostic tests.
 
@@ -902,7 +903,7 @@ class BaseModelResult:
         >>> tests.white_noise.lags
         5
         """
-        from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
+        from Ts.TsTests import EngleLMTest, LjungBoxTest
 
         diagnostic_residuals = self.residuals
 
@@ -910,33 +911,24 @@ class BaseModelResult:
             results = {}
             for i, name in enumerate(self._variable_names()):
                 resid_i = diagnostic_residuals[:, i]
-                wn = LjungBoxTest(resid_i, lags=lags, apply_squared=False)
-                norm = NormalityTest(resid_i)
-                lb = LjungBoxTest(resid_i, lags=lags)
-                lm = EngleLMTest(resid_i, lags=lags)
+                wn_result, norm_result = self._white_noise_and_normality(
+                    resid_i, lags
+                )
+                lb_result = LjungBoxTest(resid_i, lags=lags).fit()
+                lm_result = EngleLMTest(resid_i, lags=lags).fit()
                 results[name] = ResidualTestResults(
-                    white_noise=wn.fit(),
-                    normality=norm.fit(),
-                    ljung_box=lb.fit(),
-                    engle_lm=lm.fit(),
+                    white_noise=wn_result,
+                    normality=norm_result,
+                    ljung_box=lb_result,
+                    engle_lm=lm_result,
                 )
             return results
 
-        wn = LjungBoxTest(
-            diagnostic_residuals,
-            lags=lags,
-            apply_squared=False,
+        wn_result, norm_result = self._white_noise_and_normality(
+            diagnostic_residuals, lags
         )
-        wn_result = wn.fit()
-
-        norm = NormalityTest(diagnostic_residuals)
-        norm_result = norm.fit()
-
-        lb = LjungBoxTest(diagnostic_residuals, lags=lags)
-        lb_result = lb.fit()
-
-        lm = EngleLMTest(diagnostic_residuals, lags=lags)
-        lm_result = lm.fit()
+        lb_result = LjungBoxTest(diagnostic_residuals, lags=lags).fit()
+        lm_result = EngleLMTest(diagnostic_residuals, lags=lags).fit()
 
         return ResidualTestResults(
             white_noise=wn_result,

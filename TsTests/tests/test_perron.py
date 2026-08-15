@@ -231,7 +231,7 @@ class TestPerronTestBaseline:
         def raise_unexpected(*args, **kwargs):
             raise RuntimeError("unexpected implementation error")
 
-        monkeypatch.setattr("Ts.TsTests._perron.sm.OLS", raise_unexpected)
+        monkeypatch.setattr("Ts.TsTests._break_utils.sm.OLS", raise_unexpected)
         data = np.arange(100, dtype=float) + np.sin(np.arange(100))
         test = PerronTest(data, break_year=50, lags=1)
         with pytest.raises(RuntimeError, match="unexpected implementation error"):

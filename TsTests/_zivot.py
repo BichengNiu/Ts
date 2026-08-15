@@ -12,17 +12,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-import statsmodels.api as sm
 
 from ._base import BaseTest, BaseTestResult
 from ._critical_values import _za_crit
 from ._utils import _parse_input, _validate_model
 from ._break_utils import (
-    _build_regression_data,
     _extract_rho_stats,
     _extract_coefficients,
+    _fit_unitroot_ols,
     _format_break_test_summary,
-    _get_regression_columns,
     _make_zivot_break_dummies,
     _select_lags_by_ic,
     _select_lags_by_tstat,
@@ -115,6 +113,10 @@ class ZivotAndrewsTestResult(BaseTestResult):
         - ``"aic"`` or ``"bic"`` — information criterion values across
           lag orders at the optimal break point.
 
+        When the information-criterion sequence is unavailable (e.g. an
+        explicit ``lags`` value was fitted), the t-statistic search path
+        is shown instead.
+
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
@@ -133,9 +135,9 @@ class ZivotAndrewsTestResult(BaseTestResult):
         >>> result = ZivotAndrewsTest(data, max_lags=4).fit()
         >>> fig, ax = result.plot_test()
         """
-        if self.lag_method == "tstat":
-            return _render_tstat_plot(self, ax)
-        return _render_ic_plot(self, ax)
+        if self.lag_method in ("aic", "bic") and self.ic_by_lag is not None:
+            return _render_ic_plot(self, ax)
+        return _render_tstat_plot(self, ax)
 
 
 class ZivotAndrewsTest(BaseTest):
@@ -280,21 +282,10 @@ class ZivotAndrewsTest(BaseTest):
                 k = self.lags
 
             # Build regression
-            df = _build_regression_data(y, dummies, k)
-
-            reg_cols = _get_regression_columns(dummies, k)
-
-            X = df[reg_cols].values
-            y_dep = df["dy"].values
-            if X.shape[0] <= X.shape[1]:
+            fitted = _fit_unitroot_ols(y, dummies, k)
+            if fitted is None:
                 continue
-            if np.linalg.matrix_rank(X) < X.shape[1]:
-                continue
-
-            try:
-                res = sm.OLS(y_dep, X).fit()
-            except (ValueError, np.linalg.LinAlgError, FloatingPointError):
-                continue
+            res, reg_cols = fitted
 
             rho_hat, rho_se, t_stat = _extract_rho_stats(res, reg_cols)
             if (

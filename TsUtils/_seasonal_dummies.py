@@ -12,12 +12,6 @@ from pandas.tseries.offsets import (
 from ._calendar import _classify_offset_family, resolve_frequency, resolve_time_index
 
 
-def _resolve_frequency(index):
-    """Return a supported seasonal family and its unit pandas offset."""
-    offset = resolve_frequency(index)
-    return _classify_offset_family(offset), offset
-
-
 def _seasonal_categories(index, family, offset):
     """Return observed labels, the canonical schema, and a column prefix."""
     if family in {"daily", "business_daily"}:
@@ -96,7 +90,8 @@ def seasonal_dummies(data, *, drop_first=True) -> pd.DataFrame:
     if not isinstance(drop_first, (bool, np.bool_)):
         raise TypeError("drop_first must be a boolean")
     index = resolve_time_index(data)
-    family, offset = _resolve_frequency(index)
+    offset = resolve_frequency(index)
+    family = _classify_offset_family(offset)
     labels, categories, prefix = _seasonal_categories(index, family, offset)
     categorical = pd.Categorical(labels, categories=categories, ordered=True)
     result = pd.get_dummies(

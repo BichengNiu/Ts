@@ -11,17 +11,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-import statsmodels.api as sm
 
 from ._base import BaseTest, BaseTestResult
 from ._critical_values import _perron_crit
 from ._utils import _parse_input, _validate_model
 from ._break_utils import (
-    _build_regression_data,
     _extract_rho_stats,
     _extract_coefficients,
+    _fit_unitroot_ols,
     _format_break_test_summary,
-    _get_regression_columns,
     _locate_known_break,
     _make_perron_break_dummies,
     _select_lags_by_ic,
@@ -255,31 +253,14 @@ class PerronTest(BaseTest):
             k = self.lags
 
         # Build regression data
-        df = _build_regression_data(y, dummies, k)
-
-        # Define regressors
-        reg_cols = _get_regression_columns(dummies, k)
-
-        X = df[reg_cols].values
-        y_dep = df["dy"].values
-        if X.shape[0] <= X.shape[1]:
+        fitted = _fit_unitroot_ols(y, dummies, k)
+        if fitted is None:
             raise ValueError(
-                "Perron test has insufficient residual degrees of freedom "
-                f"({X.shape[0]} observations, {X.shape[1]} regressors)."
+                f"Perron test regression could not be estimated with {k} "
+                "lag(s): insufficient observations, a rank-deficient design, "
+                "or an OLS failure."
             )
-        if np.linalg.matrix_rank(X) < X.shape[1]:
-            raise ValueError("Perron test regression design matrix is rank deficient.")
-
-        # OLS estimation
-        try:
-            res = sm.OLS(y_dep, X).fit()
-        except (ValueError, np.linalg.LinAlgError, FloatingPointError) as e:
-            raise RuntimeError(
-                f"Perron test OLS estimation failed. "
-                f"This may be caused by singular design matrix "
-                f"(e.g., constant or near-constant data). "
-                f"Original error: {e}"
-            ) from e
+        res, reg_cols = fitted
 
         # Extract key statistics
         rho_hat, rho_se, t_stat = _extract_rho_stats(res, reg_cols)
@@ -304,7 +285,7 @@ class PerronTest(BaseTest):
             statistic=t_stat,
             pvalue=None,
             lags=k,
-            nobs=len(y_dep),
+            nobs=int(res.nobs),
             residuals=res.resid,
             rho_hat=rho_hat,
             rho_se=rho_se,

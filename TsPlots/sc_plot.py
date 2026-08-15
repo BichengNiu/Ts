@@ -43,6 +43,7 @@ from .style import (
     _ensure_fonts,
     _FigureContext,
     _resolve_colors,
+    _validate_label_count,
     _validate_positive_step,
     DEFAULT_PALETTE,
     DEFAULT_MARKERS,
@@ -302,11 +303,7 @@ def plot_scatter(
     ytick_step = _validate_positive_step("ytick_step", ytick_step)
 
     if labels is not None:
-        labels = list(labels)
-        if len(labels) != len(series):
-            raise ValueError(
-                f"labels has {len(labels)} entries but there are {len(series)} series."
-            )
+        labels = _validate_label_count("labels", labels, len(series))
         series = [(labels[i], xv, yv) for i, (_, xv, yv) in enumerate(series)]
 
     _ensure_fonts()

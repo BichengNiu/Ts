@@ -31,9 +31,6 @@ Examples
 
 from __future__ import annotations
 
-import math
-
-import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
@@ -45,9 +42,11 @@ from .style import (
     BAND_ALPHA,
     BAND_COLOR,
     DEFAULT_PALETTE,
-    FIGSIZE,
     TITLE_FONTSIZE,
     _ensure_fonts,
+    _facet_grid,
+    _fig_axes,
+    _finalize_facet_figure,
     _resolve_bar_colors,
     _validate_max_ticks,
     draw_note_and_bottom_title,
@@ -133,6 +132,7 @@ def _draw_correlogram(
     grid: bool,
     note: str | None,
     fig,
+    manage_layout: bool = True,
 ):
     """Render bars, zero line, and confidence band onto *ax*.
 
@@ -172,6 +172,9 @@ def _draw_correlogram(
     fig : matplotlib.figure.Figure
         Parent figure (needed for tight_layout and note/bottom-title
         placement).
+    manage_layout : bool
+        Whether to run tight_layout and place the note here. Facet callers
+        pass ``False`` and finalise the whole grid afterwards.
     """
     # --- Confidence band ---------------------------------------------------
     # Extend half a unit beyond the first and last lag so the band covers the
@@ -218,6 +221,8 @@ def _draw_correlogram(
 
     style_axes(ax, grid=grid)
 
+    if not manage_layout:
+        return
     fig.tight_layout()
     draw_note_and_bottom_title(
         fig,
@@ -327,11 +332,6 @@ def plot_correlogram(
     _ensure_fonts()
     max_ticks = _validate_max_ticks(max_ticks)
     frame = _normalise_lag_response(data)
-    if not isinstance(data, (pd.Series, pd.DataFrame)):
-        frame.columns = [
-            "correlation" if frame.shape[1] == 1 else f"correlation_{index + 1}"
-            for index in range(frame.shape[1])
-        ]
     bands = _normalise_correlogram_band(confidence_band, frame)
     count = frame.shape[1]
     if count > 1 and ax is not None:
@@ -340,13 +340,9 @@ def plot_correlogram(
     colors = _resolve_bar_colors(bar_color, count)
 
     if count == 1:
-        if ax is None:
-            fig, axis = plt.subplots(figsize=figsize or FIGSIZE)
-        else:
-            axis = ax
-            fig = ax.figure
+        fig, axis = _fig_axes(ax, figsize)
         panel_title = title
-        if panel_title is None and frame.columns[0] != "correlation":
+        if panel_title is None and frame.columns[0] != "response":
             panel_title = str(frame.columns[0])
         _draw_correlogram(
             axis,
@@ -367,15 +363,7 @@ def plot_correlogram(
         )
         return fig, axis
 
-    ncols = min(2, count)
-    nrows = math.ceil(count / ncols)
-    if figsize is None:
-        figsize = (FIGSIZE[0], FIGSIZE[1] * nrows)
-    fig, grid_axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
-    flattened = list(grid_axes.ravel())
-    axes = flattened[:count]
-    for unused in flattened[count:]:
-        unused.set_visible(False)
+    fig, axes = _facet_grid(count, figsize)
     lags = frame.index.to_numpy(dtype=int)
     for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
         _draw_correlogram(
@@ -394,16 +382,12 @@ def plot_correlogram(
             grid=grid,
             note=None,
             fig=fig,
+            manage_layout=False,
         )
-    if title is not None and title_position == "top":
-        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
-        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96), pad=1.5)
-    else:
-        fig.tight_layout(pad=1.5)
-    draw_note_and_bottom_title(
+    _finalize_facet_figure(
         fig,
-        note=note,
         title=title,
+        note=note,
         title_position=title_position,
     )
     return fig, np.asarray(axes, dtype=object)
@@ -526,10 +510,7 @@ def plot_acf(
         acf_vals = acf_vals[1:]
         conf_band = conf_band[1:]
 
-    if ax is None:
-        fig, ax = plt.subplots(figsize=FIGSIZE)
-    else:
-        fig = ax.figure
+    fig, ax = _fig_axes(ax)
 
     _draw_correlogram(
         ax,
@@ -663,10 +644,7 @@ def plot_pacf(
     pacf_vals = pacf_vals[1:]
     conf_band = conf_band[1:]
 
-    if ax is None:
-        fig, ax = plt.subplots(figsize=FIGSIZE)
-    else:
-        fig = ax.figure
+    fig, ax = _fig_axes(ax)
 
     _draw_correlogram(
         ax,

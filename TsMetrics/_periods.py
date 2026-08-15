@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
+
+from Ts.TsUtils._calendar import validate_time_index
+from Ts.TsUtils._validation import validate_int
 
 
 def _validated_dates(values, *, name, expected_length):
@@ -14,12 +16,7 @@ def _validated_dates(values, *, name, expected_length):
         raise TypeError(f"{name} must be datetime-like") from error
     if len(dates) != expected_length:
         raise ValueError(f"{name} must contain one date per observation")
-    if dates.hasnans:
-        raise ValueError(f"{name} must not contain missing dates")
-    if not dates.is_unique:
-        raise ValueError(f"{name} must be unique")
-    if not dates.is_monotonic_increasing:
-        raise ValueError(f"{name} must be strictly increasing")
+    validate_time_index(dates, name=name)
     return dates.copy()
 
 
@@ -38,15 +35,8 @@ def _period_pair(name, period):
 
 
 def _position_bound(name, bound, nobs):
-    if isinstance(bound, (bool, np.bool_)) or not isinstance(
-        bound,
-        (int, np.integer),
-    ):
-        raise TypeError(
-            f"{name} must be an integer position because the model has no dates"
-        )
-    position = int(bound)
-    if position < 0 or position >= nobs:
+    position = validate_int(name, bound, minimum=0)
+    if position >= nobs:
         raise ValueError(
             f"{name}={position} is outside the observed positions 0..{nobs - 1}"
         )

@@ -11,6 +11,7 @@ from .style import (
     TITLE_FONTSIZE,
     _body_font_family,
     _ensure_fonts,
+    _fig_axes,
     style_axes,
 )
 
@@ -35,8 +36,6 @@ def _resolve_correlation_input(matrix, labels):
                 raise TypeError("labels must be a sequence of strings")
             resolved_labels = list(labels)
 
-    if values.ndim != 2 or values.shape[0] != values.shape[1]:
-        raise ValueError("matrix must be a square two-dimensional array")
     if values.shape[0] == 0:
         raise ValueError("matrix must not be empty")
     if len(resolved_labels) != values.shape[0]:
@@ -96,8 +95,6 @@ def plot_correlation_matrix(
     >>> matrix = [[1.0, -0.4], [-0.4, 1.0]]
     >>> fig, ax = plot_correlation_matrix(matrix, labels=["ar.L1", "ma.L1"])
     """
-    import matplotlib.pyplot as plt
-
     _ensure_fonts()
     values, resolved_labels = _resolve_correlation_input(matrix, labels)
     if not isinstance(annotate, (bool, np.bool_)):
@@ -112,10 +109,7 @@ def plot_correlation_matrix(
         raise TypeError("title must be a string or None")
 
     size = min(14.0, max(5.5, 0.72 * len(resolved_labels) + 2.5))
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(size, size))
-    else:
-        fig = ax.figure
+    fig, ax = _fig_axes(ax, (size, size))
 
     image = ax.imshow(
         values,

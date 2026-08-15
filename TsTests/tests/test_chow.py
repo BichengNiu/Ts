@@ -49,6 +49,7 @@ def test_matches_manual_chow_formula_and_result_contract():
     assert result.lags is None
     assert result.fitted_split.shape == (nobs,)
     assert set(result.coefficients_before) == {"const", "x1"}
+    assert set(result.coefficients_after) == {"const", "x1"}
 
 
 def test_detects_large_seeded_coefficient_break():

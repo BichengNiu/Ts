@@ -15,6 +15,8 @@ from Ts.TsPlots import plot_series
 from Ts.TsPlots.style import (
     DEFAULT_PALETTE,
     FIGSIZE,
+    LEGEND_FONTSIZE,
+    TITLE_FONTSIZE,
     style_axes,
 )
 from ._base import BaseSimResult
@@ -172,10 +174,10 @@ class SimGARCHResult(BaseSimResult):
         ax2.set_xlabel("Time")
         ax2.set_ylabel("Volatility ($\\sigma_t$)")
         ax2.set_title("Conditional Volatility")
-        ax2.legend(frameon=False, fontsize=10)
+        ax2.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
         style_axes(ax2)
 
-        fig.suptitle(title, fontsize=14, fontweight="bold")
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
         fig.tight_layout()
         return fig, np.array([ax1, ax2])
 

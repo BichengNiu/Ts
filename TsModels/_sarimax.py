@@ -33,6 +33,7 @@ from Ts.TsModels._distributed_lag import (
     _make_rational_lag_results,
     _normalise_lag_order,
     _resolve_impulse_plot_steps,
+    _select_rdl_inputs,
     _RationalLagSARIMAX,
 )
 from Ts.TsModels._intervention import (
@@ -1145,24 +1146,7 @@ class SARIMAXResult(BaseModelResult):
         if not isinstance(input_models, Mapping):
             raise TypeError("input_models must be a mapping keyed by RDL input name")
 
-        if inputs is None:
-            selected = tuple(results)
-        elif isinstance(inputs, str):
-            selected = (inputs,)
-        else:
-            try:
-                selected = tuple(inputs)
-            except TypeError as error:
-                raise TypeError(
-                    "inputs must be a name or an iterable of names"
-                ) from error
-        if not selected:
-            raise ValueError("inputs must contain at least one RDL input")
-        if len(set(selected)) != len(selected):
-            raise ValueError("inputs must be unique")
-        unknown = [name for name in selected if name not in results]
-        if unknown:
-            raise ValueError(f"inputs contains unknown RDL input {unknown[0]!r}")
+        selected = _select_rdl_inputs(results, inputs)
         unknown_models = [name for name in input_models if name not in results]
         if unknown_models:
             raise ValueError(
@@ -1278,24 +1262,7 @@ class SARIMAXResult(BaseModelResult):
         results = self._distributed_lag_results or {}
         if not results:
             raise ValueError("model has no rational distributed-lag inputs")
-        if inputs is None:
-            selected = tuple(results)
-        elif isinstance(inputs, str):
-            selected = (inputs,)
-        else:
-            try:
-                selected = tuple(inputs)
-            except TypeError as error:
-                raise TypeError(
-                    "inputs must be a name or an iterable of names"
-                ) from error
-        if not selected:
-            raise ValueError("inputs must contain at least one RDL input")
-        if len(set(selected)) != len(selected):
-            raise ValueError("inputs must be unique")
-        unknown = [name for name in selected if name not in results]
-        if unknown:
-            raise ValueError(f"inputs contains unknown RDL input {unknown[0]!r}")
+        selected = _select_rdl_inputs(results, inputs)
 
         from Ts.TsPlots import plot_lag_response
 
@@ -1376,31 +1343,27 @@ class SARIMAXResult(BaseModelResult):
         """Whether all roots of the fitted MA polynomial lie outside one."""
         return bool(np.all(np.abs(self.maroots) > 1.0))
 
-    @property
-    def stationarity_enforced(self):
-        """Whether stationarity was enforced during maximum likelihood."""
+    def _enforce_flag(self, name):
+        """Return whether the *name* constraint was enforced during MLE."""
         if self._model_kwargs is not None:
-            return bool(self._model_kwargs.get("enforce_stationarity", True))
+            return bool(self._model_kwargs.get(name, True))
         return bool(
             getattr(
                 getattr(self._statsmodels_result, "model", None),
-                "enforce_stationarity",
+                name,
                 True,
             )
         )
 
     @property
+    def stationarity_enforced(self):
+        """Whether stationarity was enforced during maximum likelihood."""
+        return self._enforce_flag("enforce_stationarity")
+
+    @property
     def invertibility_enforced(self):
         """Whether invertibility was enforced during maximum likelihood."""
-        if self._model_kwargs is not None:
-            return bool(self._model_kwargs.get("enforce_invertibility", True))
-        return bool(
-            getattr(
-                getattr(self._statsmodels_result, "model", None),
-                "enforce_invertibility",
-                True,
-            )
-        )
+        return self._enforce_flag("enforce_invertibility")
 
     @staticmethod
     def _format_root_diagnostic(roots, passed, *, absent):

@@ -126,8 +126,8 @@ def test_residual_ccf_supports_multiple_inputs_and_compact_test_table():
 @pytest.mark.parametrize(
     ("kwargs", "error", "match"),
     [
-        ({"lags": 0}, ValueError, "positive integer"),
-        ({"lags": 2.5}, TypeError, "positive integer"),
+        ({"lags": 0}, ValueError, "lags must be >= 1"),
+        ({"lags": 2.5}, TypeError, "lags must be an integer"),
         ({"lags": 3, "alpha": 0.0}, ValueError, "alpha"),
         ({"lags": 3, "transfer_params": 4}, ValueError, "degrees of freedom"),
         ({"lags": 8}, ValueError, "observations"),

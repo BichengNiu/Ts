@@ -6,15 +6,12 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 
+from ._validation import validate_bool, validate_int
+
 
 def _validate_order(order) -> int:
     """Return a supported difference order after strict integer validation."""
-    if isinstance(order, (bool, np.bool_)) or not isinstance(
-        order,
-        (int, np.integer),
-    ):
-        raise TypeError("order must be the integer 1 or 2")
-    order = int(order)
+    order = validate_int("order", order, minimum=1)
     if order not in {1, 2}:
         raise ValueError(f"order must be 1 or 2, got {order}")
     return order
@@ -22,22 +19,12 @@ def _validate_order(order) -> int:
 
 def _validate_lag(lag) -> int:
     """Return a strictly positive positional lag."""
-    if isinstance(lag, (bool, np.bool_)) or not isinstance(
-        lag,
-        (int, np.integer),
-    ):
-        raise TypeError("lag must be a positive integer")
-    lag = int(lag)
-    if lag < 1:
-        raise ValueError(f"lag must be >= 1, got {lag}")
-    return lag
+    return validate_int("lag", lag, minimum=1)
 
 
 def _validate_log(log) -> bool:
     """Return a genuine boolean log-transform flag."""
-    if not isinstance(log, (bool, np.bool_)):
-        raise TypeError("log must be a boolean")
-    return bool(log)
+    return validate_bool("log", log)
 
 
 def _as_float_data(data):
@@ -124,9 +111,4 @@ def difference(data, *, order=1, log=False, lag=1):
     for _ in range(order):
         transformed = transformed.diff(periods=lag)
 
-    transformed.index = data.index
-    if isinstance(data, pd.Series):
-        transformed.name = data.name
-    else:
-        transformed.columns = data.columns
     return transformed

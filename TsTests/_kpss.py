@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from Ts.TsUtils._validation import validate_choice
+
 from ._base import BaseTest, BaseTestResult
 from ._utils import _clean_1d
 from ._unitroot_plot import _render_critical_value_plot
@@ -55,7 +57,7 @@ class KPSSTestResult(BaseTestResult):
     'c'
     """
 
-    trend: str = "ct"
+    trend: str = "c"
     critical_values: dict = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -160,13 +162,9 @@ class KPSSTest(BaseTest):
         nlags: str = "legacy",
     ):
         self.data = _clean_1d(data)
-        if trend not in self._VALID_TRENDS:
-            raise ValueError(f"trend must be {self._VALID_TRENDS}, got {trend!r}")
-        self.trend = trend
+        self.trend = validate_choice("trend", trend, self._VALID_TRENDS)
         self.lags = lags
-        if nlags not in ("legacy", "auto"):
-            raise ValueError(f"nlags must be 'legacy' or 'auto', got {nlags!r}")
-        self.nlags = nlags
+        self.nlags = validate_choice("nlags", nlags, ("legacy", "auto"))
         self.result_: KPSSTestResult | None = None
 
     def fit(self) -> KPSSTestResult:

@@ -13,7 +13,7 @@ import numpy as np
 from statsmodels.tsa.arima_process import ArmaProcess
 
 from ._base import BaseSimResult
-from ._validation import (
+from Ts.TsUtils._validation import (
     normalize_coefficients,
     validate_order,
     validate_real,

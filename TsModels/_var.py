@@ -675,6 +675,37 @@ def _ma_coefficients(A_mats, steps):
     return ma_coefs
 
 
+def _coefficient_draws(fitted, trend, k, lags, seed):
+    """Return a zero-argument function producing VAR coefficient draws.
+
+    Each call yields ``(params_d, A_mats)`` — the drawn ``(n_regressors, k)``
+    coefficient matrix and the lag-coefficient matrices ``[A_1, ..., A_p]`` —
+    from the fitted asymptotic normal distribution.  Shared by the Monte
+    Carlo FEVD and structural-IRF confidence bands.
+    """
+    all_params = np.asarray(fitted.params)  # (n_regressors, k)
+    n_det = (
+        int(trend != "n")
+        + int(trend in ("ct", "ctt"))
+        + int(trend == "ctt")
+    )
+
+    beta_flat = all_params.ravel()
+    cov_beta = _ensure_positive_definite(np.asarray(fitted.cov_params()))
+    rng = np.random.default_rng(seed)
+
+    def draw():
+        beta_d = rng.multivariate_normal(beta_flat, cov_beta)
+        params_d = beta_d.reshape(all_params.shape)  # (n_regressors, k)
+        A_mats = [
+            params_d[n_det + lag_i * k : n_det + (lag_i + 1) * k, :].T
+            for lag_i in range(lags)
+        ]
+        return params_d, A_mats
+
+    return draw
+
+
 def _forecast_cov_se(ma_coefs, resid_cov, steps):
     """Return per-horizon standard errors from the forecast covariance.
 
@@ -807,6 +838,41 @@ def _run_granger_all(result_obj, k, data_names, kind):
     return GrangerCausalityResult(tests=entries, kind=kind)
 
 
+def _render_equation_tables(names, params, std_errors, p_values, k):
+    """Render the per-equation parameter tables shared by VAR and SVAR."""
+    lines = []
+    for eq_idx in range(k):
+        var_name = names[eq_idx]
+        lines.append(f"Equation: {var_name}")
+        lines.append("-" * 40)
+        for name in sorted(params):
+            parts = name.split(".")
+            if parts[-1] != var_name:
+                continue
+            if parts[0] in ("const", "trend", "trend2"):
+                continue
+            # Strip the redundant dependent-variable suffix:
+            # "L1.gnp_gr.gnp_gr" → "L1.gnp_gr".
+            display = ".".join(parts[:-1]) if len(parts) > 1 else name
+            se = std_errors.get(name)
+            pv = p_values.get(name)
+            se_str = f"{se:.4f}" if se is not None else "N/A"
+            pv_str = f"{pv:.4f}" if pv is not None else "N/A"
+            lines.append(f"  {display:<30s} {params[name]:>10.4f}  ({se_str})  p={pv_str}")
+        for prefix in ("const", "trend", "trend2"):
+            det_name = f"{prefix}.{var_name}"
+            if det_name in params:
+                se = std_errors.get(det_name)
+                pv = p_values.get(det_name)
+                se_str = f"{se:.4f}" if se is not None else "N/A"
+                pv_str = f"{pv:.4f}" if pv is not None else "N/A"
+                lines.append(
+                    f"  {prefix:<30s} {params[det_name]:>10.4f}  ({se_str})  p={pv_str}"
+                )
+        lines.append("")
+    return lines
+
+
 @dataclass
 class VARResult(BaseModelResult):
     """Result container for VAR model estimation.
@@ -877,41 +943,13 @@ class VARResult(BaseModelResult):
             lines.append("(No fitted statsmodels result available)")
             return "\n".join(lines)
 
-        params_flat = self.params
-        se_flat = self.std_errors
-        pv_flat = self.p_values
-
-        for eq_idx in range(self._k):
-            var_name = self._data_names[eq_idx]
-            lines.append(f"Equation: {var_name}")
-            lines.append("-" * 40)
-            for name in sorted(params_flat):
-                parts = name.split(".")
-                eq_var = parts[-1]
-                if eq_var != var_name:
-                    continue
-                # Strip redundant dependent-variable suffix: "L1.gnp_gr.gnp_gr" → "L1.gnp_gr"
-                display = ".".join(parts[:-1])
-                if len(parts) <= 1:
-                    display = name
-                val = params_flat[name]
-                se = se_flat.get(name)
-                pv = pv_flat.get(name)
-                se_str = f"{se:.4f}" if se is not None else "N/A"
-                pv_str = f"{pv:.4f}" if pv is not None else "N/A"
-                lines.append(f"  {display:<30s} {val:>10.4f}  ({se_str})  p={pv_str}")
-            for prefix in ("const", "trend", "trend2"):
-                det_name = f"{prefix}.{var_name}"
-                if det_name in params_flat:
-                    val = params_flat[det_name]
-                    se = se_flat.get(det_name)
-                    pv = pv_flat.get(det_name)
-                    se_str = f"{se:.4f}" if se is not None else "N/A"
-                    pv_str = f"{pv:.4f}" if pv is not None else "N/A"
-                    lines.append(
-                        f"  {prefix:<30s} {val:>10.4f}  ({se_str})  p={pv_str}"
-                    )
-            lines.append("")
+        lines += _render_equation_tables(
+            self._data_names,
+            self.params,
+            self.std_errors,
+            self.p_values,
+            self._k,
+        )
         return "\n".join(lines)
 
     def irf(self, periods=10, orth=False, alpha=0.05):
@@ -1076,40 +1114,17 @@ class VARResult(BaseModelResult):
         lags = self._lags
         fitted = self._var_result
 
-        # Extract fitted parameter structure
-        all_params = np.asarray(fitted.params)  # (n_regressors, k)
+        # Residual covariance and its Cholesky factor
         resid = np.asarray(fitted.resid)
         sigma_u = np.cov(resid, rowvar=False)
-
-        has_const = self._trend != "n"
-        has_trend = self._trend in ("ct", "ctt")
-        has_trend2 = self._trend == "ctt"
-        n_det = int(has_const) + int(has_trend) + int(has_trend2)
-
-        # Coefficient covariance
-        beta_flat = all_params.ravel()  # C-order (row-major)
-        cov_beta = np.asarray(fitted.cov_params())
-
-        # Ensure cov_beta is positive definite for multivariate_normal
-        cov_beta = _ensure_positive_definite(cov_beta)
-
-        rng = np.random.default_rng(seed)
-
-        # Cholesky factor of residual covariance
         P = np.linalg.cholesky(sigma_u)  # lower triangular
+
+        draw = _coefficient_draws(fitted, self._trend, k, lags, seed)
 
         fevd_draws = np.zeros((n_draws, periods, k, k))
 
         for d in range(n_draws):
-            beta_d = rng.multivariate_normal(beta_flat, cov_beta)
-            params_d = beta_d.reshape(all_params.shape)  # (n_regressors, k)
-
-            # Extract A_1 ... A_p
-            A_mats = []
-            for lag_i in range(lags):
-                start = n_det + lag_i * k
-                A_lag = params_d[start : start + k, :].T  # (k, k)
-                A_mats.append(A_lag)
+            _params_d, A_mats = draw()
 
             # MA coefficients via recursion
             ma_coefs = _ma_coefficients(A_mats, periods - 1)

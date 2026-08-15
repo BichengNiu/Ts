@@ -8,21 +8,78 @@ simulation functions (:func:`simulate_garch`, :func:`simulate_igarch`,
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from scipy import stats as scipy_stats
 
-from ._garch_result import SimGARCHResult
-from ._validation import (
+from Ts.TsUtils._validation import (
     normalize_coefficients,
     validate_choice,
+    validate_int,
     validate_real,
     validate_sample,
 )
+
+from ._garch_result import SimGARCHResult
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _unconditional_variance(omega, persistence_sum, *, label, terms_text):
+    """Return omega / (1 - persistence) with a non-stationarity fallback.
+
+    When *persistence_sum* reaches one the process is non-stationary
+    (or IGARCH) and the unconditional variance is undefined; warn and fall
+    back to *omega* as the initial variance.
+    """
+    if persistence_sum >= 1.0:
+        warnings.warn(
+            f"{label} process is non-stationary: {terms_text} = "
+            f"{persistence_sum} >= 1. Using omega = {omega} as initial variance.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return omega
+    return omega / (1.0 - persistence_sum)
+
+
+def _validate_garch_inputs(
+    p,
+    q,
+    omega,
+    alpha,
+    beta,
+    *,
+    mean_model,
+    mean_choices,
+    o=None,
+    gamma=None,
+    q_minimum=0,
+    omega_positive=True,
+    alpha_default,
+    beta_default,
+    gamma_default=None,
+):
+    """Validate the shared order and coefficient inputs of a GARCH simulator."""
+    p = validate_int("p", p, minimum=1)
+    q = validate_int("q", q, minimum=q_minimum)
+    if o is not None:
+        o = validate_int("o", o, minimum=0)
+    omega = validate_real("omega", omega, positive=omega_positive)
+    validate_choice("mean_model", mean_model, mean_choices)
+    alpha = normalize_coefficients(
+        "alpha", alpha, length=p, default=alpha_default, nonnegative=True
+    )
+    if gamma_default is not None:
+        gamma = normalize_coefficients("gamma", gamma, length=o, default=gamma_default)
+    beta = normalize_coefficients(
+        "beta", beta, length=q, default=beta_default, nonnegative=True
+    )
+    return p, q, o, omega, alpha, gamma, beta
 
 
 def _make_standard_variance_fn(omega, alpha, beta, p, q):
@@ -189,7 +246,6 @@ def _run_garch_simulation(
     SimGARCHResult
     """
     n, burn = validate_sample(n, burn)
-    mean_model = validate_choice("mean_model", mean_model, ("constant", "zero", "ar"))
     dist = validate_choice("dist", dist, ("normal", "t"))
     mean_const = validate_real("mean_const", mean_const)
     mean_ar = normalize_coefficients("mean_ar", mean_ar)
@@ -208,21 +264,12 @@ def _run_garch_simulation(
     else:
         alpha_sum = sum(alpha)
         beta_sum = sum(beta)
-        denom = 1.0 - alpha_sum - beta_sum
-        if denom <= 0:
-            import warnings
-
-            warnings.warn(
-                f"GARCH process is non-stationary / IGARCH: "
-                f"sum(alpha) + sum(beta) = {alpha_sum} + {beta_sum} = "
-                f"{alpha_sum + beta_sum} >= 1. "
-                f"Using omega = {omega} as initial variance.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            sigma2_uncond = omega
-        else:
-            sigma2_uncond = omega / denom
+        sigma2_uncond = _unconditional_variance(
+            omega,
+            alpha_sum + beta_sum,
+            label="GARCH",
+            terms_text=f"sum(alpha) + sum(beta) = {alpha_sum} + {beta_sum}",
+        )
 
     if not np.isfinite(sigma2_uncond) or sigma2_uncond <= 0:
         raise ValueError(

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from Ts.TsUtils._validation import validate_choice
+
 from ._base import BaseTest, BaseTestResult
 from ._utils import _clean_1d
 from ._unitroot_plot import _render_critical_value_plot
@@ -154,15 +156,11 @@ class PhillipsPerronTest(BaseTest):
         test_type: str = "tau",
     ):
         self.data = _clean_1d(data)
-        if trend not in self._VALID_TRENDS:
-            raise ValueError(f"trend must be {self._VALID_TRENDS}, got {trend!r}")
-        self.trend = trend
+        self.trend = validate_choice("trend", trend, self._VALID_TRENDS)
         self.lags = lags
-        if test_type not in self._VALID_TEST_TYPES:
-            raise ValueError(
-                f"test_type must be {self._VALID_TEST_TYPES}, got {test_type!r}"
-            )
-        self.test_type = test_type
+        self.test_type = validate_choice(
+            "test_type", test_type, self._VALID_TEST_TYPES
+        )
         self.result_: PhillipsPerronTestResult | None = None
 
     def fit(self) -> PhillipsPerronTestResult:

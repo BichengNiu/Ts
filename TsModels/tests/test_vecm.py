@@ -465,8 +465,8 @@ class TestVECMResultPredict:
 class TestVECMResultDiagnostics:
     """Test VECM diagnostic plots and residual tests.
 
-    covers: code/python/Ts/TsModels/_vecm.py::VECMResult.plot_diagnostics [function]
-    covers: code/python/Ts/TsModels/_vecm.py::VECMResult.test_residuals [function]
+    covers: code/python/Ts/TsModels/_base.py::BaseModelResult.plot_diagnostics [function]
+    covers: code/python/Ts/TsModels/_base.py::BaseModelResult.test_residuals [function]
     """
 
     @pytest.fixture
@@ -482,7 +482,7 @@ class TestVECMResultDiagnostics:
     def test_plot_diagnostics_returns_fig_axes(self, fitted):
         """plot_diagnostics() returns fig and axes.
 
-        covers: code/python/Ts/TsModels/_vecm.py::VECMResult.plot_diagnostics [function]
+        covers: code/python/Ts/TsModels/_base.py::BaseModelResult.plot_diagnostics [function]
         """
         fig, axes = fitted.plot_diagnostics()
         import matplotlib.pyplot as plt
@@ -509,7 +509,7 @@ class TestVECMResultDiagnostics:
     def test_test_residuals_returns_dict(self, fitted):
         """test_residuals() returns dict of ResidualTestResults.
 
-        covers: code/python/Ts/TsModels/_vecm.py::VECMResult.test_residuals [function]
+        covers: code/python/Ts/TsModels/_base.py::BaseModelResult.test_residuals [function]
         """
         results = fitted.test_residuals(lags=5)
         assert isinstance(results, dict)

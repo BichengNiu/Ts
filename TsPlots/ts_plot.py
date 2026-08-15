@@ -40,7 +40,7 @@ Examples
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -52,6 +52,8 @@ from .style import (
     _ensure_fonts,
     _FigureContext,
     _resolve_colors,
+    _validate_label_count,
+    _validate_max_ticks,
     _validate_positive_step,
     DEFAULT_PALETTE,
     DEFAULT_LINESTYLES,
@@ -264,9 +266,10 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
         )
     first_date = periods[0].to_timestamp(how="start").normalize()
     last_date = periods[-1].to_timestamp(how="end").normalize()
+    margin = timedelta(days=10)
     ax.set_xlim(
-        first_date - pd.Timedelta(days=10),
-        last_date + pd.Timedelta(days=10),
+        first_date.to_pydatetime() - margin,
+        last_date.to_pydatetime() + margin,
     )
 
 
@@ -406,18 +409,6 @@ def _robust_scale(values) -> float | None:
     magnitude = float(np.percentile(np.abs(finite), 95))
     scale = max(magnitude, float(q95 - q05))
     return scale if np.isfinite(scale) and scale > 0 else None
-
-
-def _validate_max_y_axes(value) -> int:
-    """Validate the total number of y-axes allowed in overlay mode."""
-    if isinstance(value, (bool, np.bool_)) or not isinstance(
-        value,
-        (int, np.integer),
-    ):
-        raise TypeError("max_y_axes must be an integer")
-    if value < 1:
-        raise ValueError("max_y_axes must be at least 1")
-    return int(value)
 
 
 def _manual_axis_groups(
@@ -647,18 +638,6 @@ def _configure_x_axis(
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
 
-def _validate_legend_labels(legend_labels, series_count: int):
-    if legend_labels is None:
-        return None
-    resolved = list(legend_labels)
-    if len(resolved) != series_count:
-        raise ValueError(
-            f"legend_labels has {len(resolved)} entries but there are "
-            f"{series_count} series."
-        )
-    return resolved
-
-
 def plot_series(
     data,
     x=None,
@@ -726,7 +705,8 @@ def plot_series(
         the time axis; otherwise an array-like provides explicit x values.
         If None, the DataFrame/Series index (or a 0-based range) is used.
     y : str or sequence of str, optional
-        For a DataFrame, restricts which columns to plot.
+        For a DataFrame, restricts which columns to plot. Only valid for
+        DataFrame input; other containers raise a TypeError.
     labels : sequence of str, optional
         Override the legend labels (must match the number of series).
     colors : sequence of str, optional
@@ -891,6 +871,8 @@ def plot_series(
     >>> len(ax.extra_y_axes)
     0
     """
+    if y is not None and not isinstance(data, pd.DataFrame):
+        raise TypeError("y requires a DataFrame input; use x for explicit values")
     x_values, series, default_xlabel = _resolve_input(data, x, y)
     colors = _resolve_colors(colors, len(series))
     xtick_step = _validate_positive_step(
@@ -906,7 +888,7 @@ def plot_series(
         "scale_ratio_threshold",
         scale_ratio_threshold,
     )
-    max_y_axes = _validate_max_y_axes(max_y_axes)
+    max_y_axes = _validate_max_ticks(max_y_axes, name="max_y_axes")
     year_ruler = _validate_bool("year_ruler", year_ruler)
 
     if bar_series is None:
@@ -922,14 +904,10 @@ def plot_series(
             )
 
     if labels is not None:
-        labels = list(labels)
-        if len(labels) != len(series):
-            raise ValueError(
-                f"labels has {len(labels)} entries but there are {len(series)} series."
-            )
+        labels = _validate_label_count("labels", labels, len(series))
         series = {labels[i]: v for i, v in enumerate(series.values())}
 
-    legend_labels = _validate_legend_labels(legend_labels, len(series))
+    legend_labels = _validate_label_count("legend_labels", legend_labels, len(series))
 
     if axis_groups is not None and facet and len(series) >= 2:
         raise ValueError("axis_groups requires facet=False for multiple series")

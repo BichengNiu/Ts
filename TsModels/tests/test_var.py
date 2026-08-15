@@ -349,7 +349,7 @@ class TestVARResultMethods:
     def test_test_residuals_returns_dict(self, fitted_var):
         """test_residuals() returns dict mapping variable names to results.
 
-        covers: code/python/Ts/TsModels/_var.py::VARResult.test_residuals [function]
+        covers: code/python/Ts/TsModels/_base.py::BaseModelResult.test_residuals [function]
         """
         results = fitted_var.test_residuals(lags=5)
         assert isinstance(results, dict)
@@ -408,7 +408,7 @@ class TestVARResultPlots:
     def test_plot_fit_returns_fig_axes(self, fitted_var):
         """plot_fit() returns (fig, axes) with k subplots.
 
-        covers: code/python/Ts/TsModels/_var.py::VARResult.plot_fit [function]
+        covers: code/python/Ts/TsModels/_base.py::BaseModelResult.plot_fit [function]
         """
         from matplotlib.figure import Figure
 
@@ -419,7 +419,7 @@ class TestVARResultPlots:
     def test_plot_diagnostics_returns_fig_axes(self, fitted_var):
         """plot_diagnostics() returns (fig, axes) with k x 3 grid.
 
-        covers: code/python/Ts/TsModels/_var.py::VARResult.plot_diagnostics [function]
+        covers: code/python/Ts/TsModels/_base.py::BaseModelResult.plot_diagnostics [function]
         """
         from matplotlib.figure import Figure
 

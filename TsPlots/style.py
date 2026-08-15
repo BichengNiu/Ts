@@ -21,6 +21,8 @@ Functions
 
 from __future__ import annotations
 
+import math
+
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.colors import is_color_like
@@ -160,21 +162,16 @@ AXIS_LABEL_FONTSIZE = 15
 TICK_LABELSIZE = 14
 LEGEND_FONTSIZE = 14
 NOTE_FONTSIZE = 9
-# (removed UNIT_FONTSIZE and UNIT_COLOR — unused)
+TIGHT_PAD = 1.5
+#: Figure rectangle reserved for facet grids with a figure-level suptitle.
+FACET_RECT = (0.0, 0.0, 1.0, 0.96)
 
 
 def _resolve_colors(colors, series_count):
     """Return one color per series or reject an ambiguous override."""
     if colors is None:
         return None
-    if isinstance(colors, str):
-        raise TypeError("colors must be a sequence of color strings, not a string")
-    resolved = list(colors)
-    if len(resolved) != series_count:
-        raise ValueError(
-            f"colors has {len(resolved)} entries but there are {series_count} series"
-        )
-    return resolved
+    return _validate_label_count("colors", colors, series_count)
 
 
 def _resolve_bar_colors(color, count):
@@ -189,14 +186,36 @@ def _resolve_bar_colors(color, count):
     return colors
 
 
-def _validate_max_ticks(value):
+def _validate_label_count(name, values, count):
+    """Return *values* as a list after enforcing one entry per series."""
+    if values is None:
+        return None
+    if isinstance(values, str):
+        raise TypeError(f"{name} must be a sequence, not a single string")
+    resolved = list(values)
+    if len(resolved) != count:
+        raise ValueError(
+            f"{name} has {len(resolved)} entries but there are {count} series"
+        )
+    return resolved
+
+
+def _as_position_list(values):
+    """Return a list of positions from a scalar, sequence, or ``None``."""
+    if values is None:
+        return None
+    return [values] if np.isscalar(values) else list(values)
+
+
+def _validate_max_ticks(value, name="max_ticks"):
     """Return *value* as int after rejecting non-positive integers."""
     if (
         isinstance(value, (bool, np.bool_))
         or not isinstance(value, (int, np.integer))
-        or int(value) < 1
     ):
-        raise ValueError("max_ticks must be a positive integer")
+        raise TypeError(f"{name} must be an integer")
+    if int(value) < 1:
+        raise ValueError(f"{name} must be at least 1")
     return int(value)
 
 
@@ -311,13 +330,9 @@ def draw_vlines(ax, vlines, color, linestyle, linewidth):
     linewidth : float
         Width of the vertical lines.
     """
-    if vlines is None:
+    positions = _as_position_list(vlines)
+    if positions is None:
         return
-    positions = (
-        list(vlines)
-        if isinstance(vlines, (list, tuple, np.ndarray))
-        else [vlines]
-    )
     for xpos in positions:
         ax.axvline(
             xpos,
@@ -343,9 +358,9 @@ def draw_hlines(ax, hlines, color, linestyle, linewidth):
     linewidth : float
         Width of the horizontal lines.
     """
-    if hlines is None:
+    positions = _as_position_list(hlines)
+    if positions is None:
         return
-    positions = [hlines] if np.isscalar(hlines) else list(hlines)
     for ypos in positions:
         ax.axhline(
             ypos,
@@ -392,12 +407,11 @@ def draw_legend(
     else:
         handles = list(handles)
         auto_labels = []
-    final_labels = legend_labels if legend_labels is not None else auto_labels
-    if legend_labels is not None and len(legend_labels) != len(handles):
-        raise ValueError(
-            f"legend_labels has {len(legend_labels)} entries but there are "
-            f"{len(handles)} series."
-        )
+    final_labels = (
+        _validate_label_count("legend_labels", legend_labels, len(handles))
+        if legend_labels is not None
+        else auto_labels
+    )
     ax.legend(
         handles,
         final_labels,
@@ -500,6 +514,47 @@ def draw_note_and_bottom_title(
         )
 
 
+def _fig_axes(ax=None, figsize=None):
+    """Return ``(fig, ax)`` by reusing *ax*'s figure or creating a new one."""
+    if ax is None:
+        return plt.subplots(figsize=figsize or FIGSIZE)
+    return ax.figure, ax
+
+
+def _facet_grid(count, figsize=None):
+    """Create a facet figure with one panel per response.
+
+    Panels are arranged in at most two columns; height grows with the row
+    count, and unused grid cells are hidden.  Returns ``(fig, axes)`` with
+    *axes* a flat list of the first *count* axes.
+    """
+    ncols = min(2, count)
+    nrows = math.ceil(count / ncols)
+    if figsize is None:
+        figsize = (FIGSIZE[0], FIGSIZE[1] * nrows)
+    fig, grid_axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+    flattened = list(grid_axes.ravel())
+    axes = flattened[:count]
+    for unused in flattened[count:]:
+        unused.set_visible(False)
+    return fig, axes
+
+
+def _finalize_facet_figure(fig, *, title=None, note=None, title_position="top"):
+    """Apply the shared facet layout: suptitle, tight layout, and bottom note."""
+    if title is not None and title_position == "top":
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        fig.tight_layout(rect=FACET_RECT, pad=TIGHT_PAD)
+    else:
+        fig.tight_layout(pad=TIGHT_PAD)
+    draw_note_and_bottom_title(
+        fig,
+        note=note,
+        title=title,
+        title_position=title_position,
+    )
+
+
 class _FigureContext:
     """Shared figure/axes manager for plot_series and plot_scatter.
 
@@ -567,7 +622,7 @@ class _FigureContext:
         if x_unit is not None:
             draw_unit_label(self.ax, x_unit, axis="x")
 
-        self.fig.tight_layout(pad=1.5)
+        self.fig.tight_layout(pad=TIGHT_PAD)
 
         if note or (title and title_position == "bottom"):
             draw_note_and_bottom_title(

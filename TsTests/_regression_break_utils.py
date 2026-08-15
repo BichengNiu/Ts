@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from Ts.TsUtils._validation import validate_choice
+
 from ._break_utils import _validate_time_axis
 from ._utils import _parse_input
 
@@ -90,8 +92,7 @@ def _prepare_regression_break_design(
     breakpoint locations. The deterministic trend is positional; the supplied
     time axis is retained only for labels and breakpoint mapping.
     """
-    if trend not in ("n", "c", "ct"):
-        raise ValueError("trend must be 'n', 'c', or 'ct'")
+    validate_choice("trend", trend, ("n", "c", "ct"))
     if isinstance(data, pd.DataFrame) and not data.columns.is_unique:
         raise ValueError("data DataFrame columns must be unique")
     if exog is not None and exog_cols is not None:

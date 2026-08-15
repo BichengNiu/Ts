@@ -217,8 +217,23 @@ class TestZivotAndrewsTestBaseline:
         def raise_unexpected(*args, **kwargs):
             raise RuntimeError("unexpected implementation error")
 
-        monkeypatch.setattr("Ts.TsTests._zivot.sm.OLS", raise_unexpected)
+        monkeypatch.setattr("Ts.TsTests._break_utils.sm.OLS", raise_unexpected)
         data = np.arange(60, dtype=float) + np.sin(np.arange(60))
         test = ZivotAndrewsTest(data, lags=1)
         with pytest.raises(RuntimeError, match="unexpected implementation error"):
             test.fit()
+
+    def test_plot_test_with_fixed_lags_falls_back_to_tstat_plot(self):
+        """Fixed lags + aic/bic method has no IC sequence; fall back safely."""
+        np.random.seed(42)
+        n = 150
+        t = np.arange(n)
+        y = np.cumsum(np.random.randn(n)) + 0.05 * t
+        test = ZivotAndrewsTest(
+            y, time_index=t, model="intercept", trim=0.15,
+            lags=2, lag_method="aic",
+        )
+        result = test.fit()
+        fig, ax = result.plot_test()
+        assert fig is not None
+        assert ax is not None

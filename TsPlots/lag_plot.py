@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
-import matplotlib.pyplot as plt
 from matplotlib.colors import is_color_like
 from matplotlib.ticker import MaxNLocator
 import numpy as np
@@ -12,9 +9,11 @@ import pandas as pd
 
 from .style import (
     AXIS_LABEL_FONTSIZE,
-    FIGSIZE,
     TITLE_FONTSIZE,
     _ensure_fonts,
+    _facet_grid,
+    _fig_axes,
+    _finalize_facet_figure,
     _resolve_bar_colors,
     _validate_max_ticks,
     draw_note_and_bottom_title,
@@ -157,22 +156,10 @@ def plot_lag_response(
         raise ValueError("ax cannot be supplied for multiple lag responses")
 
     if count == 1:
-        if ax is None:
-            fig, axis = plt.subplots(figsize=figsize or FIGSIZE)
-        else:
-            axis = ax
-            fig = ax.figure
+        fig, axis = _fig_axes(ax, figsize)
         axes = [axis]
     else:
-        ncols = min(2, count)
-        nrows = math.ceil(count / ncols)
-        if figsize is None:
-            figsize = (FIGSIZE[0], FIGSIZE[1] * nrows)
-        fig, grid_axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
-        flattened = list(grid_axes.ravel())
-        axes = flattened[:count]
-        for unused in flattened[count:]:
-            unused.set_visible(False)
+        fig, axes = _facet_grid(count, figsize)
 
     lags = frame.index.to_numpy(dtype=int)
     for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
@@ -212,13 +199,12 @@ def plot_lag_response(
             )
         style_axes(axis, grid=grid)
 
-    if count > 1 and title is not None:
-        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
-        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96), pad=1.5)
+    if count > 1:
+        _finalize_facet_figure(fig, title=title, note=note)
     else:
         fig.tight_layout(pad=1.5)
-    if note is not None:
-        draw_note_and_bottom_title(fig, note=note)
+        if note is not None:
+            draw_note_and_bottom_title(fig, note=note)
 
     if count == 1:
         return fig, axes[0]

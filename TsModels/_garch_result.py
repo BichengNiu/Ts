@@ -215,10 +215,9 @@ class GARCHResult(BaseModelResult):
             if n_in > 0:
                 mean[:n_in] = cond_vol[start:nobs]
 
-            _, fc_vol = self._forecast(horizon=window.forecast_steps)
+            fc_vol = self._forecast(horizon=window.forecast_steps)
             mean[n_in:] = fc_vol[window.forecast_skip :]
             is_oos[n_in:] = True
-
         else:
             # Pure in-sample
             mean = cond_vol[start : end + 1].copy()
@@ -234,7 +233,7 @@ class GARCHResult(BaseModelResult):
         )
 
     def _forecast(self, horizon=1):
-        """Internal forecast of conditional variance and volatility.
+        """Internal forecast of conditional volatility over *horizon* steps.
 
         Parameters
         ----------
@@ -243,7 +242,6 @@ class GARCHResult(BaseModelResult):
 
         Returns
         -------
-        variance : np.ndarray
         volatility : np.ndarray
         """
         if self.model_type == "IGARCH":
@@ -253,11 +251,10 @@ class GARCHResult(BaseModelResult):
             raise RuntimeError("No fitted arch result available")
         fc = self._arch_result.forecast(horizon=horizon, reindex=False)
         var = np.asarray(fc.variance.values[-1]).ravel()
-        vol = np.sqrt(var)
-        return var, vol
+        return np.sqrt(var)
 
     def _forecast_igarch(self, horizon):
-        """IGARCH forecast: variance grows linearly with horizon.
+        """IGARCH forecast: volatility from linearly growing variance.
 
         For IGARCH(1,1) with alpha+beta=1:
           sigma2_{T+h} = h * omega + sigma2_T
@@ -268,7 +265,6 @@ class GARCHResult(BaseModelResult):
 
         Returns
         -------
-        variance : np.ndarray
         volatility : np.ndarray
         """
         cond_vol = np.asarray(self.conditional_volatility)
@@ -294,8 +290,7 @@ class GARCHResult(BaseModelResult):
             else:
                 var[h] = omega + var[h - 1]
 
-        vol = np.sqrt(np.maximum(var, 0.0))
-        return var, vol
+        return np.sqrt(np.maximum(var, 0.0))
 
     def test_persistence(self):
         """Wald test for IGARCH / non-stationarity boundary.

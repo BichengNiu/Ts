@@ -138,8 +138,6 @@ def _reshape(series, family):
         row_schema = range(1, 32)
         column_names = ["year", "month"]
         coordinates = {"year": years, "month": timestamps.month}
-    else:
-        raise ValueError(f"calendar_table does not yet support family {family!r}")
 
     frame = pd.DataFrame(
         {

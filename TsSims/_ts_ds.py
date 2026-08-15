@@ -12,8 +12,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from Ts.TsUtils._validation import validate_int, validate_real, validate_sample
+
 from ._base import BaseSimResult
-from ._validation import validate_int, validate_real, validate_sample
 
 
 _PROCESS_LABELS = {

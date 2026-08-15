@@ -10,10 +10,10 @@ import numpy as np
 import pandas as pd
 
 from Ts.TsModels import RationalLagResult, RationalLagSpec
+from Ts.TsUtils._validation import validate_sample
 
 from ._base import BaseSimResult
 from ._sarima import simulate_sarima
-from ._validation import validate_sample
 
 
 def _coefficient_mapping(values, name, *, positive_lags):

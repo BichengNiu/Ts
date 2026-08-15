@@ -154,6 +154,9 @@ def test_complete_multiple_break_result_contract(strong_two_break_result):
     assert result.selection_method == "bic"
     assert result.lags is None
     assert set(result.partitions) == {0, 1, 2}
+    assert set(result.rss_by_breaks) == {0, 1, 2}
+    assert set(result.bic_by_breaks) == {0, 1, 2}
+    assert set(result.lwz_by_breaks) == {0, 1, 2}
     assert len(result.segment_coefficients) == 3
     assert result.fitted.shape == (72,)
     assert result.residuals.shape == (72,)

@@ -58,6 +58,7 @@ from .TsUtils import (
 from .TsSims import (
     BaseSimResult,
     RDLInputSpec,
+    SimCointegratedResult,
     SimRDLResult,
     SimSARIMAResult,
     SimGARCHResult,
@@ -69,6 +70,7 @@ from .TsSims import (
     simulate_gjr_garch,
     simulate_egarch,
     simulate_garch_m,
+    simulate_cointegrated,
     simulate_trend_stationary,
     simulate_difference_stationary,
 )
@@ -175,6 +177,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "SimRDLResult",
     "SimGARCHResult",
     "SimTSDSResult",
+    "SimCointegratedResult",
     "RDLInputSpec",
     # TsSims — functions
     "simulate_sarima",
@@ -184,6 +187,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "simulate_gjr_garch",
     "simulate_egarch",
     "simulate_garch_m",
+    "simulate_cointegrated",
     "simulate_trend_stationary",
     "simulate_difference_stationary",
     # TsModels — base

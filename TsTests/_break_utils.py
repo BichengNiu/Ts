@@ -197,47 +197,16 @@ def _select_lags_by_tstat(
     int
         Selected number of lags.
     """
-    T = len(y)
-    dy = np.diff(y)
-    y_lag1 = y[:-1]  # y_{t-1}
-
-    # Deterministic trend is positional (0-based).
-    trend = np.arange(T, dtype=float)
 
     def tstat_of(k: int) -> float | None:
         if k == 0:
             return 0.0
-
-        # Build regressor matrix
-        regs = [y_lag1[k:]]  # start from k because we need k initial diffs
-        regs.append(np.ones(T - 1 - k))  # constant
-        # Add break dummies (trimmed to match t=2..T, then trimmed by k)
-        regs.extend(
-            break_dummies[name][1:][k:]
-            for name in ("DL", "DP", "DT")
-            if name in break_dummies
-        )
-        # Add lagged differences
-        regs.extend(dy[k - j : T - 1 - j] for j in range(1, k + 1))
-        # Add time trend (positional)
-        regs.append(trend[k + 1 :])
-
-        X = np.column_stack(regs)
-        y_dep = dy[k:]  # Δy_t, trimmed
-
-        if X.shape[0] <= X.shape[1]:
-            return None  # not enough obs
-
-        try:
-            res = sm.OLS(y_dep, X).fit()
-        except (ValueError, np.linalg.LinAlgError, FloatingPointError):
+        fitted = _fit_unitroot_ols(y, break_dummies, k)
+        if fitted is None:
             return None
-
-        # The last regressor is the time trend; the second-to-last
-        # is the highest lagged difference dy_lagk.
-        # regs = [y_lag1, const, dummies..., dy_lag1..dy_lagk, trend]
-        last_lagdiff_idx = len(regs) - 2  # dy_lagk
-        return float(res.tvalues[last_lagdiff_idx])
+        res, columns = fitted
+        # The final column is the highest lagged difference dy_lagk.
+        return float(res.tvalues[len(columns) - 1])
 
     return _select_lag_by_tstat(max_lags, tstat_of, crit)
 
@@ -285,23 +254,13 @@ def _select_lags_by_ic(
     ic_values = np.full(max_lags + 1, np.nan)
 
     for k in range(max_lags + 1):
-        df = _build_regression_data(y, break_dummies, k)
-
-        reg_cols = _get_regression_columns(break_dummies, k)
-
-        X = df[reg_cols].values
-        y_dep = df["dy"].values
-
-        if X.shape[0] <= X.shape[1]:
+        fitted = _fit_unitroot_ols(y, break_dummies, k)
+        if fitted is None:
             continue
+        res, columns = fitted
 
-        try:
-            res = sm.OLS(y_dep, X).fit()
-        except (ValueError, np.linalg.LinAlgError, FloatingPointError):
-            continue
-
-        T_eff = len(y_dep)
-        n_params = X.shape[1]
+        T_eff = int(res.nobs)
+        n_params = len(columns)
         ssr = np.sum(res.resid**2)
         ic = _ic_from_ssr(ssr, T_eff, n_params, ic_type)
 
@@ -374,6 +333,32 @@ def _build_regression_data(
 # ---------------------------------------------------------------------------
 # DRY helpers
 # ---------------------------------------------------------------------------
+
+
+def _fit_unitroot_ols(
+    y: np.ndarray,
+    break_dummies: dict[str, np.ndarray],
+    lags: int,
+) -> tuple[sm.regression.linear_model.RegressionResultsWrapper, list[str]] | None:
+    """Fit the augmented break regression or return None when impossible.
+
+    Builds the lag-augmented design from *y* and *break_dummies*, fits OLS,
+    and returns ``(results, columns)``.  Returns ``None`` when too few
+    observations remain, the design matrix is rank deficient, or the OLS
+    fit fails — callers decide whether to skip or raise.
+    """
+    frame = _build_regression_data(y, break_dummies, lags)
+    columns = _get_regression_columns(break_dummies, lags)
+    X = frame[columns].values
+    y_dep = frame["dy"].values
+    if X.shape[0] <= X.shape[1]:
+        return None
+    if np.linalg.matrix_rank(X) < X.shape[1]:
+        return None
+    try:
+        return sm.OLS(y_dep, X).fit(), columns
+    except (ValueError, np.linalg.LinAlgError, FloatingPointError):
+        return None
 
 
 def _get_regression_columns(

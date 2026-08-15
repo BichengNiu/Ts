@@ -6,9 +6,10 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from statsmodels.tsa.stattools import acf
 
 from ._summary import _as_numeric_series
-from ._validation import validate_positive_int
+from ._validation import validate_int
 
 
 @dataclass(frozen=True)
@@ -116,12 +117,16 @@ def _selected_data(data, variable):
 
 
 def _autocorrelation(values: np.ndarray, lag: int) -> float:
-    """Return the biased sample autocorrelation used by classical EACF."""
+    """Return the biased sample autocorrelation used by classical EACF.
+
+    Delegates to statsmodels' biased ACF estimator; the constant-series
+    guard keeps the EACF-specific error path.
+    """
     centered = values - np.mean(values)
     denominator = float(centered @ centered)
     if denominator <= np.finfo(float).eps:
         raise ValueError("EACF is not defined for a constant series")
-    return float(centered[lag:] @ centered[:-lag] / denominator)
+    return float(acf(values, nlags=lag, adjusted=False)[lag])
 
 
 def _initial_ar_coefficients(values: np.ndarray, maximum_order: int) -> np.ndarray:
@@ -204,8 +209,8 @@ def eacf(data, ar_max=7, ma_max=13, *, variable=None) -> EACFResult:
     >>> print(result.summary().splitlines()[0])
     Extended Autocorrelation Function
     """
-    ar_max = validate_positive_int("ar_max", ar_max, minimum=0)
-    ma_max = validate_positive_int("ma_max", ma_max, minimum=0)
+    ar_max = validate_int("ar_max", ar_max, minimum=0)
+    ma_max = validate_int("ma_max", ma_max, minimum=0)
     selected = _selected_data(data, variable)
     if selected is not None and pd.api.types.is_bool_dtype(selected.dtype):
         raise TypeError("data must contain numeric, non-boolean values")

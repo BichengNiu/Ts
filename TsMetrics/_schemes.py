@@ -6,9 +6,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from Ts.TsUtils._validation import validate_positive_int
+from Ts.TsUtils._validation import validate_int, validate_positive_int
 
 from ._periods import _resolve_period, _validated_dates
+
+#: Minimum number of training observations every scheme enforces.
+MIN_TRAIN_OBS = 10
 
 
 def _validated_split_inputs(nobs, dates):
@@ -17,19 +20,6 @@ def _validated_split_inputs(nobs, dates):
     if dates is None:
         return nobs, None
     return nobs, _validated_dates(dates, name="dates", expected_length=nobs)
-
-
-def _nonnegative_int(name, value):
-    """Return a non-negative integer after rejecting booleans."""
-    if isinstance(value, (bool, np.bool_)) or not isinstance(
-        value,
-        (int, np.integer),
-    ):
-        raise TypeError(f"{name} must be a non-negative integer")
-    value = int(value)
-    if value < 0:
-        raise ValueError(f"{name} must be >= 0, got {value}")
-    return value
 
 
 def _label(position, dates):
@@ -55,14 +45,16 @@ class ForecastSplit:
 
     def __post_init__(self):
         """Own read-only index arrays and validate generated metadata."""
-        split = _nonnegative_int("split", self.split)
-        gap = _nonnegative_int("gap", self.gap)
+        split = validate_int("split", self.split, minimum=0)
+        gap = validate_int("gap", self.gap, minimum=0)
         train = np.array(self.train_indices, dtype=int, copy=True)
         target = np.array(self.target_indices, dtype=int, copy=True)
         if train.ndim != 1 or target.ndim != 1:
             raise ValueError("split indices must be one-dimensional")
-        if train.size < 10:
-            raise ValueError("training split must contain at least 10 observations")
+        if train.size < MIN_TRAIN_OBS:
+            raise ValueError(
+                f"training split must contain at least {MIN_TRAIN_OBS} observations"
+            )
         if target.size == 0:
             raise ValueError("target split must contain at least one observation")
         if np.any(np.diff(train) != 1) or np.any(np.diff(target) != 1):
@@ -123,8 +115,10 @@ class Holdout:
         data = np.empty(nobs)
         train_start, train_stop = _resolve_period("train", self.train, data, dates)
         test_start, test_stop = _resolve_period("test", self.test, data, dates)
-        if train_stop - train_start < 10:
-            raise ValueError("train must contain at least 10 observations")
+        if train_stop - train_start < MIN_TRAIN_OBS:
+            raise ValueError(
+                f"train must contain at least {MIN_TRAIN_OBS} observations"
+            )
         if test_start < train_stop:
             raise ValueError("test must start strictly later than train ends")
         return (
@@ -180,11 +174,11 @@ class RollingOrigin:
         initial_window = validate_positive_int(
             "initial_window",
             self.initial_window,
-            minimum=10,
+            minimum=MIN_TRAIN_OBS,
         )
         horizon = validate_positive_int("horizon", self.horizon)
         step = validate_positive_int("step", self.step)
-        gap = _nonnegative_int("gap", self.gap)
+        gap = validate_int("gap", self.gap, minimum=0)
         if self.window not in {"expanding", "rolling"}:
             raise ValueError("window must be either 'expanding' or 'rolling'")
         window_size = self.window_size
@@ -197,7 +191,7 @@ class RollingOrigin:
             window_size = validate_positive_int(
                 "window_size",
                 window_size,
-                minimum=10,
+                minimum=MIN_TRAIN_OBS,
             )
             if window_size > initial_window:
                 raise ValueError("window_size must be <= initial_window")

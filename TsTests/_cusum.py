@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import matplotlib.pyplot as plt
 import numpy as np
 import statsmodels.api as sm
 from statsmodels.stats.diagnostic import breaks_cusumolsresid
@@ -88,20 +87,31 @@ class CUSUMTestResult(BaseTestResult):
         level = f"{int(alpha * 100)}%"
         if level not in self.critical_values:
             raise ValueError("alpha must be one of 0.01, 0.05, or 0.10")
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 5))
-        else:
-            fig = ax.figure
+        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+
+        context = _FigureContext(ax=ax)
+        ax = context.ax
         limit = self.critical_values[level]
-        ax.plot(self.time_index, self.cusum, label="Scaled cumulative residuals")
-        ax.axhline(limit, color="red", linestyle="--", label=f"{level} limits")
-        ax.axhline(-limit, color="red", linestyle="--")
+        ax.plot(
+            self.time_index,
+            self.cusum,
+            label="Scaled cumulative residuals",
+            color=DEFAULT_PALETTE[0],
+        )
+        ax.axhline(
+            limit,
+            color=DEFAULT_PALETTE[4],
+            linestyle="--",
+            label=f"{level} limits",
+        )
+        ax.axhline(-limit, color=DEFAULT_PALETTE[4], linestyle="--")
         ax.axhline(0.0, color="black", linewidth=0.8)
-        ax.set_title("OLS Residual CUSUM Stability Test")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("CUSUM")
-        ax.legend()
-        return fig, ax
+        context.finalize(
+            title="OLS Residual CUSUM Stability Test",
+            xtitle="Time",
+            ytitle="CUSUM",
+        )
+        return context.fig, context.ax
 
 
 class CUSUMTest(BaseTest):

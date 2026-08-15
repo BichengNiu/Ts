@@ -166,7 +166,8 @@ class NormalityTest(BaseTest):
         kurt = float(scipy_stats.kurtosis(self.data))  # excess kurtosis
         n = len(self.data)
 
-        jb_stat = n / 6.0 * (skew**2 + kurt**2 / 4.0)
+        # Jarque-Bera statistic and p-value from scipy's reference estimator.
+        jb_stat = float(scipy_stats.jarque_bera(self.data)[0])
         jb_pval = float(scipy_stats.chi2.sf(jb_stat, 2))
 
         self.result_ = NormalityTestResult(

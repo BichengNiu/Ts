@@ -36,8 +36,6 @@ def _plot_inverse_roots(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
     """
-    import matplotlib.pyplot as plt
-
     from Ts.TsPlots.style import (
         AXIS_LABEL_FONTSIZE,
         DEFAULT_PALETTE,
@@ -45,15 +43,13 @@ def _plot_inverse_roots(
         TICK_LABELSIZE,
         TITLE_FONTSIZE,
         _ensure_fonts,
+        _fig_axes,
         style_axes,
     )
 
     _ensure_fonts()
 
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 6))
-    else:
-        fig = ax.figure
+    fig, ax = _fig_axes(ax, (6, 6))
 
     theta = np.linspace(0, 2 * np.pi, 400)
     ax.plot(

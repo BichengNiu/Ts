@@ -7,19 +7,16 @@ that go beyond the standard ARCH/GARCH/IGARCH in :mod:`_garch`.
 from __future__ import annotations
 
 import numpy as np
+from Ts.TsUtils._validation import validate_choice, validate_real
 
 from ._garch_core import (
-    _t_dist_df,
     _make_standard_variance_fn,
     _run_garch_simulation,
+    _t_dist_df,
+    _unconditional_variance,
+    _validate_garch_inputs,
 )
 from ._garch_result import SimGARCHResult
-from ._validation import (
-    normalize_coefficients,
-    validate_choice,
-    validate_int,
-    validate_real,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -63,31 +60,23 @@ def _simulate_gjr_garch(
         alpha_sum = sum(alpha)
         gamma_half_sum = 0.5 * sum(gamma)
         beta_sum = sum(beta)
-        denom = 1.0 - alpha_sum - gamma_half_sum - beta_sum
-        if denom <= 0:
-            import warnings
-
-            warnings.warn(
-                f"GJR-GARCH process is non-stationary: "
+        return _unconditional_variance(
+            omega,
+            alpha_sum + gamma_half_sum + beta_sum,
+            label="GJR-GARCH",
+            terms_text=(
                 f"sum(alpha) + 0.5*sum(gamma) + sum(beta) = "
-                f"{alpha_sum} + {gamma_half_sum} + {beta_sum} = "
-                f"{alpha_sum + gamma_half_sum + beta_sum} >= 1. "
-                f"Using omega = {omega} as initial variance.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return omega
-        return omega / denom
+                f"{alpha_sum} + {gamma_half_sum} + {beta_sum}"
+            ),
+        )
+
+    standard_variance = _make_standard_variance_fn(omega, alpha, beta, p, q)
 
     def _variance_fn(t, eps_ar, sigma2_ar, state=None):
-        var_t = omega
-        for i in range(p):
-            var_t += alpha[i] * eps_ar[t - 1 - i] ** 2
+        var_t = standard_variance(t, eps_ar, sigma2_ar)
         for k in range(o):
             if eps_ar[t - 1 - k] < 0:
                 var_t += gamma[k] * eps_ar[t - 1 - k] ** 2
-        for j in range(q):
-            var_t += beta[j] * sigma2_ar[t - 1 - j]
         return var_t
 
     return _run_garch_simulation(
@@ -284,18 +273,19 @@ def simulate_gjr_garch(
     >>> result.params["gamma"]
     [0.15]
     """
-    p = validate_int("p", p, minimum=1)
-    q = validate_int("q", q, minimum=0)
-    o = validate_int("o", o, minimum=0)
-    omega = validate_real("omega", omega, positive=True)
-    validate_choice("mean_model", mean_model, ("constant", "zero"))
-
-    alpha = normalize_coefficients(
-        "alpha", alpha, length=p, default=0.10, nonnegative=True
-    )
-    gamma = normalize_coefficients("gamma", gamma, length=o, default=0.10)
-    beta = normalize_coefficients(
-        "beta", beta, length=q, default=0.70, nonnegative=True
+    p, q, o, omega, alpha, gamma, beta = _validate_garch_inputs(
+        p,
+        q,
+        omega,
+        alpha,
+        beta,
+        o=o,
+        gamma=gamma,
+        mean_model=mean_model,
+        mean_choices=("constant", "zero"),
+        alpha_default=0.10,
+        beta_default=0.70,
+        gamma_default=0.10,
     )
 
     return _simulate_gjr_garch(
@@ -392,15 +382,21 @@ def simulate_egarch(
     >>> result.model_type
     'EGARCH'
     """
-    p = validate_int("p", p, minimum=1)
-    q = validate_int("q", q, minimum=0)
-    o = validate_int("o", o, minimum=0)
-    omega = validate_real("omega", omega)
-    validate_choice("mean_model", mean_model, ("constant", "zero"))
-
-    alpha = normalize_coefficients("alpha", alpha, length=p, default=0.15)
-    gamma = normalize_coefficients("gamma", gamma, length=o, default=0.05)
-    beta = normalize_coefficients("beta", beta, length=q, default=0.30)
+    p, q, o, omega, alpha, gamma, beta = _validate_garch_inputs(
+        p,
+        q,
+        omega,
+        alpha,
+        beta,
+        o=o,
+        gamma=gamma,
+        mean_model=mean_model,
+        mean_choices=("constant", "zero"),
+        omega_positive=False,
+        alpha_default=0.15,
+        beta_default=0.30,
+        gamma_default=0.05,
+    )
 
     return _simulate_egarch(
         n=n,
@@ -494,19 +490,19 @@ def simulate_garch_m(
     >>> result.params["garch_m_form"]
     'var'
     """
-    p = validate_int("p", p, minimum=1)
-    q = validate_int("q", q, minimum=0)
-    omega = validate_real("omega", omega, positive=True)
+    p, q, _, omega, alpha, _, beta = _validate_garch_inputs(
+        p,
+        q,
+        omega,
+        alpha,
+        beta,
+        mean_model=mean_model,
+        mean_choices=("constant", "zero"),
+        alpha_default=0.20,
+        beta_default=0.60,
+    )
     garch_m_kappa = validate_real("garch_m_kappa", garch_m_kappa)
     validate_choice("garch_m_form", garch_m_form, ("vol", "var", "log"))
-    validate_choice("mean_model", mean_model, ("constant", "zero"))
-
-    alpha = normalize_coefficients(
-        "alpha", alpha, length=p, default=0.20, nonnegative=True
-    )
-    beta = normalize_coefficients(
-        "beta", beta, length=q, default=0.60, nonnegative=True
-    )
 
     model_type = "ARCH-M" if q == 0 else "GARCH-M"
 

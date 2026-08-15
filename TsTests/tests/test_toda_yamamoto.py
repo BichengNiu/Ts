@@ -342,21 +342,21 @@ class TestTodaYamamotoInternals:
         )
         assert R.shape == (2, 10)  # p_lags=2, n_regressors*k=5*2=10
 
-    def test__wald_test_single_and_multi(self, bivariate_independent):
-        """_wald_test_single and _wald_test_multi return (float, float)."""
+    def test__wald_test(self, bivariate_independent):
+        """_wald_test returns (float, float) for a single causing variable."""
         import numpy as np
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
-        from Ts.TsTests._toda_yamamoto import _wald_test_single, _wald_test_multi
+        from Ts.TsTests._toda_yamamoto import _wald_test
 
         fitted = _SM_VAR(bivariate_independent).fit(maxlags=2, ic=None)
         all_params = np.asarray(fitted.params)
         cov_full = np.asarray(fitted.cov_params())
 
-        w1, p1 = _wald_test_single(all_params, cov_full, 2, 0, 1, 1, 1)
+        w1, p1 = _wald_test(all_params, cov_full, 2, 0, [1], 1, 1)
         assert isinstance(w1, float)
         assert 0 <= p1 <= 1
 
-        w2, p2 = _wald_test_multi(all_params, cov_full, 2, 0, [1], 1, 1)
+        w2, p2 = _wald_test(all_params, cov_full, 2, 0, [1], 1, 1)
         assert isinstance(w2, float)
         assert 0 <= p2 <= 1
         # Single and multi with same single causing index should match

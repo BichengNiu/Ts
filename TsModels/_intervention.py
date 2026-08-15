@@ -30,6 +30,8 @@ from pandas.tseries.offsets import (
 )
 from scipy.stats import chi2, norm
 
+from Ts.TsUtils._calendar import validate_time_index
+
 DateRule = Literal["exact", "period", "next", "previous"]
 EventKind = Literal["pulse", "step"]
 
@@ -364,14 +366,7 @@ def _validate_datetime_index(values, name: str) -> pd.DatetimeIndex:
         index = pd.DatetimeIndex(values)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{name} must be valid datetime values") from error
-    if index.empty:
-        raise ValueError(f"{name} must not be empty")
-    if index.hasnans:
-        raise ValueError(f"{name} must not contain missing dates")
-    if not index.is_unique:
-        raise ValueError(f"{name} must contain unique dates")
-    if not index.is_monotonic_increasing:
-        raise ValueError(f"{name} must be sorted in increasing order")
+    validate_time_index(index, name=name)
     return index
 
 

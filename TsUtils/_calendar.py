@@ -40,6 +40,21 @@ def _classify_offset_family(offset, *, allow_annual=False):
     raise ValueError(f"does not support frequency {offset.freqstr!r}")
 
 
+def validate_time_index(index, *, name="time index"):
+    """Require a complete, unique, increasing pandas time index."""
+    if not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
+        raise TypeError(f"{name} must be a DatetimeIndex or PeriodIndex")
+    if index.empty:
+        raise ValueError(f"{name} must not be empty")
+    if index.hasnans:
+        raise ValueError(f"{name} must not contain missing dates")
+    if not index.is_unique:
+        raise ValueError(f"{name} must contain unique dates")
+    if not index.is_monotonic_increasing:
+        raise ValueError(f"{name} must be sorted in increasing order")
+    return index
+
+
 def resolve_time_index(data) -> pd.DatetimeIndex | pd.PeriodIndex:
     """Return and validate the time index carried by an internal input."""
     if isinstance(data, (pd.DatetimeIndex, pd.PeriodIndex)):
@@ -51,17 +66,7 @@ def resolve_time_index(data) -> pd.DatetimeIndex | pd.PeriodIndex:
             "data must be a Series, DataFrame, DatetimeIndex, or PeriodIndex"
         )
 
-    if not isinstance(index, (pd.DatetimeIndex, pd.PeriodIndex)):
-        raise TypeError("data must have a DatetimeIndex or PeriodIndex")
-    if index.empty:
-        raise ValueError("time index must not be empty")
-    if index.hasnans:
-        raise ValueError("time index must not contain missing dates")
-    if not index.is_unique:
-        raise ValueError("time index must contain unique dates")
-    if not index.is_monotonic_increasing:
-        raise ValueError("time index must be sorted in increasing order")
-    return index
+    return validate_time_index(index)
 
 
 def resolve_frequency(

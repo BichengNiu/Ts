@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import matplotlib.pyplot as plt
 import numpy as np
 import statsmodels.api as sm
 from scipy.stats import f
@@ -105,24 +104,41 @@ class ChowTestResult(BaseTestResult):
         >>> result = ChowTest(data, 2040, time_index=years).fit()
         >>> fig, ax = result.plot_test()
         """
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 5))
-        else:
-            fig = ax.figure
-        ax.plot(self.time_index, self.observed, label="Observed", color="black")
+        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+
+        context = _FigureContext(ax=ax)
+        ax = context.ax
+        ax.plot(
+            self.time_index,
+            self.observed,
+            label="Observed",
+            color=DEFAULT_PALETTE[0],
+        )
         ax.plot(
             self.time_index,
             self.fitted_pooled,
             label="Pooled fit",
             linestyle="--",
+            color=DEFAULT_PALETTE[1],
         )
-        ax.plot(self.time_index, self.fitted_split, label="Split fit")
-        ax.axvline(self.break_year, color="red", linestyle=":", label="Known break")
-        ax.set_title("Chow Test: Known Regression Break")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Value")
-        ax.legend()
-        return fig, ax
+        ax.plot(
+            self.time_index,
+            self.fitted_split,
+            label="Split fit",
+            color=DEFAULT_PALETTE[2],
+        )
+        ax.axvline(
+            self.break_year,
+            color=DEFAULT_PALETTE[4],
+            linestyle=":",
+            label="Known break",
+        )
+        context.finalize(
+            title="Chow Test: Known Regression Break",
+            xtitle="Time",
+            ytitle="Value",
+        )
+        return context.fig, context.ax
 
 
 class ChowTest(BaseTest):

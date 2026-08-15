@@ -13,6 +13,7 @@ import numpy as np
 
 from Ts.TsTests._base import BaseTest, BaseTestResult
 from Ts.TsTests._utils import _clean_2d
+from Ts.TsUtils._validation import validate_choice
 
 # Map user-facing trend names to statsmodels det_order.
 _TREND_TO_DET_ORDER = {
@@ -213,8 +214,8 @@ class JohansenTestResult(BaseTestResult):
             )
         )
 
-        trace_rank = len(trace_rejected)
-        maxeig_rank = len(maxeig_rejected)
+        trace_rank = _sequential_rank(trace_stat, trace_crit, alpha_idx)
+        maxeig_rank = _sequential_rank(maxeig_stat, maxeig_crit, alpha_idx)
         lines.append("")
         lines.append(f"Cointegration rank (trace):       {trace_rank}")
         lines.append(f"Cointegration rank (max-eig):     {maxeig_rank}")
@@ -294,10 +295,7 @@ class JohansenTest(BaseTest):
             raise ValueError(
                 f"data must have at least 2 variables (k >= 2), got k = {y.shape[1]}"
             )
-        if trend not in self._VALID_TRENDS:
-            raise ValueError(
-                f"trend must be one of {sorted(self._VALID_TRENDS)}, got {trend!r}"
-            )
+        validate_choice("trend", trend, tuple(sorted(self._VALID_TRENDS)))
         if lags < 1:
             raise ValueError(f"lags must be >= 1, got {lags}")
 

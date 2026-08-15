@@ -32,6 +32,29 @@ def _resolve_impulse_plot_steps(steps, sample_weights):
         raise TypeError("sample_weights must be a sized array-like object") from error
 
 
+def _select_rdl_inputs(results, inputs):
+    """Resolve an RDL input selector against the fitted input names."""
+    if inputs is None:
+        selected = tuple(results)
+    elif isinstance(inputs, str):
+        selected = (inputs,)
+    else:
+        try:
+            selected = tuple(inputs)
+        except TypeError as error:
+            raise TypeError(
+                "inputs must be a name or an iterable of names"
+            ) from error
+    if not selected:
+        raise ValueError("inputs must contain at least one RDL input")
+    if len(set(selected)) != len(selected):
+        raise ValueError("inputs must be unique")
+    unknown = [name for name in selected if name not in results]
+    if unknown:
+        raise ValueError(f"inputs contains unknown RDL input {unknown[0]!r}")
+    return selected
+
+
 def _normalise_active_lags(value, name, *, include_zero, allow_empty):
     """Return a sorted tuple of active lags from an order or lag iterable.
 

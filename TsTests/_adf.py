@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from Ts.TsUtils._validation import validate_choice
+
 from ._base import BaseTest, BaseTestResult
 from ._utils import _clean_1d
 from ._unitroot_plot import _render_critical_value_plot
@@ -159,16 +161,10 @@ class ADFTest(BaseTest):
         autolag: str = "AIC",
     ):
         self.data = _clean_1d(data)
-        if trend not in ("c", "ct", "ctt", "n"):
-            raise ValueError(f"trend must be 'c', 'ct', 'ctt', or 'n', got {trend!r}")
-        self.trend = trend
+        self.trend = validate_choice("trend", trend, ("c", "ct", "ctt", "n"))
         self.max_lags = max_lags
         self.lags = lags
-        if autolag not in ("AIC", "BIC", "t-stat"):
-            raise ValueError(
-                f"autolag must be 'AIC', 'BIC', or 't-stat', got {autolag!r}"
-            )
-        self.autolag = autolag
+        self.autolag = validate_choice("autolag", autolag, ("AIC", "BIC", "t-stat"))
         self.result_: ADFTestResult | None = None
 
     def fit(self) -> ADFTestResult:

@@ -96,6 +96,11 @@ def _rank(scores):
     )
 
 
+def _default_series_names(mean):
+    """Return the positional fallback labels for multivariate series."""
+    return tuple(f"series_{index}" for index in range(mean.shape[2]))
+
+
 def _normalise_parameter_estimates(values, n_splits):
     """Return an owned, validated long-form parameter-estimate table."""
     if values is None:
@@ -333,8 +338,7 @@ class ForecastEvaluationResult:
         """Return one long-form row per split, horizon, and series."""
         multivariate = self.mean.ndim == 3
         labels = (
-            self.series_names
-            or tuple(f"series_{index}" for index in range(self.mean.shape[2]))
+            self.series_names or _default_series_names(self.mean)
             if multivariate
             else (None,)
         )
@@ -536,9 +540,17 @@ class ForecastComparisonResult:
         """Return common-sample metrics, coverage, failures, and rank."""
         mask = self._common_mask
         n_total, n_common = int(mask.size), int(mask.sum())
+        metrics_by_model = {
+            name: compute_metrics(result.actual[mask], result.mean[mask])
+            for name, result in self.results.items()
+        }
+        rank_metric = {
+            name: metrics[self.rank_by] for name, metrics in metrics_by_model.items()
+        }
+        ranking = _rank(rank_metric)
         rows = {}
         for name, result in self.results.items():
-            metrics = compute_metrics(result.actual[mask], result.mean[mask])
+            metrics = metrics_by_model[name]
             valid = np.isfinite(result.actual) & np.isfinite(result.mean)
             rows[name] = {
                 **{metric: metrics[metric] for metric in ERROR_METRIC_NAMES},
@@ -550,10 +562,10 @@ class ForecastComparisonResult:
         frame = pd.DataFrame.from_dict(rows, orient="index")
         frame.index.name = "model"
         frame["rank"] = pd.Series(
-            {name: position for position, name in enumerate(self.ranking, start=1)},
+            {name: position for position, name in enumerate(ranking, start=1)},
             dtype=int,
         )
-        return frame.loc[self.ranking].copy()
+        return frame.loc[ranking].copy()
 
     @property
     def predictions(self):
@@ -695,14 +707,13 @@ class ForecastComparisonResult:
             table["_series"] = table["model"]
             series_order = model_names
         else:
+            present = set(zip(table["model"], table["parameter"], strict=True))
             table["_series"] = table["model"] + ": " + table["parameter"]
             series_order = [
                 f"{name}: {parameter}"
                 for name in model_names
                 for parameter in parameter_names
-                if not table.loc[
-                    (table["model"] == name) & (table["parameter"] == parameter)
-                ].empty
+                if (name, parameter) in present
             ]
         frame = table.pivot(index=x, columns="_series", values="estimate").reindex(
             columns=series_order
@@ -754,9 +765,7 @@ class ForecastComparisonResult:
         elif reference.mean.ndim == 2:
             groups = [(reference.target, (slice(None), slice(None)))]
         else:
-            labels = reference.series_names or tuple(
-                f"series_{index}" for index in range(reference.mean.shape[2])
-            )
+            labels = reference.series_names or _default_series_names(reference.mean)
             groups = [
                 (label, (slice(None), slice(None), position))
                 for position, label in enumerate(labels)
@@ -780,9 +789,7 @@ class ForecastComparisonResult:
             if series not in {None, 0}:
                 raise ValueError("series must be None or 0 for univariate results")
             return None
-        labels = reference.series_names or tuple(
-            f"series_{index}" for index in range(reference.mean.shape[2])
-        )
+        labels = reference.series_names or _default_series_names(reference.mean)
         if series is None:
             raise ValueError("series is required for multivariate forecasts")
         if isinstance(series, (bool, np.bool_)):
