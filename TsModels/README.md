@@ -41,6 +41,7 @@ TsModels/
 ├── _vecm.py            # VECM + VECMResult — 向量误差修正模型
 ├── _auto.py            # AutoSARIMAX + AutoGARCH + AutoModelResult
 ├── _compare.py         # compare_models — Stata 风格对比表格
+├── _outlier.py         # OutlierDetector + OutlierDetectorResult（AO/LS/IO 异常检测）
 ├── tests/
 │   ├── __init__.py
 │   ├── test_base.py
@@ -49,6 +50,7 @@ TsModels/
 │   ├── test_auto.py
 │   ├── test_compare.py
 │   ├── test_garch_refactor.py
+│   ├── test_outlier.py
 │   ├── test_var.py
 │   ├── test_svar.py
 │   └── test_vecm.py
@@ -270,6 +272,51 @@ GARCH 的评价目标仍是以当前训练窗口均值中心化后的绝对收�
 
 `model.backcast(steps, alpha=0.05)` 仍属于模型侧能力。它将序列反转后重新拟合并预测样本前
 数值，是反向时间统计估计，不是对未观测历史的因果重建。
+
+## 异常检测
+
+`OutlierDetector` 实现 Tsay (1988) 的迭代程序：对 `SARIMAX` 拟合后的
+残差，基于白化算子 \(\pi(B)\) 及其累计 \(c(B)=\pi(B)/(1-B)\)，对每个候选
+时点和三类异常——加性异常（AO）、水平移位（LS）、创新异常（IO）——计算
+\(\hat\omega\) 与 L 统计量；若最大 \(|L|\) 超过临界值 `critical_value`
+（默认 3.5），记录该事件并从残差中扣除其足迹，随后重估残差标准差并重复，
+直至不再显著或达到 `max_events`。前缘初始化期残差不作为候选时点。
+
+```python
+from Ts.TsModels import OutlierDetector
+from Ts.TsSims import simulate_sarima
+
+data = simulate_sarima(n=120, order=(1, 0, 0), ar=[0.7], seed=42).data
+data = data.copy()
+data[60] += 6.0
+outlier = OutlierDetector(order=(1, 0, 0)).fit_detect(data)
+print(outlier.summary())
+print(outlier.events)
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `order` | tuple | `(0, 0, 0)` | ARIMA 阶数 (p, d, q)，显式指定 |
+| `seasonal_order` | tuple | `(0, 0, 0, 0)` | 季节 ARIMA 阶数 (P, D, Q, s) |
+| `trend` | str | `"c"` | 确定项：`"c"`, `"ct"`, `"n"`（透传 `SARIMAX`） |
+| `critical_value` | float | `3.5` | 显著阈值 C_d，须为正 |
+| `max_events` | int \| None | `None` | 最多检出的异常数；`None` 表示自动迭代直至不显著 |
+
+调用 `fit_detect(series)` 返回 `OutlierDetectorResult`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `events` | `DataFrame` | 检出事件：`time`、`type`（AO/LS/IO）、`omega`、`standard_error`、`L` |
+| `pi_weights` | `ndarray` | 白化算子 \(\pi(B)\) 的系数 |
+| `c_weights` | `ndarray` | 累计算子 \(c(B)\) 的系数 |
+| `adjusted_residuals` | `ndarray` | 扣除全部事件足迹后的残差 |
+| `l_statistics` | `DataFrame` | 最后一轮扫描的逐时点 L 统计量（AO/LS/IO 三列） |
+| `scan_history` | `DataFrame` | 每一轮扫描检出的候选事件（含被替换前的记录） |
+| `sigma` | `float` | 最终残差标准差 |
+| `critical_value` | `float` | 使用的临界值 |
+| `model` | `SARIMAXResult` | 底层拟合模型 |
+
+`summary()` 返回格式化的文字报告。
 
 ## 接口衔接
 

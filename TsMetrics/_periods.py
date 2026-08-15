@@ -6,24 +6,29 @@ import numpy as np
 import pandas as pd
 
 
+def _validated_dates(values, *, name, expected_length):
+    """Return a strict calendar or raise for the given observation count."""
+    try:
+        dates = pd.DatetimeIndex(values)
+    except (TypeError, ValueError) as error:
+        raise TypeError(f"{name} must be datetime-like") from error
+    if len(dates) != expected_length:
+        raise ValueError(f"{name} must contain one date per observation")
+    if dates.hasnans:
+        raise ValueError(f"{name} must not contain missing dates")
+    if not dates.is_unique:
+        raise ValueError(f"{name} must be unique")
+    if not dates.is_monotonic_increasing:
+        raise ValueError(f"{name} must be strictly increasing")
+    return dates.copy()
+
+
 def validated_model_dates(model, data):
     """Return a strict model calendar or None for position-based data."""
     values = getattr(model, "dates", None)
     if values is None:
         return None
-    try:
-        dates = pd.DatetimeIndex(values)
-    except (TypeError, ValueError) as error:
-        raise TypeError("model.dates must be datetime-like") from error
-    if len(dates) != len(data):
-        raise ValueError("model.dates must contain one date per observation")
-    if dates.hasnans:
-        raise ValueError("model.dates must not contain missing dates")
-    if not dates.is_unique:
-        raise ValueError("model.dates must be unique")
-    if not dates.is_monotonic_increasing:
-        raise ValueError("model.dates must be strictly increasing")
-    return dates.copy()
+    return _validated_dates(values, name="model.dates", expected_length=len(data))
 
 
 def _period_pair(name, period):

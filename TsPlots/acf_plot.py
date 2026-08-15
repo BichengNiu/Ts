@@ -34,7 +34,6 @@ from __future__ import annotations
 import math
 
 import matplotlib.pyplot as plt
-from matplotlib.colors import is_color_like
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
@@ -47,6 +46,8 @@ from .style import (
     FIGSIZE,
     TITLE_FONTSIZE,
     _ensure_fonts,
+    _resolve_bar_colors,
+    _validate_max_ticks,
     draw_note_and_bottom_title,
     style_axes,
 )
@@ -322,12 +323,7 @@ def plot_correlogram(
     3
     """
     _ensure_fonts()
-    if (
-        isinstance(max_ticks, (bool, np.bool_))
-        or not isinstance(max_ticks, (int, np.integer))
-        or int(max_ticks) < 1
-    ):
-        raise ValueError("max_ticks must be a positive integer")
+    max_ticks = _validate_max_ticks(max_ticks)
     frame = _normalise_lag_response(data)
     if not isinstance(data, (pd.Series, pd.DataFrame)):
         frame.columns = [
@@ -339,15 +335,7 @@ def plot_correlogram(
     if count > 1 and ax is not None:
         raise ValueError("ax cannot be supplied for multiple correlation sequences")
 
-    if bar_color is None or is_color_like(bar_color):
-        colors = [
-            bar_color or DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)]
-            for index in range(count)
-        ]
-    else:
-        colors = list(bar_color)
-        if len(colors) != count:
-            raise ValueError("bar_color must contain one value per response")
+    colors = _resolve_bar_colors(bar_color, count)
 
     if count == 1:
         if ax is None:

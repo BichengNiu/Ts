@@ -613,8 +613,24 @@ class BaseModelResult:
         """Return fitted values with any model-specific display masking."""
         return self.fitted_values
 
+    def _diagnostic_label(self, name):
+        """Return the display name of one equation in 2D diagnostics panels."""
+        return name
+
+    def _variable_names(self):
+        """Return display names for the columns of a 2D model result."""
+        k = self.data.shape[1]
+        names = getattr(self, "_data_names", None)
+        if names is None:
+            names = [f"Variable {i + 1}" for i in range(k)]
+        return [str(name) for name in names]
+
     def plot_fit(self, title=None):
         """Plot actual vs fitted values.
+
+        One-dimensional series are drawn in a single panel; multi-variable
+        models (``data`` with shape ``(n, k)``) produce one subplot per
+        variable, aligned to the fitted sample.
 
         Uses :func:`TsPlots.plot_series` for unified styling.
 
@@ -626,7 +642,7 @@ class BaseModelResult:
         Returns
         -------
         fig : matplotlib.figure.Figure
-        ax : matplotlib.axes.Axes
+        ax : matplotlib.axes.Axes or numpy.ndarray of matplotlib.axes.Axes
 
         Examples
         --------
@@ -637,31 +653,61 @@ class BaseModelResult:
         >>> ax.get_title()
         'Observed and fitted'
         """
+        import matplotlib.pyplot as plt
+
         from Ts.TsPlots import plot_series
 
         if title is None:
             title = f"{self.model_type}: Actual vs Fitted"
 
-        plot_data = {"Actual": self.data}
-        if self.fitted_values is not None:
-            plot_data["Fitted"] = self._fitted_values_for_plot()
+        if np.ndim(self.data) == 1:
+            plot_data = {"Actual": self.data}
+            if self.fitted_values is not None:
+                plot_data["Fitted"] = self._fitted_values_for_plot()
+            fig, ax = plot_series(
+                plot_data,
+                facet=False,
+                title=title,
+                ytitle="Value",
+                xtitle="Time",
+            )
+            return fig, ax
 
-        fig, ax = plot_series(
-            plot_data,
-            facet=False,
-            title=title,
-            ytitle="Value",
-            xtitle="Time",
+        names = self._variable_names()
+        k = len(names)
+        fig, axes = plt.subplots(k, 1, figsize=(10, 3 * k), squeeze=False)
+        axes = axes[:, 0]
+
+        fitted = self._fitted_values_for_plot()
+        data_aligned = (
+            self.data[-fitted.shape[0] :] if fitted is not None else self.data
         )
-        return fig, ax
+
+        for i, name in enumerate(names):
+            plot_data = {f"{name} (actual)": data_aligned[:, i]}
+            if fitted is not None:
+                plot_data[f"{name} (fitted)"] = fitted[:, i]
+            plot_series(
+                plot_data,
+                ax=axes[i],
+                facet=False,
+                title=f"Variable: {name}",
+                ytitle="Value",
+            )
+
+        fig.suptitle(title, fontsize=14, fontweight="bold")
+        fig.tight_layout()
+        return fig, axes
 
     def plot_diagnostics(self, title=None):
-        """Plot residual diagnostics in a 2-by-2 figure.
+        """Plot standardized-residual diagnostics.
 
-        The first row contains standardized residuals over time and their
-        histogram; the second row contains standardized-residual ACF and PACF.
-        The histogram includes the normality test result, while the ACF panel
-        includes the white-noise test result.
+        One-dimensional residuals produce a 2-by-2 figure: standardized
+        residuals over time, their histogram, ACF, and PACF.  The histogram
+        includes the normality test result, while the ACF panel includes the
+        white-noise test result.  Multi-variable residuals (shape ``(n, k)``)
+        produce a ``k``-by-3 grid with standardized residuals, ACF, and PACF
+        for each variable.
 
         Parameters
         ----------
@@ -671,9 +717,8 @@ class BaseModelResult:
         Returns
         -------
         fig : matplotlib.figure.Figure
-        axes : tuple of matplotlib.axes.Axes
-            Flat row-major tuple containing residuals, histogram, ACF, and
-            PACF axes.
+        axes : tuple or numpy.ndarray of matplotlib.axes.Axes
+            Flat row-major tuple (1D) or ``k``-by-3 array (2D) of axes.
 
         Examples
         --------
@@ -700,10 +745,40 @@ class BaseModelResult:
         if title is None:
             title = f"{self.model_type}: Diagnostic Plots"
 
+        diagnostic_residuals = self.standardized_residuals
+
+        if np.ndim(self.residuals) > 1:
+            k = self.residuals.shape[1]
+            names = self._variable_names()
+            fig, axes = plt.subplots(k, 3, figsize=(14, 3 * k), squeeze=False)
+
+            for i, name in enumerate(names):
+                label = self._diagnostic_label(name)
+                plot_series(
+                    diagnostic_residuals[:, i],
+                    ax=axes[i, 0],
+                    title=f"{label} Standardized Residuals",
+                    ytitle="Standardized Residual",
+                    show_legend=False,
+                )
+                plot_acf(
+                    diagnostic_residuals[:, i],
+                    ax=axes[i, 1],
+                    title=f"{label} Standardized Residual ACF",
+                )
+                plot_pacf(
+                    diagnostic_residuals[:, i],
+                    ax=axes[i, 2],
+                    title=f"{label} Standardized Residual PACF",
+                )
+
+            fig.suptitle(title, fontsize=14, fontweight="bold")
+            fig.tight_layout()
+            return fig, axes
+
         _ensure_fonts()
         fig, axes = plt.subplots(2, 2, figsize=(12, 8))
         ax_residuals, ax_histogram, ax_acf, ax_pacf = axes.flat
-        diagnostic_residuals = self.standardized_residuals
 
         plot_series(
             diagnostic_residuals,
@@ -798,11 +873,14 @@ class BaseModelResult:
     def test_residuals(self, lags=10):
         """Run residual diagnostic tests.
 
-        Executes four tests:
+        For one-dimensional residuals this executes four tests:
         - White noise: Ljung-Box on raw residuals (H0: no autocorrelation)
         - Normality: Jarque-Bera (H0: normally distributed)
         - ARCH effects: Ljung-Box on squared residuals (H0: no ARCH)
         - ARCH effects: Engle LM (H0: no ARCH)
+
+        For multi-variable residuals (shape ``(n, k)``) the same four tests
+        run for each equation and are returned keyed by variable name.
 
         Parameters
         ----------
@@ -811,10 +889,10 @@ class BaseModelResult:
 
         Returns
         -------
-        ResidualTestResults
+        ResidualTestResults or dict
             Container with ``.white_noise``, ``.normality``, ``.ljung_box``,
-            `.engle_lm` attributes and supports `print()` for a formatted
-        summary with detailed output.
+            ``.engle_lm`` attributes for 1D residuals, or a mapping from
+            variable name to :class:`ResidualTestResults` for 2D residuals.
 
         Examples
         --------
@@ -828,6 +906,22 @@ class BaseModelResult:
         from Ts.TsTests import EngleLMTest, LjungBoxTest, NormalityTest
 
         diagnostic_residuals = self.residuals
+
+        if np.ndim(diagnostic_residuals) > 1:
+            results = {}
+            for i, name in enumerate(self._variable_names()):
+                resid_i = diagnostic_residuals[:, i]
+                wn = LjungBoxTest(resid_i, lags=lags, apply_squared=False)
+                norm = NormalityTest(resid_i)
+                lb = LjungBoxTest(resid_i, lags=lags)
+                lm = EngleLMTest(resid_i, lags=lags)
+                results[name] = ResidualTestResults(
+                    white_noise=wn.fit(),
+                    normality=norm.fit(),
+                    ljung_box=lb.fit(),
+                    engle_lm=lm.fit(),
+                )
+            return results
 
         wn = LjungBoxTest(
             diagnostic_residuals,

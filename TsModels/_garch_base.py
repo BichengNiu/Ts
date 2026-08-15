@@ -28,13 +28,8 @@ from Ts.TsModels._garch_result import (
 )
 
 
-class _BaseVolModel(BaseModel):
-    """Shared base for GARCH-family models.
-
-    Handles data validation and the common arch-model fitting logic.
-    Supports standard GARCH, GJR-GARCH, GARCH-M (ARCH-in-mean),
-    IGARCH (custom MLE), and exogenous regressors.
-    """
+class _VolEvaluationMixin:
+    """Evaluation-protocol members shared by GARCH and AutoGARCH."""
 
     _evaluation_target_name = "absolute_demeaned_return_proxy"
     _backcast_target_name = "conditional_volatility"
@@ -47,9 +42,18 @@ class _BaseVolModel(BaseModel):
         """Reject evaluation that lacks required future exogenous values."""
         if self.exog is not None:
             raise NotImplementedError(
-                f"GARCH {context} with exog requires explicit future "
-                "or pre-sample exogenous values"
+                f"{type(self).__name__} {context} with exog requires explicit "
+                "future or pre-sample exogenous values"
             )
+
+
+class _BaseVolModel(_VolEvaluationMixin, BaseModel):
+    """Shared base for GARCH-family models.
+
+    Handles data validation and the common arch-model fitting logic.
+    Supports standard GARCH, GJR-GARCH, GARCH-M (ARCH-in-mean),
+    IGARCH (custom MLE), and exogenous regressors.
+    """
 
     def __init__(
         self,

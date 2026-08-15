@@ -112,6 +112,10 @@ class BaseSimResult:
         """
         return f"{type(self).__name__}(n={len(self.data)})"
 
+    def _default_title(self) -> str:
+        """Return the model-specific default chart title."""
+        return f"{type(self).__name__} Simulation"
+
     def plot(self, title=None, **kwargs):
         """Plot the generated time series.
 
@@ -142,7 +146,7 @@ class BaseSimResult:
         from Ts.TsPlots import plot_series
 
         if title is None:
-            title = f"{type(self).__name__} Simulation"
+            title = self._default_title()
         kwargs.setdefault("facet", False)
         fig, ax = plot_series(
             self.data,

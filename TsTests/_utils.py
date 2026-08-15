@@ -19,6 +19,34 @@ import pandas as pd
 _VALID_MODELS = ("intercept", "slope", "both")
 
 
+def _validate_nonnegative_int(value, *, name: str) -> int:
+    """Return *value* as int after rejecting booleans and negative values.
+
+    Parameters
+    ----------
+    value : int
+    name : str
+        Parameter name used in error messages.
+
+    Returns
+    -------
+    int
+        The validated non-negative integer.
+
+    Raises
+    ------
+    TypeError
+        If *value* is not an integer (or a bool).
+    ValueError
+        If *value* is negative.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise TypeError(f"{name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return int(value)
+
+
 def _validate_model(model: str) -> None:
     """Validate that *model* is one of the allowed values.
 

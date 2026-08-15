@@ -39,17 +39,25 @@ def _resolve_impulse_plot_steps(steps, sample_weights):
         raise TypeError("sample_weights must be a sized array-like object") from error
 
 
-def _normalise_polynomial_lags(value, name, *, include_zero, allow_empty):
+def _normalise_active_lags(value, name, *, include_zero, allow_empty):
+    """Return a sorted tuple of active lags from an order or lag iterable.
+
+    An integer *value* is expanded to ``range(start, value + 1)`` where
+    ``start`` is 0 or 1 depending on *include_zero*.  A tuple value is
+    validated element-wise and returned sorted with duplicates rejected.
+    """
     if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
         order = _normalise_nonnegative_integer(value, name)
         start = 0 if include_zero else 1
         return tuple(range(start, order + 1))
     if isinstance(value, (str, bytes)):
-        raise TypeError(f"{name} must be an integer or an iterable of lags")
+        raise TypeError(f"{name} must be a non-negative integer or an iterable of lags")
     try:
         lags = tuple(value)
     except TypeError as error:
-        raise TypeError(f"{name} must be an integer or an iterable of lags") from error
+        raise TypeError(
+            f"{name} must be a non-negative integer or an iterable of lags"
+        ) from error
     if not lags:
         if allow_empty:
             return ()
@@ -68,6 +76,24 @@ def _normalise_polynomial_lags(value, name, *, include_zero, allow_empty):
     if len(set(normalised)) != len(normalised):
         raise ValueError(f"{name} lags must be unique")
     return tuple(sorted(normalised))
+
+
+def _normalise_lag_order(value, name):
+    """Return an integer order or immutable tuple of active positive lags."""
+    if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
+        return _normalise_nonnegative_integer(value, name)
+    lags = _normalise_active_lags(value, name, include_zero=False, allow_empty=True)
+    return lags if lags else 0
+
+
+def _normalise_polynomial_lags(value, name, *, include_zero, allow_empty):
+    """Return the active lag tuple for one RDL polynomial."""
+    return _normalise_active_lags(
+        value,
+        name,
+        include_zero=include_zero,
+        allow_empty=allow_empty,
+    )
 
 
 def _rdl_parameter_name(input_name, component, lag):

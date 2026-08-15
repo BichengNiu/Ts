@@ -30,13 +30,12 @@ def _run_aux_regression(y, X):
 
     Returns
     -------
-    tuple
-        ``(coefficients, residuals, ssr)``.
+    float
+        Residual sum of squares of the auxiliary regression.
     """
     coef, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
     residuals = y - X @ coef
-    ssr = float(residuals.T @ residuals)
-    return coef, residuals, ssr
+    return float(residuals.T @ residuals)
 
 
 @dataclass
@@ -217,7 +216,7 @@ class EngleLMTest(BaseTest):
             X[:, j] = e2[p - j : T - j]
 
         # OLS auxiliary regression
-        _, _resid_aux, ssr = _run_aux_regression(y_dep, X)
+        ssr = _run_aux_regression(y_dep, X)
         sst = np.sum((y_dep - np.mean(y_dep)) ** 2)
         r_squared = 1.0 - ssr / sst if sst > 0 else 0.0
 
@@ -244,7 +243,7 @@ class EngleLMTest(BaseTest):
             Xk = np.ones((nk, k + 1))
             for j in range(1, k + 1):
                 Xk[:, j] = e2[k - j : T - j]
-            _, _, ssr_k = _run_aux_regression(yk, Xk)
+            ssr_k = _run_aux_regression(yk, Xk)
             sst_k = np.sum((yk - np.mean(yk)) ** 2)
             r2_k = 1.0 - ssr_k / sst_k if sst_k > 0 else 0.0
             lm_k = nk * r2_k

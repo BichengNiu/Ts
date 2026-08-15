@@ -20,12 +20,13 @@ from ._break_utils import (
     _build_regression_data,
     _extract_rho_stats,
     _extract_coefficients,
+    _format_break_test_summary,
     _get_regression_columns,
     _locate_known_break,
     _make_perron_break_dummies,
     _select_lags_by_ic,
     _select_lags_by_tstat,
-    _validate_nonnegative_int,
+    _validate_lag_parameters,
     _validate_time_axis,
 )
 
@@ -81,24 +82,20 @@ class PerronTestResult(BaseTestResult):
     fitted: np.ndarray | None = None
 
     def __str__(self) -> str:
-        return (
-            f"Perron (1989) Unit Root Test — Model {self.model}\n"
-            f"{'=' * 50}\n"
-            f"Break point          : {self.break_year}\n"
-            f"Number of lags (k)   : {self.lags}\n"
-            f"Effective obs. (T)   : {self.nobs}\n"
-            f"\n"
-            f"ρ̂ (coeff on y_t-1)   : {self.rho_hat:.4f}\n"
-            f"s.e.(ρ̂)              : {self.rho_se:.4f}\n"
-            f"t(ρ̂) = ρ̂ / s.e.    : {self.statistic:.3f}\n"
-            f"\n"
-            f"Critical values:\n"
-            f"  1%                 : {self.cv_01:.3f}\n"
-            f"  5%                 : {self.cv_05:.3f}\n"
-            f"  10%                : {self.cv_10:.3f}\n"
-            f"\n"
-            f"Conclusion (5%): "
-            f"{'Reject H0 (unit root); evidence favors stationarity around a breaking trend' if self.statistic < self.cv_05 else 'Cannot reject H0 (unit root)'}\n"
+        return _format_break_test_summary(
+            "Perron (1989) Unit Root Test",
+            "Break point",
+            "t(ρ̂) = ρ̂ / s.e.",
+            self.model,
+            self.break_year,
+            self.lags,
+            self.nobs,
+            self.rho_hat,
+            self.rho_se,
+            self.statistic,
+            self.cv_01,
+            self.cv_05,
+            self.cv_10,
         )
 
     @property
@@ -214,20 +211,9 @@ class PerronTest(BaseTest):
         self.break_fraction = float(break_fraction)
         _validate_model(model)
         self.model = model
-        self.lags = (
-            None if lags is None else _validate_nonnegative_int(lags, name="lags")
+        self.lags, self.max_lags, self.lag_crit, self.lag_method = (
+            _validate_lag_parameters(lags, max_lags, lag_crit, lag_method)
         )
-        self.max_lags = _validate_nonnegative_int(max_lags, name="max_lags")
-        if isinstance(lag_crit, bool) or not np.isscalar(lag_crit):
-            raise TypeError("lag_crit must be a positive finite scalar")
-        self.lag_crit = float(lag_crit)
-        if not np.isfinite(self.lag_crit) or self.lag_crit <= 0:
-            raise ValueError("lag_crit must be a positive finite scalar")
-        if lag_method not in ("tstat", "aic", "bic"):
-            raise ValueError(
-                f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
-            )
-        self.lag_method = lag_method
         self.result_: PerronTestResult | None = None
 
     def fit(self) -> PerronTestResult:

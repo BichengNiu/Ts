@@ -30,6 +30,7 @@ from Ts.TsModels._distributed_lag import (
     RationalLagResult,
     RationalLagSpec,
     _make_rational_lag_results,
+    _normalise_lag_order,
     _normalise_nonnegative_integer,
     _resolve_impulse_plot_steps,
     _RationalLagSARIMAX,
@@ -74,34 +75,6 @@ def _numeric_array(values, name):
         return np.asarray(values, dtype=float)
     except (TypeError, ValueError) as error:
         raise ValueError(f"{name} must contain numeric values") from error
-
-
-def _normalise_lag_order(value, name):
-    """Return an integer order or immutable tuple of active positive lags."""
-    if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
-        return _normalise_nonnegative_integer(value, name)
-    if isinstance(value, (str, bytes)):
-        raise TypeError(f"{name} must be a non-negative integer or an iterable of lags")
-    try:
-        lags = tuple(value)
-    except TypeError as error:
-        raise TypeError(
-            f"{name} must be a non-negative integer or an iterable of lags"
-        ) from error
-    if not lags:
-        return 0
-
-    normalised = []
-    for lag in lags:
-        if isinstance(lag, (bool, np.bool_)) or not isinstance(lag, (int, np.integer)):
-            raise TypeError(f"{name} lags must be positive integers")
-        lag = int(lag)
-        if lag <= 0:
-            raise ValueError(f"{name} lags must be positive integers")
-        normalised.append(lag)
-    if len(set(normalised)) != len(normalised):
-        raise ValueError(f"{name} lags must be unique")
-    return tuple(sorted(normalised))
 
 
 def _normalise_order(order):
@@ -2135,19 +2108,7 @@ class SARIMAXResult(BaseModelResult):
         >>> ax.get_aspect()
         1.0
         """
-        import matplotlib.pyplot as plt
-
-        from Ts.TsPlots.style import (
-            AXIS_LABEL_FONTSIZE,
-            DEFAULT_PALETTE,
-            LEGEND_FONTSIZE,
-            TICK_LABELSIZE,
-            TITLE_FONTSIZE,
-            _ensure_fonts,
-            style_axes,
-        )
-
-        _ensure_fonts()
+        from Ts.TsPlots._roots import _plot_inverse_roots
 
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
@@ -2155,78 +2116,19 @@ class SARIMAXResult(BaseModelResult):
         ar_roots = np.asarray(self._statsmodels_result.arroots)
         ma_roots = np.asarray(self._statsmodels_result.maroots)
 
-        fig, ax = plt.subplots(figsize=(6, 6))
-
-        theta = np.linspace(0, 2 * np.pi, 400)
-        ax.plot(
-            np.cos(theta),
-            np.sin(theta),
-            color=DEFAULT_PALETTE[1],
-            linewidth=1.0,
-            linestyle="--",
-        )
-
-        ax.axhline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-        ax.axvline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-
+        groups = {}
         if len(ar_roots) > 0:
-            inv_ar = 1.0 / ar_roots
-            ax.scatter(
-                inv_ar.real,
-                inv_ar.imag,
-                color=DEFAULT_PALETTE[0],
-                marker="o",
-                s=50,
-                edgecolors=DEFAULT_PALETTE[7],
-                linewidth=0.5,
-                zorder=5,
-                label="AR roots",
-            )
-
+            groups["AR roots"] = 1.0 / ar_roots
         if len(ma_roots) > 0:
-            inv_ma = 1.0 / ma_roots
-            ax.scatter(
-                inv_ma.real,
-                inv_ma.imag,
-                color=DEFAULT_PALETTE[4],
-                marker="^",
-                s=50,
-                edgecolors=DEFAULT_PALETTE[7],
-                linewidth=0.5,
-                zorder=5,
-                label="MA roots",
-            )
-
-        ax.set_aspect("equal")
-        style_axes(ax)
-
-        # Auto-scale limits to keep unit circle and all points visible
-        all_re = []
-        all_im = []
-        for r in list(ar_roots) + list(ma_roots):
-            inv = 1.0 / r
-            all_re.append(abs(inv.real))
-            all_im.append(abs(inv.imag))
-        margin = max(1.5, max(all_re + all_im + [0]) * 1.15)
-        ax.set_xlim(-margin, margin)
-        ax.set_ylim(-margin, margin)
-
-        ax.set_xlabel("Real", fontsize=AXIS_LABEL_FONTSIZE)
-        ax.set_ylabel("Imaginary", fontsize=AXIS_LABEL_FONTSIZE)
-        ax.tick_params(labelsize=TICK_LABELSIZE)
-
-        if len(ar_roots) > 0 or len(ma_roots) > 0:
-            ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+            groups["MA roots"] = 1.0 / ma_roots
 
         if title is None:
             order_str = f"SARIMAX{_display_order(self._order)}"
             if self._seasonal_order and self._seasonal_order != (0, 0, 0, 0):
                 order_str += str(self._seasonal_order)
             title = f"{order_str}: Inverse AR and MA Roots"
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
 
-        fig.tight_layout(pad=1.5)
-        return fig, ax
+        return _plot_inverse_roots(groups, title=title)
 
     @property
     def level_intercept(self):
@@ -2568,7 +2470,7 @@ class SARIMAX(BaseModel):
             (bool, np.bool_),
         ):
             raise TypeError("enforce_distributed_lag_stability must be boolean")
-        design, event_frame, event_metadata = _combined_design(
+        design, _, event_metadata = _combined_design(
             inputs,
             event_specs,
             trend,
@@ -2599,7 +2501,6 @@ class SARIMAX(BaseModel):
             )
         self.future_exog = inputs.future_exog
         self.events = event_specs
-        self._event_frame = event_frame
         self._event_metadata = event_metadata
         self._design_frame = design
         self.design_matrix = (

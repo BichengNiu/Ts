@@ -12,7 +12,6 @@ from dataclasses import dataclass
 import numpy as np
 from statsmodels.tsa.arima_process import ArmaProcess
 
-from Ts.TsPlots import plot_series
 from ._base import BaseSimResult
 from ._validation import (
     normalize_coefficients,
@@ -44,6 +43,10 @@ class SimSARIMAResult(BaseSimResult):
     >>> result.get_params()["ar"]
     [0.6]
     """
+
+    def _default_title(self) -> str:
+        """Return the default chart title for a SARIMA simulation."""
+        return f"SARIMA{self.params.get('order', '')} Simulation"
 
     def summary(self) -> str:
         """Return a formatted parameter summary string.
@@ -84,43 +87,6 @@ class SimSARIMAResult(BaseSimResult):
         if sma:
             lines.append(f"Seasonal MA coeff : {sma}")
         return "\n".join(lines)
-
-    def plot(self, title=None, **kwargs):
-        """Plot the generated time series.
-
-        Uses :func:`TsPlots.plot_series` and :func:`TsPlots.style.style_axes`
-        for unified styling.
-
-        Parameters
-        ----------
-        title : str, optional
-            Chart title. Defaults to a model-based title.
-        **kwargs
-            Forwarded to :func:`TsPlots.plot_series`.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-        ax : matplotlib.axes.Axes
-
-        Examples
-        --------
-        >>> from Ts.TsSims import simulate_sarima
-        >>> result = simulate_sarima(n=50, order=(1, 0, 0), ar=[0.5], seed=42)
-        >>> fig, ax = result.plot()
-        """
-        if title is None:
-            title = f"SARIMA{self.params.get('order', '')} Simulation"
-
-        fig, ax = plot_series(
-            self.data,
-            title=title,
-            ytitle="Value",
-            xtitle="Time",
-            show_legend=False,
-            **kwargs,
-        )
-        return fig, ax
 
 
 # ---------------------------------------------------------------------------

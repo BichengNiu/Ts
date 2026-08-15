@@ -50,16 +50,12 @@ class SimGARCHResult(BaseSimResult):
 
     conditional_volatility: np.ndarray = field(default_factory=lambda: np.array([]))
 
-    @property
-    def conditional_variance(self) -> np.ndarray:
-        """Conditional variance sigma2_t = sigma_t^2.
-
-        Returns
-        -------
-        np.ndarray
-            Squared conditional volatility, length *n*.
-        """
-        return self.conditional_volatility**2
+    def _default_title(self) -> str:
+        """Return the default suptitle for a GARCH-family simulation."""
+        return (
+            f"{self.model_type}({self.params.get('p', 0)},"
+            f"{self.params.get('q', 0)}) Simulation"
+        )
 
     @property
     def model_type(self) -> str:
@@ -152,10 +148,7 @@ class SimGARCHResult(BaseSimResult):
 
         model_type = self.model_type
         if title is None:
-            title = (
-                f"{model_type}({self.params.get('p', 0)},"
-                f"{self.params.get('q', 0)}) Simulation"
-            )
+            title = self._default_title()
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(FIGSIZE[0], FIGSIZE[1] * 1.6))
 

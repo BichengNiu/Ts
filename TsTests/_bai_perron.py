@@ -16,11 +16,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ._base import BaseTest, BaseTestResult
-from ._break_utils import _validate_nonnegative_int
 from ._regression_break_utils import (
     RegressionBreakDesign,
     _prepare_regression_break_design,
 )
+from ._utils import _validate_nonnegative_int
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,23 @@ class _PartitionSet:
     costs: np.ndarray
     rss: dict[int, float]
     breaks: dict[int, tuple[int, ...]]
+
+
+@dataclass(frozen=True)
+class _BootstrapInference:
+    """Bootstrap global/sequential test results and break-date intervals."""
+
+    supf: dict[int, float]
+    supf_pvalues: dict[int, float]
+    sequential: dict[int, float]
+    sequential_pvalues: dict[int, float]
+    udmax: float
+    udmax_pvalue: float
+    wdmax: float
+    wdmax_pvalue: float
+    weights: dict[int, float]
+    critical_values: dict[str, float]
+    confidence_intervals: tuple[tuple[int, int], ...]
 
 
 def _segment_cost_matrix(
@@ -555,7 +572,7 @@ class BaiPerronTest(BaseTest):
         selected_breaks: int,
         fitted_by_breaks: dict[int, tuple[np.ndarray, np.ndarray]],
         rng: np.random.Generator,
-    ):
+    ) -> _BootstrapInference:
         """Bootstrap global/sequential tests and selected break-date intervals."""
         nobs, nparams = self.design.exog.shape
         global_draws = np.empty(
@@ -692,18 +709,18 @@ class BaiPerronTest(BaseTest):
                 intervals.append((min(lower, estimate), max(upper, estimate)))
             confidence_intervals = tuple(intervals)
 
-        return (
-            observed_global,
-            supf_pvalues,
-            observed_sequential,
-            sequential_pvalues,
-            observed_udmax,
-            _bootstrap_pvalue(observed_udmax, udmax_draws),
-            observed_wdmax,
-            _bootstrap_pvalue(observed_wdmax, wdmax_draws),
-            weights,
-            critical_values,
-            confidence_intervals,
+        return _BootstrapInference(
+            supf=observed_global,
+            supf_pvalues=supf_pvalues,
+            sequential=observed_sequential,
+            sequential_pvalues=sequential_pvalues,
+            udmax=observed_udmax,
+            udmax_pvalue=_bootstrap_pvalue(observed_udmax, udmax_draws),
+            wdmax=observed_wdmax,
+            wdmax_pvalue=_bootstrap_pvalue(observed_wdmax, wdmax_draws),
+            weights=weights,
+            critical_values=critical_values,
+            confidence_intervals=confidence_intervals,
         )
 
     def fit(self) -> BaiPerronTestResult:
@@ -750,19 +767,7 @@ class BaiPerronTest(BaseTest):
             fitted_by_breaks[breaks] = (fitted, residuals)
 
         rng = np.random.default_rng(self.random_state)
-        (
-            supf,
-            supf_pvalues,
-            sequential,
-            sequential_pvalues,
-            udmax,
-            udmax_pvalue,
-            wdmax,
-            wdmax_pvalue,
-            weights,
-            critical_values,
-            confidence_intervals,
-        ) = self._bootstrap_inference(
+        inference = self._bootstrap_inference(
             partitions,
             selected_breaks,
             fitted_by_breaks,
@@ -778,12 +783,12 @@ class BaiPerronTest(BaseTest):
                 float(self.design.time_index[lower]),
                 float(self.design.time_index[upper]),
             )
-            for lower, upper in confidence_intervals
+            for lower, upper in inference.confidence_intervals
         )
         fitted, residuals = fitted_by_breaks[selected_breaks]
         self.result_ = BaiPerronTestResult(
-            statistic=udmax,
-            pvalue=udmax_pvalue,
+            statistic=inference.udmax,
+            pvalue=inference.udmax_pvalue,
             lags=None,
             nobs=nobs,
             residuals=residuals,
@@ -797,17 +802,17 @@ class BaiPerronTest(BaseTest):
             rss_by_breaks=partitions.rss,
             bic_by_breaks=bic,
             lwz_by_breaks=lwz,
-            supf_by_breaks=supf,
-            supf_pvalues=supf_pvalues,
-            sequential_supf=sequential,
-            sequential_pvalues=sequential_pvalues,
-            udmax=udmax,
-            udmax_pvalue=udmax_pvalue,
-            wdmax=wdmax,
-            wdmax_pvalue=wdmax_pvalue,
-            wdmax_weights=weights,
-            bootstrap_critical_values=critical_values,
-            break_confidence_intervals=confidence_intervals,
+            supf_by_breaks=inference.supf,
+            supf_pvalues=inference.supf_pvalues,
+            sequential_supf=inference.sequential,
+            sequential_pvalues=inference.sequential_pvalues,
+            udmax=inference.udmax,
+            udmax_pvalue=inference.udmax_pvalue,
+            wdmax=inference.wdmax,
+            wdmax_pvalue=inference.wdmax_pvalue,
+            wdmax_weights=inference.weights,
+            bootstrap_critical_values=inference.critical_values,
+            break_confidence_intervals=inference.confidence_intervals,
             break_confidence_years=confidence_years,
             confidence_level=self.confidence_level,
             segment_coefficients=coefficients_by_breaks[selected_breaks],

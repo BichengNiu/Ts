@@ -4,6 +4,40 @@ from __future__ import annotations
 
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
+from pandas.tseries.offsets import (
+    BMonthBegin,
+    BMonthEnd,
+    BQuarterBegin,
+    BQuarterEnd,
+    BusinessDay,
+    Day,
+    MonthBegin,
+    MonthEnd,
+    QuarterBegin,
+    QuarterEnd,
+    Week,
+    YearBegin,
+    YearEnd,
+)
+
+
+def _classify_offset_family(offset, *, allow_annual=False):
+    """Return the supported unit calendar family for a pandas offset."""
+    if offset.n != 1:
+        raise ValueError(f"does not support frequency {offset.freqstr!r}")
+    if isinstance(offset, BusinessDay):
+        return "business_daily"
+    if isinstance(offset, Day):
+        return "daily"
+    if isinstance(offset, Week):
+        return "weekly"
+    if isinstance(offset, (BMonthBegin, BMonthEnd, MonthBegin, MonthEnd)):
+        return "monthly"
+    if isinstance(offset, (BQuarterBegin, BQuarterEnd, QuarterBegin, QuarterEnd)):
+        return "quarterly"
+    if isinstance(offset, (YearBegin, YearEnd)) and allow_annual:
+        return "annual"
+    raise ValueError(f"does not support frequency {offset.freqstr!r}")
 
 
 def resolve_time_index(data) -> pd.DatetimeIndex | pd.PeriodIndex:

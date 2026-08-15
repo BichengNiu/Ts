@@ -43,6 +43,10 @@ class SimCointegratedResult(BaseSimResult):
 
     # get_data() is inherited from BaseSimResult — handles 2D data correctly.
 
+    def _default_title(self) -> str:
+        """Return the default suptitle for a cointegrated simulation."""
+        return "Cointegrated System Simulation"
+
     def summary(self) -> str:
         """Return a formatted parameter summary string.
 
@@ -117,7 +121,7 @@ class SimCointegratedResult(BaseSimResult):
         fig, axes = plt.subplots(k, 1, figsize=(10, 2.5 * k), sharex=True)
 
         if title is None:
-            title = "Cointegrated System Simulation"
+            title = self._default_title()
 
         for i in range(k):
             plot_series(

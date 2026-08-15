@@ -9,13 +9,12 @@ For GJR-GARCH, EGARCH, and GARCH-M, see :mod:`._garch_ext`.
 from __future__ import annotations
 
 from ._garch_core import (
-    _to_list,
     _normalize_coef,
     _make_standard_variance_fn,
     _run_garch_simulation,
 )
 from ._garch_result import SimGARCHResult
-from ._validation import validate_choice, validate_int, validate_real, validate_sample
+from ._validation import validate_choice, validate_int, validate_real
 
 
 def simulate_garch(
@@ -99,15 +98,12 @@ def simulate_garch(
     >>> garch.conditional_volatility.shape
     (50,)
     """
-    n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
     q = validate_int("q", q, minimum=0)
     omega = validate_real("omega", omega, positive=True)
     validate_choice("mean_model", mean_model, ("constant", "zero", "ar"))
-    validate_choice("dist", dist, ("normal", "t"))
     alpha = _normalize_coef(alpha, 0.2, p, name="alpha", nonnegative=True)
     beta = _normalize_coef(beta, 0.5, q, name="beta", nonnegative=True)
-    mean_ar = _to_list(mean_ar)
 
     model_type = "ARCH" if q == 0 else "GARCH"
 
@@ -193,12 +189,10 @@ def simulate_igarch(
     >>> sum(result.params["alpha"]) + sum(result.params["beta"])
     1.0
     """
-    n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
     q = validate_int("q", q, minimum=1)
     omega = validate_real("omega", omega, positive=True)
     validate_choice("mean_model", mean_model, ("constant", "zero"))
-    validate_choice("dist", dist, ("normal", "t"))
 
     alpha = _normalize_coef(alpha, 0.2, p, name="alpha", nonnegative=True)
     beta = _normalize_coef(beta, 0.5, q, name="beta", nonnegative=True)

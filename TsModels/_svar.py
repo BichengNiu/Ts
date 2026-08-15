@@ -19,7 +19,13 @@ from Ts.TsModels._base import (
     BaseModel,
     _normalise_model_dates,
 )
-from Ts.TsModels._var import VAR, IRFResult, VARResult
+from Ts.TsModels._var import (
+    IRFResult,
+    VAR,
+    VARResult,
+    _ensure_positive_definite,
+    _ma_coefficients,
+)
 
 
 def _param_to_matrices(params, A_mask, B_mask, A_template, B_template):
@@ -136,7 +142,7 @@ class SVARResult(VARResult):
     model_type, params, std_errors, p_values : see BaseModelResult
     aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
         Common fitted-model fields inherited through :class:`VARResult`.
-    _lags, _data_names, _k, _var_result, _var_model : see VARResult
+    _lags, _data_names, _k, _var_result : see VARResult
         Reduced-form VAR metadata inherited from :class:`VARResult`.
     A : np.ndarray
         Estimated A matrix (k, k).
@@ -456,10 +462,7 @@ class SVARResult(VARResult):
         cov_beta = np.asarray(fitted.cov_params())
 
         # Ensure positive definite
-        eigvals = np.linalg.eigvalsh(cov_beta)
-        min_ev = np.min(eigvals)
-        if min_ev < 1e-15:
-            cov_beta = cov_beta + np.eye(len(beta_flat)) * (1e-10 - min_ev)
+        cov_beta = _ensure_positive_definite(cov_beta)
 
         rng = np.random.default_rng(seed)
 
@@ -474,15 +477,17 @@ class SVARResult(VARResult):
             resid_d = y_eff - Z @ params_d
             sigma_u_d = (resid_d.T @ resid_d) / n_eff
 
+            # Lag coefficient matrices from drawn coefficients
+            A_mats = []
+            for lag_i in range(lags):
+                start = n_det + lag_i * k
+                A_lag = params_d[start : start + k, :].T  # (k, k)
+                A_mats.append(A_lag)
+
             # --- Re-estimate A, B from sigma_u_d ---
             if self._C_lr is not None:
                 # Blanchard-Quah long-run identification
                 try:
-                    A_mats = []
-                    for lag_i in range(lags):
-                        start = n_det + lag_i * k
-                        A_lag = params_d[start : start + k, :].T
-                        A_mats.append(A_lag)
                     coefs_d = np.stack(A_mats)
                     B_d = _solve_blanchard_quah(sigma_u_d, coefs_d)
                     A_d = np.eye(k)
@@ -566,18 +571,7 @@ class SVARResult(VARResult):
                         B_d = self.B
 
             # --- MA coefficients via recursion ---
-            A_mats = []
-            for lag_i in range(lags):
-                start = n_det + lag_i * k
-                A_lag = params_d[start : start + k, :].T  # (k, k)
-                A_mats.append(A_lag)
-
-            ma_coefs = [np.eye(k)]  # Psi_0 = I
-            for h in range(1, periods + 1):
-                psi_h = np.zeros((k, k))
-                for j in range(1, min(h, lags) + 1):
-                    psi_h += A_mats[j - 1] @ ma_coefs[h - j]
-                ma_coefs.append(psi_h)
+            ma_coefs = _ma_coefficients(A_mats, periods)
 
             # --- Structural IRF ---
             try:
@@ -915,7 +909,6 @@ class SVAR(BaseModel):
             _data_names=var_result._data_names,
             _k=var_result._k,
             _var_result=var_result._var_result,
-            _var_model=var_result._var_model,
             _trend=var_result._trend,
             _irf_cache=var_result._irf_cache,
             A=A_est,

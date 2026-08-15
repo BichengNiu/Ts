@@ -4,6 +4,7 @@ Sources
 -------
 - Perron (1989) Table IV.B — finite-sample critical values
 - Zivot & Andrews (1992) Table 2 — asymptotic critical values
+- Lee & Strazicich (2003) Table 1 — two-break minimum LM critical values
 """
 
 from __future__ import annotations
@@ -11,6 +12,25 @@ from __future__ import annotations
 import numpy as np
 
 from ._utils import _validate_model
+
+# ---------------------------------------------------------------------------
+# Lee & Strazicich (2003) Table 1 — two-break minimum LM critical values
+# ---------------------------------------------------------------------------
+
+_LS_MODEL_A_CRITICAL = {
+    "1%": -4.545,
+    "5%": -3.842,
+    "10%": -3.504,
+}
+
+_LS_MODEL_C_CRITICAL = {
+    (0.2, 0.4): {"1%": -6.16, "5%": -5.59, "10%": -5.27},
+    (0.2, 0.6): {"1%": -6.41, "5%": -5.74, "10%": -5.32},
+    (0.2, 0.8): {"1%": -6.33, "5%": -5.71, "10%": -5.33},
+    (0.4, 0.6): {"1%": -6.45, "5%": -5.67, "10%": -5.31},
+    (0.4, 0.8): {"1%": -6.42, "5%": -5.65, "10%": -5.32},
+    (0.6, 0.8): {"1%": -6.32, "5%": -5.73, "10%": -5.32},
+}
 
 # ---------------------------------------------------------------------------
 # Perron (1989) Table IV.B — t-alpha critical values by break fraction

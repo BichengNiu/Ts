@@ -5,48 +5,17 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from pandas.tseries.offsets import (
-    BMonthBegin,
-    BMonthEnd,
     BQuarterBegin,
-    BQuarterEnd,
-    BusinessDay,
-    Day,
-    MonthBegin,
-    MonthEnd,
     QuarterBegin,
-    QuarterEnd,
-    Week,
 )
 
-from ._calendar import resolve_frequency, resolve_time_index
+from ._calendar import _classify_offset_family, resolve_frequency, resolve_time_index
 
 
 def _resolve_frequency(index):
     """Return a supported seasonal family and its unit pandas offset."""
     offset = resolve_frequency(index)
-    if offset.n != 1:
-        raise ValueError(
-            f"seasonal_dummies does not support frequency {offset.freqstr!r}"
-        )
-
-    if isinstance(offset, BusinessDay):
-        family = "business_daily"
-    elif isinstance(offset, Day):
-        family = "daily"
-    elif isinstance(offset, Week):
-        family = "weekly"
-    elif isinstance(offset, (BMonthBegin, BMonthEnd, MonthBegin, MonthEnd)):
-        family = "monthly"
-    elif isinstance(
-        offset,
-        (BQuarterBegin, BQuarterEnd, QuarterBegin, QuarterEnd),
-    ):
-        family = "quarterly"
-    else:
-        raise ValueError(
-            f"seasonal_dummies does not support frequency {offset.freqstr!r}"
-        )
-    return family, offset
+    return _classify_offset_family(offset), offset
 
 
 def _seasonal_categories(index, family, offset):

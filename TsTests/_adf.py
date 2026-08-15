@@ -194,6 +194,7 @@ class ADFTest(BaseTest):
         }
         if self.lags is not None:
             kwargs["maxlag"] = self.lags
+            kwargs["autolag"] = None
         else:
             kwargs["maxlag"] = self.max_lags
 

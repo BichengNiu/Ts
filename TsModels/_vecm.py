@@ -27,6 +27,7 @@ from Ts.TsModels._var import (
     GrangerCausalityResult,
     IRFResult,
     _GrangerEntry,
+    _forecast_cov_se,
     _run_granger_all,
 )
 
@@ -450,14 +451,8 @@ class VECMResult(BaseModelResult):
 
         # Standard errors for IRF (asymptotic approximation)
         resid_cov = self.sigma_u
-        se_vals = np.zeros_like(vals)
-        for h in range(periods + 1):
-            accum = np.zeros((k, k))
-            for s in range(h + 1):
-                phi_s = irf_raw[s]
-                accum += phi_s @ resid_cov @ phi_s.T
-            se_diag = np.sqrt(np.diag(accum))
-            se_vals[h] = np.outer(se_diag, np.ones(k))
+        se = _forecast_cov_se(irf_raw, resid_cov, periods + 1)
+        se_vals = np.broadcast_to(se[:, :, None], (periods + 1, k, k))
 
         lower = vals - z_crit * se_vals
         upper = vals + z_crit * se_vals
@@ -620,105 +615,9 @@ class VECMResult(BaseModelResult):
         evals = np.linalg.eigvals(_build_companion(var_rep))
         return bool(np.all(np.abs(evals) <= 1.0 + 1e-10))
 
-    def plot_diagnostics(self, title=None):
-        """Plot standardized-residual diagnostics for each VECM equation.
-
-        Grid: k rows x 3 columns (standardized residuals, ACF, PACF).
-
-        Parameters
-        ----------
-        title : str, optional
-
-        Returns
-        -------
-        fig, axes
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from Ts.TsModels import VECM
-        >>> rng = np.random.default_rng(42)
-        >>> common = np.cumsum(rng.normal(size=120))
-        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
-        >>> result = VECM(data, lags=2, coint_rank=1).fit()
-        >>> fig, axes = result.plot_diagnostics()
-        >>> axes.shape
-        (2, 3)
-        """
-        import matplotlib.pyplot as plt
-        from Ts.TsPlots import plot_series, plot_acf, plot_pacf
-
-        k = self.k
-        fig, axes = plt.subplots(k, 3, figsize=(14, 3 * k), squeeze=False)
-        diagnostic_residuals = self.standardized_residuals
-
-        for i in range(k):
-            name = self._data_names[i]
-            plot_series(
-                diagnostic_residuals[:, i],
-                ax=axes[i, 0],
-                title=f"D_{name} Standardized Residuals",
-                ytitle="Standardized Residual",
-                show_legend=False,
-            )
-            plot_acf(
-                diagnostic_residuals[:, i],
-                ax=axes[i, 1],
-                title=f"D_{name} Standardized Residual ACF",
-            )
-            plot_pacf(
-                diagnostic_residuals[:, i],
-                ax=axes[i, 2],
-                title=f"D_{name} Standardized Residual PACF",
-            )
-
-        if title is None:
-            title = f"VECM({self._lags}, r={self.coint_rank}): Diagnostic Plots"
-        fig.suptitle(title, fontsize=14, fontweight="bold")
-        fig.tight_layout()
-        return fig, axes
-
-    def test_residuals(self, lags=10):
-        """Run residual diagnostic tests for each equation.
-
-        Parameters
-        ----------
-        lags : int
-
-        Returns
-        -------
-        dict
-            Mapping from variable name to ResidualTestResults.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from Ts.TsModels import VECM
-        >>> rng = np.random.default_rng(42)
-        >>> common = np.cumsum(rng.normal(size=120))
-        >>> data = np.column_stack([common + rng.normal(scale=.2, size=120), common])
-        >>> result = VECM(data, lags=2, coint_rank=1).fit()
-        >>> sorted(result.test_residuals(lags=5))
-        ['y0', 'y1']
-        """
-        from Ts.TsTests import LjungBoxTest, EngleLMTest, NormalityTest
-        from Ts.TsModels._base import ResidualTestResults
-
-        results = {}
-        for i in range(self.k):
-            name = self._data_names[i]
-            resid_i = self.residuals[:, i]
-            wn = LjungBoxTest(resid_i, lags=lags, apply_squared=False)
-            norm = NormalityTest(resid_i)
-            lb = LjungBoxTest(resid_i, lags=lags)
-            lm = EngleLMTest(resid_i, lags=lags)
-            results[name] = ResidualTestResults(
-                white_noise=wn.fit(),
-                normality=norm.fit(),
-                ljung_box=lb.fit(),
-                engle_lm=lm.fit(),
-            )
-        return results
+    def _diagnostic_label(self, name):
+        """Prefix equation labels with the VECM difference operator."""
+        return f"D_{name}"
 
     def predict(self, start=0, end=None, alpha=0.05):
         """Return in-sample predictions and forecasts beyond the sample.
@@ -804,17 +703,7 @@ class VECMResult(BaseModelResult):
         >>> result = VECM(data, lags=2, coint_rank=1).fit()
         >>> fig, ax = result.plot_roots()
         """
-        import matplotlib.pyplot as plt
-        from Ts.TsPlots.style import (
-            _ensure_fonts,
-            DEFAULT_PALETTE,
-            style_axes,
-            TITLE_FONTSIZE,
-            AXIS_LABEL_FONTSIZE,
-            TICK_LABELSIZE,
-        )
-
-        _ensure_fonts()
+        from Ts.TsPlots._roots import _plot_inverse_roots
 
         if self._vecm_result is None:
             raise RuntimeError("No fitted VECM result available")
@@ -824,39 +713,14 @@ class VECMResult(BaseModelResult):
         roots = np.linalg.eigvals(_build_companion(var_rep))
         inv_roots = 1.0 / roots
 
-        fig, ax = plt.subplots(figsize=(6, 6))
-        theta = np.linspace(0, 2 * np.pi, 400)
-        ax.plot(
-            np.cos(theta),
-            np.sin(theta),
-            color=DEFAULT_PALETTE[1],
-            linewidth=1.0,
-            linestyle="--",
-        )
-        ax.axhline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-        ax.axvline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-        ax.scatter(
-            inv_roots.real,
-            inv_roots.imag,
-            color=DEFAULT_PALETTE[0],
-            marker="o",
-            s=50,
-            edgecolors=DEFAULT_PALETTE[7],
-            linewidth=0.5,
-            zorder=5,
-        )
-        ax.set_aspect("equal")
-        style_axes(ax)
-        ax.set_xlim(-1.3, 1.3)
-        ax.set_ylim(-1.3, 1.3)
-        ax.set_xlabel("Real", fontsize=AXIS_LABEL_FONTSIZE)
-        ax.set_ylabel("Imaginary", fontsize=AXIS_LABEL_FONTSIZE)
-        ax.tick_params(labelsize=TICK_LABELSIZE)
         if title is None:
             title = f"VECM({self._lags}, r={self.coint_rank}): Inverse Roots"
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
-        fig.tight_layout(pad=1.5)
-        return fig, ax
+
+        return _plot_inverse_roots(
+            {"Inverse roots": inv_roots},
+            title=title,
+            margin=1.3,
+        )
 
     def __repr__(self) -> str:
         return self.summary()

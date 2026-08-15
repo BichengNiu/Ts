@@ -463,8 +463,8 @@ def plot_scatter(
         legend_loc=legend_loc,
         legend_bbox=legend_bbox,
         labels=labels,
+        unit=y_unit,
         x_unit=x_unit,
-        y_unit=y_unit,
     )
 
     return fig, ax

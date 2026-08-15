@@ -58,10 +58,10 @@ from .style import (
     FIGSIZE,
     TITLE_FONTSIZE,
     AXIS_LABEL_FONTSIZE,
-    LEGEND_FONTSIZE,
     style_axes,
     draw_unit_label,
     draw_note_and_bottom_title,
+    draw_legend,
     draw_shade,
     draw_vlines,
 )
@@ -741,7 +741,7 @@ def plot_series(
                 vline_linestyle,
                 vline_linewidth,
             )
-            line = _plot_one_series(
+            _plot_one_series(
                 panel_ax,
                 x_values,
                 values,
@@ -777,13 +777,11 @@ def plot_series(
                 panel_ax.set_ylim(bottom=ymin)
             style_axes(panel_ax, grid=grid)
             if show_legend:
-                panel_ax.legend(
-                    [line],
-                    [display_labels[index]],
-                    frameon=False,
-                    fontsize=LEGEND_FONTSIZE,
-                    loc=legend_loc,
-                    bbox_to_anchor=legend_bbox,
+                draw_legend(
+                    panel_ax,
+                    legend_labels=[display_labels[index]],
+                    legend_loc=legend_loc,
+                    legend_bbox=legend_bbox,
                 )
 
         if title and title_position == "top":
@@ -902,13 +900,12 @@ def plot_series(
         right_axis.yaxis.tick_right()
 
     if show_legend and lines:
-        ax.legend(
-            lines,
-            display_labels,
-            frameon=False,
-            fontsize=LEGEND_FONTSIZE,
-            loc=legend_loc,
-            bbox_to_anchor=legend_bbox,
+        draw_legend(
+            ax,
+            handles=lines,
+            legend_labels=display_labels,
+            legend_loc=legend_loc,
+            legend_bbox=legend_bbox,
         )
 
     ctx.finalize(

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
+from matplotlib.colors import is_color_like
 import numpy as np
 
 # --- Fonts -----------------------------------------------------------------
@@ -165,6 +166,29 @@ def _resolve_colors(colors, series_count):
             f"colors has {len(resolved)} entries but there are {series_count} series"
         )
     return resolved
+
+
+def _resolve_bar_colors(color, count):
+    """Return one color per response from ``None``, a single color, or a list."""
+    if color is None:
+        return [DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)] for index in range(count)]
+    if is_color_like(color):
+        return [color] * count
+    colors = list(color)
+    if len(colors) != count:
+        raise ValueError("color must contain one value per response")
+    return colors
+
+
+def _validate_max_ticks(value):
+    """Return *value* as int after rejecting non-positive integers."""
+    if (
+        isinstance(value, (bool, np.bool_))
+        or not isinstance(value, (int, np.integer))
+        or int(value) < 1
+    ):
+        raise ValueError("max_ticks must be a positive integer")
+    return int(value)
 
 
 def _validate_positive_step(name, value, *, integer=False):
@@ -323,6 +347,7 @@ def draw_legend(
     ax,
     *,
     show_legend=True,
+    handles=None,
     legend_labels=None,
     legend_loc="best",
     legend_bbox=None,
@@ -335,6 +360,8 @@ def draw_legend(
     ax : matplotlib.axes.Axes
     show_legend : bool
         Whether to display the legend at all. Defaults to ``True``.
+    handles : sequence of Artist, optional
+        Explicit legend handles. Defaults to the labelled artists on *ax*.
     legend_labels : sequence of str, optional
         Override the text of the legend entries. Must match the number of
         plotted handles.
@@ -347,7 +374,11 @@ def draw_legend(
     """
     if not show_legend:
         return
-    handles, auto_labels = ax.get_legend_handles_labels()
+    if handles is None:
+        handles, auto_labels = ax.get_legend_handles_labels()
+    else:
+        handles = list(handles)
+        auto_labels = []
     final_labels = legend_labels if legend_labels is not None else auto_labels
     if legend_labels is not None and len(legend_labels) != len(handles):
         raise ValueError(
@@ -490,7 +521,6 @@ class _FigureContext:
         labels=None,
         unit=None,
         x_unit=None,
-        y_unit=None,
     ):
         """Apply common post-plot styling."""
         _ensure_fonts()
@@ -524,8 +554,6 @@ class _FigureContext:
             draw_unit_label(self.ax, unit, axis="y")
         if x_unit is not None:
             draw_unit_label(self.ax, x_unit, axis="x")
-        if y_unit is not None:
-            draw_unit_label(self.ax, y_unit, axis="y")
 
         self.fig.tight_layout(pad=1.5)
 

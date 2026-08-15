@@ -126,81 +126,21 @@ class IRFResult:
             "",
         ]
 
-        n_cols = self.k * self.k
-        col_pairs = [(j, i) for j in range(self.k) for i in range(self.k)]
-
-        # --- column widths ---
-        step_w = max(len("step"), len(str(self.periods)))
-        val_w = 4
-        for h in range(self.periods + 1):
-            for j, i in col_pairs:
-                val_w = max(val_w, len(_stata_fmt(self.values[h, i, j])))
-        for idx in range(1, n_cols + 1):
-            val_w = max(val_w, len(f"({idx})"))
-
-        def _step_cell(val):
-            return f" {val:<{step_w}} "
-
-        def _val_cell(val):
-            return f" {val:>{val_w}} "
-
-        def _row(cells):
-            return "|" + "|".join(cells) + "|"
-
-        total_inner = len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
-        top_border = "+" + "-" * total_inner + "+"
-        hdr_sep = (
-            "|"
-            + "-" * len(_step_cell(""))
-            + "+"
-            + "+".join("-" * len(_val_cell("")) for _ in range(n_cols))
-            + "|"
-        )
-
-        lines.append(top_border)
-
-        # header row 1: column numbers
-        lines.append(
-            _row(
-                [_step_cell("")]
-                + [_val_cell(f"({idx})") for idx in range(1, n_cols + 1)]
-            )
-        )
-        # header row 2: "step" + col label
         col_label = "sirf" if self.label == "Structural IRF" else "irf"
-        lines.append(
-            _row([_step_cell("step")] + [_val_cell(col_label) for _ in range(n_cols)])
-        )
-
-        lines.append(hdr_sep)
-
-        # data rows (step 0 .. periods)
-        for h in range(self.periods + 1):
-            lines.append(  # noqa: PERF401 - explicit table rows are clearer
-                _row(
-                    [_step_cell(str(h))]
-                    + [
-                        _val_cell(_stata_fmt(self.values[h, i, j]))
-                        for j, i in col_pairs
-                    ]
-                )
+        lines.extend(
+            _render_pair_table(
+                self.names,
+                self.k,
+                self.periods,
+                col_label,
+                lambda h, i, j: _stata_fmt(self.values[h, i, j]),
+                range(self.periods + 1),
             )
-
-        lines.append(top_border)
+        )
         lines.append("")
-
-        # --- legend ---
-        idx = 1
-        for j in range(self.k):
-            for i in range(self.k):
-                lines.append(
-                    f"({idx}) impulse = {self.names[j]}, response = {self.names[i]}"
-                )
-                idx += 1
 
         # --- CI note ---
         if self.lower is not None:
-            lines.append("")
             if self.ci_method == "analytic":
                 band_desc = "Analytic standard errors"
             elif self.ci_method == "bootstrap":
@@ -337,86 +277,22 @@ class FEVDResult:
             "",
         ]
 
-        n_cols = self.k * self.k
-        col_pairs = [(j, i) for j in range(self.k) for i in range(self.k)]
-
-        # --- column widths ---
-        step_w = max(len("step"), len(str(self.periods)))
-        val_w = len("fevd")
-        for h in range(self.periods):
-            for j, i in col_pairs:
-                val_w = max(val_w, len(_stata_fmt(self.values[h, i, j])))
-        for idx in range(1, n_cols + 1):
-            val_w = max(val_w, len(f"({idx})"))
-
-        # --- cell helpers ---
-        def _step_cell(val):
-            return f" {val:<{step_w}} "
-
-        def _val_cell(val):
-            return f" {val:>{val_w}} "
-
-        def _row(cells):
-            return "|" + "|".join(cells) + "|"
-
-        # --- borders ---
-        total_inner = len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
-        top_border = "+" + "-" * total_inner + "+"
-        hdr_sep = (
-            "|"
-            + "-" * len(_step_cell(""))
-            + "+"
-            + "+".join("-" * len(_val_cell("")) for _ in range(n_cols))
-            + "|"
-        )
-
-        # --- table body ---
-        lines.append(top_border)
-
-        # header row 1: column numbers
-        lines.append(
-            _row(
-                [_step_cell("")]
-                + [_val_cell(f"({idx})") for idx in range(1, n_cols + 1)]
+        lines.extend(
+            _render_pair_table(
+                self.names,
+                self.k,
+                self.periods,
+                "fevd",
+                lambda h, i, j: (
+                    "0" if h == 0 else _stata_fmt(self.values[h - 1, i, j])
+                ),
+                range(self.periods + 1),
             )
         )
-        # header row 2: "step" + "fevd" × n
-        lines.append(
-            _row([_step_cell("step")] + [_val_cell("fevd") for _ in range(n_cols)])
-        )
-
-        lines.append(hdr_sep)
-
-        # step 0 (all zeros, display only)
-        lines.append(_row([_step_cell("0")] + [_val_cell("0") for _ in range(n_cols)]))
-
-        # data rows (step 1 .. periods)
-        for h in range(self.periods):
-            lines.append(  # noqa: PERF401 - explicit table rows are clearer
-                _row(
-                    [_step_cell(str(h + 1))]
-                    + [
-                        _val_cell(_stata_fmt(self.values[h, i, j]))
-                        for j, i in col_pairs
-                    ]
-                )
-            )
-
-        lines.append(top_border)
         lines.append("")
-
-        # --- legend ---
-        idx = 1
-        for j in range(self.k):
-            for i in range(self.k):
-                lines.append(
-                    f"({idx}) impulse = {self.names[j]}, response = {self.names[i]}"
-                )
-                idx += 1
 
         # --- CI availability note ---
         if self.lower is not None and self.upper is not None:
-            lines.append("")
             lines.append(
                 f"Note: {ci_pct}% confidence intervals via "
                 f"Monte Carlo ({self.n_draws} draws)."
@@ -774,6 +650,121 @@ def _stata_fmt(val: float) -> str:
     return s
 
 
+def _ensure_positive_definite(matrix):
+    """Return a matrix with minimal diagonal jitter when not positive definite."""
+    eigvals = np.linalg.eigvalsh(matrix)
+    min_ev = np.min(eigvals)
+    if min_ev < 1e-15:
+        return matrix + np.eye(matrix.shape[0]) * (1e-10 - min_ev)
+    return matrix
+
+
+def _ma_coefficients(A_mats, steps):
+    """Return MA coefficient matrices ``Psi_0 .. Psi_steps`` via recursion.
+
+    ``Psi_0 = I`` and ``Psi_h = sum_{j=1..min(h, p)} A_j Psi_{h-j}``.
+    """
+    k = A_mats[0].shape[0]
+    ma_coefs = [np.eye(k)]
+    for h in range(1, steps + 1):
+        psi_h = np.zeros((k, k))
+        for j in range(1, min(h, len(A_mats)) + 1):
+            psi_h += A_mats[j - 1] @ ma_coefs[h - j]
+        ma_coefs.append(psi_h)
+    return ma_coefs
+
+
+def _forecast_cov_se(ma_coefs, resid_cov, steps):
+    """Return per-horizon standard errors from the forecast covariance.
+
+    ``Var(e_{t+h}) = sum_{s=0..h} Psi_s Sigma Psi_s'`` with ``se_h`` the
+    square root of its diagonal.
+    """
+    se = np.empty((steps, resid_cov.shape[0]))
+    for h in range(steps):
+        accum = np.zeros_like(resid_cov)
+        for s in range(h + 1):
+            phi_s = np.asarray(ma_coefs[s])
+            accum += phi_s @ resid_cov @ phi_s.T
+        se[h] = np.sqrt(np.diag(accum))
+    return se
+
+
+def _render_pair_table(names, k, periods, header_label, value_cells, steps):
+    """Return bordered table lines for a (impulse, response) column layout.
+
+    Parameters
+    ----------
+    names : list of str
+        Variable names used in the column legend.
+    k : int
+        Number of variables.
+    periods : int
+        Maximum displayed step.
+    header_label : str
+        Column label shown under "step".
+    value_cells : callable (h, i, j) -> str
+        Cell content for step *h* and response *i* / impulse *j*.
+    steps : iterable of int
+        Step numbers rendered as rows.
+
+    Returns
+    -------
+    list of str
+        Table lines including borders, headers, and the column legend.
+    """
+    n_cols = k * k
+    col_pairs = [(j, i) for j in range(k) for i in range(k)]
+
+    step_w = max(len("step"), max(len(str(step)) for step in steps))
+    val_w = len(header_label)
+    for h in steps:
+        for j, i in col_pairs:
+            val_w = max(val_w, len(value_cells(h, i, j)))
+    for idx in range(1, n_cols + 1):
+        val_w = max(val_w, len(f"({idx})"))
+
+    def _step_cell(val):
+        return f" {val:<{step_w}} "
+
+    def _val_cell(val):
+        return f" {val:>{val_w}} "
+
+    def _row(cells):
+        return "|" + "|".join(cells) + "|"
+
+    total_inner = len(_step_cell("")) + len(_val_cell("")) * n_cols + n_cols
+    top_border = "+" + "-" * total_inner + "+"
+    hdr_sep = (
+        "|"
+        + "-" * len(_step_cell(""))
+        + "+"
+        + "+".join("-" * len(_val_cell("")) for _ in range(n_cols))
+        + "|"
+    )
+
+    lines = [
+        top_border,
+        _row([_step_cell("")] + [_val_cell(f"({idx})") for idx in range(1, n_cols + 1)]),
+        _row([_step_cell("step")] + [_val_cell(header_label) for _ in range(n_cols)]),
+        hdr_sep,
+    ]
+    lines.extend(
+        _row([_step_cell(str(step))] + [_val_cell(value_cells(step, i, j)) for j, i in col_pairs])
+        for step in steps
+    )
+    lines.append(top_border)
+
+    idx = 1
+    for j in range(k):
+        for i in range(k):
+            lines.append(
+                f"({idx}) impulse = {names[j]}, response = {names[i]}"
+            )
+            idx += 1
+    return lines
+
+
 def _sig_star(p_value: float) -> str:
     """Return significance star code for a p-value.
 
@@ -850,8 +841,6 @@ class VARResult(BaseModelResult):
         Number of endogenous variables.
     _var_result : object
         Raw statsmodels VARResultsWrapper, stored for internal delegation.
-    _var_model : object
-        Raw statsmodels VAR model, stored for forecast / IRF.
 
     Examples
     --------
@@ -867,7 +856,6 @@ class VARResult(BaseModelResult):
     _data_names: list = None
     _k: int = 1
     _var_result: object = None
-    _var_model: object = None
     _trend: str = "c"
     _irf_cache: dict | None = field(default=None, repr=False)
 
@@ -939,166 +927,6 @@ class VARResult(BaseModelResult):
                     )
             lines.append("")
         return "\n".join(lines)
-
-    def plot_fit(self, title=None):
-        """Plot actual vs fitted for each variable in separate subplots.
-
-        Parameters
-        ----------
-        title : str, optional
-            Suptitle for the figure.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-        axes : numpy.ndarray of matplotlib.axes.Axes
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from Ts.TsModels import VAR
-        >>> result = VAR(np.random.default_rng(42).normal(size=(80, 2))).fit()
-        >>> fig, axes = result.plot_fit()
-        >>> len(axes)
-        2
-        """
-        import matplotlib.pyplot as plt
-
-        from Ts.TsPlots import plot_series
-
-        k = self._k
-        fig, axes = plt.subplots(k, 1, figsize=(10, 3 * k), squeeze=False)
-        axes = axes[:, 0]
-
-        data_aligned = self.data[-self.fitted_values.shape[0] :]
-
-        for i in range(k):
-            name = self._data_names[i]
-            plot_data = {
-                f"{name} (actual)": data_aligned[:, i],
-                f"{name} (fitted)": self.fitted_values[:, i],
-            }
-            plot_series(
-                plot_data,
-                ax=axes[i],
-                facet=False,
-                title=f"Variable: {name}",
-                ytitle="Value",
-            )
-
-        if title is None:
-            title = f"VAR({self._lags}): Actual vs Fitted"
-        fig.suptitle(title, fontsize=14, fontweight="bold")
-        fig.tight_layout()
-        return fig, axes
-
-    def plot_diagnostics(self, title=None):
-        """Plot standardized-residual diagnostics for each variable.
-
-        Grid layout: k rows x 3 columns. Left: standardized residuals;
-        middle: ACF; right: PACF.
-
-        Parameters
-        ----------
-        title : str, optional
-            Suptitle for the figure.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-        axes : numpy.ndarray of matplotlib.axes.Axes
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from Ts.TsModels import VAR
-        >>> result = VAR(np.random.default_rng(42).normal(size=(120, 2))).fit()
-        >>> fig, axes = result.plot_diagnostics()
-        >>> axes.shape
-        (2, 3)
-        """
-        import matplotlib.pyplot as plt
-
-        from Ts.TsPlots import plot_series, plot_acf, plot_pacf
-
-        k = self._k
-        fig, axes = plt.subplots(k, 3, figsize=(14, 3 * k), squeeze=False)
-        diagnostic_residuals = self.standardized_residuals
-
-        for i in range(k):
-            name = self._data_names[i]
-
-            plot_series(
-                diagnostic_residuals[:, i],
-                ax=axes[i, 0],
-                title=f"{name} Standardized Residuals",
-                ytitle="Standardized Residual",
-                show_legend=False,
-            )
-
-            plot_acf(
-                diagnostic_residuals[:, i],
-                ax=axes[i, 1],
-                title=f"{name} Standardized Residual ACF",
-            )
-
-            plot_pacf(
-                diagnostic_residuals[:, i],
-                ax=axes[i, 2],
-                title=f"{name} Standardized Residual PACF",
-            )
-
-        if title is None:
-            title = f"VAR({self._lags}): Diagnostic Plots"
-        fig.suptitle(title, fontsize=14, fontweight="bold")
-        fig.tight_layout()
-        return fig, axes
-
-    def test_residuals(self, lags=10):
-        """Run residual diagnostic tests for each variable.
-
-        For each equation's residuals, runs the four standard tests:
-        white noise, normality, Ljung-Box on squares, and Engle LM.
-
-        Parameters
-        ----------
-        lags : int
-            Number of lags for autocorrelation-based tests.
-
-        Returns
-        -------
-        dict
-            Mapping from variable name to :class:`ResidualTestResults`.
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from Ts.TsModels import VAR
-        >>> result = VAR(np.random.default_rng(42).normal(size=(100, 2))).fit()
-        >>> diagnostics = result.test_residuals(lags=5)
-        >>> sorted(diagnostics)
-        ['y0', 'y1']
-        """
-        from Ts.TsTests import LjungBoxTest, EngleLMTest, NormalityTest
-        from Ts.TsModels._base import ResidualTestResults
-
-        results = {}
-        for i in range(self._k):
-            name = self._data_names[i]
-            resid_i = self.residuals[:, i]
-
-            wn = LjungBoxTest(resid_i, lags=lags, apply_squared=False)
-            norm = NormalityTest(resid_i)
-            lb = LjungBoxTest(resid_i, lags=lags)
-            lm = EngleLMTest(resid_i, lags=lags)
-
-            results[name] = ResidualTestResults(
-                white_noise=wn.fit(),
-                normality=norm.fit(),
-                ljung_box=lb.fit(),
-                engle_lm=lm.fit(),
-            )
-        return results
 
     def irf(self, periods=10, orth=False, alpha=0.05):
         """Compute impulse response functions with confidence bands.
@@ -1277,10 +1105,7 @@ class VARResult(BaseModelResult):
         cov_beta = np.asarray(fitted.cov_params())
 
         # Ensure cov_beta is positive definite for multivariate_normal
-        eigvals = np.linalg.eigvalsh(cov_beta)
-        min_ev = np.min(eigvals)
-        if min_ev < 1e-15:
-            cov_beta = cov_beta + np.eye(len(beta_flat)) * (1e-10 - min_ev)
+        cov_beta = _ensure_positive_definite(cov_beta)
 
         rng = np.random.default_rng(seed)
 
@@ -1301,12 +1126,7 @@ class VARResult(BaseModelResult):
                 A_mats.append(A_lag)
 
             # MA coefficients via recursion
-            ma_coefs = [np.eye(k)]  # Psi_0 = I
-            for h in range(1, periods):
-                psi_h = np.zeros((k, k))
-                for j in range(1, min(h, lags) + 1):
-                    psi_h += A_mats[j - 1] @ ma_coefs[h - j]
-                ma_coefs.append(psi_h)
+            ma_coefs = _ma_coefficients(A_mats, periods - 1)
 
             # Orthogonalized MA coefficients
             orth_ma = [psi_s @ P for psi_s in ma_coefs]  # Theta_s
@@ -1559,18 +1379,7 @@ class VARResult(BaseModelResult):
         >>> ax.get_title().startswith("VAR")
         True
         """
-        import matplotlib.pyplot as plt
-
-        from Ts.TsPlots.style import (
-            _ensure_fonts,
-            DEFAULT_PALETTE,
-            style_axes,
-            TITLE_FONTSIZE,
-            AXIS_LABEL_FONTSIZE,
-            TICK_LABELSIZE,
-        )
-
-        _ensure_fonts()
+        from Ts.TsPlots._roots import _plot_inverse_roots
 
         if self._var_result is None:
             raise RuntimeError("No fitted VAR result available")
@@ -1580,52 +1389,17 @@ class VARResult(BaseModelResult):
         # We plot inverse roots (1/root): for stability, |1/root| < 1
         # (inside the unit circle). This matches the standard VAR
         # stability visualization convention (EViews, Stata, etc.).
-        raw_roots = np.asarray(self._var_result.roots)
-        inv_roots = 1.0 / raw_roots
-
-        fig, ax = plt.subplots(figsize=(6, 6))
-
-        theta = np.linspace(0, 2 * np.pi, 400)
-        ax.plot(
-            np.cos(theta),
-            np.sin(theta),
-            color=DEFAULT_PALETTE[1],
-            linewidth=1.0,
-            linestyle="--",
-        )
-
-        ax.axhline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-        ax.axvline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-
-        ax.scatter(
-            inv_roots.real,
-            inv_roots.imag,
-            color=DEFAULT_PALETTE[0],
-            marker="o",
-            s=50,
-            edgecolors=DEFAULT_PALETTE[7],
-            linewidth=0.5,
-            zorder=5,
-        )
-
-        ax.set_aspect("equal")
-        style_axes(ax)
-
-        # Scale to unit circle + small margin (inverse roots are all < 1)
-        ax.set_xlim(-1.3, 1.3)
-        ax.set_ylim(-1.3, 1.3)
-
-        ax.set_xlabel("Real", fontsize=AXIS_LABEL_FONTSIZE)
-        ax.set_ylabel("Imaginary", fontsize=AXIS_LABEL_FONTSIZE)
-        ax.tick_params(labelsize=TICK_LABELSIZE)
+        inv_roots = 1.0 / np.asarray(self._var_result.roots)
 
         if title is None:
             status = "Stable" if self.is_stable else "NOT stable"
             title = f"VAR({self._lags}): Inverse Roots ({status})"
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
 
-        fig.tight_layout(pad=1.5)
-        return fig, ax
+        return _plot_inverse_roots(
+            {"Inverse roots": inv_roots},
+            title=title,
+            margin=1.3,
+        )
 
     def predict(self, start=0, end=None, alpha=0.05):
         """Return in-sample predictions and forecasts beyond the sample.
@@ -1737,16 +1511,9 @@ class VARResult(BaseModelResult):
         resid_cov = np.cov(self.residuals, rowvar=False)
         ma_coefs = self._var_result.ma_rep(maxn=steps)
 
-        lower = np.empty_like(mean)
-        upper = np.empty_like(mean)
-        for h in range(steps):
-            accum = np.zeros((self._k, self._k))
-            for s in range(h + 1):
-                phi_s = np.asarray(ma_coefs[s])
-                accum += phi_s @ resid_cov @ phi_s.T
-            se = np.sqrt(np.diag(accum))
-            lower[h] = mean[h] - z_val * se
-            upper[h] = mean[h] + z_val * se
+        se = _forecast_cov_se(ma_coefs, resid_cov, steps)
+        lower = mean - z_val * se
+        upper = mean + z_val * se
         return lower, upper
 
     def long_run_equilibrium(self):
@@ -2082,8 +1849,7 @@ class VAR(BaseModel):
         """
         from statsmodels.tsa.vector_ar.var_model import VAR as _SM_VAR
 
-        sm_var = _SM_VAR(self.data)
-        fitted = sm_var.fit(
+        fitted = _SM_VAR(self.data).fit(
             maxlags=self.lags,
             trend=self.trend,
             ic=None,
@@ -2125,7 +1891,6 @@ class VAR(BaseModel):
             _data_names=self.data_names,
             _k=k,
             _var_result=fitted,
-            _var_model=sm_var,
             _trend=self.trend,
         )
 

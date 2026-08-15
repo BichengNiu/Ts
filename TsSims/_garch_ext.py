@@ -10,11 +10,12 @@ import numpy as np
 
 from ._garch_core import (
     _normalize_coef,
+    _t_dist_df,
     _make_standard_variance_fn,
     _run_garch_simulation,
 )
 from ._garch_result import SimGARCHResult
-from ._validation import validate_choice, validate_int, validate_real, validate_sample
+from ._validation import validate_choice, validate_int, validate_real
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +147,7 @@ def _simulate_egarch(
 
     # Pre-compute E|z| for the chosen distribution
     if dist == "t":
-        df = 5.0
-        if dist_params is not None and "df" in dist_params:
-            df = float(dist_params["df"])
+        df = _t_dist_df(dist_params)
         exp_abs_z = (
             2.0
             * np.sqrt(df - 2.0)
@@ -281,14 +280,11 @@ def simulate_gjr_garch(
     >>> result.params["gamma"]
     [0.15]
     """
-    n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
     q = validate_int("q", q, minimum=0)
     o = validate_int("o", o, minimum=0)
     omega = validate_real("omega", omega, positive=True)
-    validate_real("mean_const", mean_const)
     validate_choice("mean_model", mean_model, ("constant", "zero"))
-    validate_choice("dist", dist, ("normal", "t"))
 
     alpha = _normalize_coef(alpha, 0.10, p, name="alpha", nonnegative=True)
     gamma = _normalize_coef(gamma, 0.10, o, name="gamma")
@@ -388,14 +384,11 @@ def simulate_egarch(
     >>> result.model_type
     'EGARCH'
     """
-    n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
     q = validate_int("q", q, minimum=0)
     o = validate_int("o", o, minimum=0)
     omega = validate_real("omega", omega)
-    validate_real("mean_const", mean_const)
     validate_choice("mean_model", mean_model, ("constant", "zero"))
-    validate_choice("dist", dist, ("normal", "t"))
 
     alpha = _normalize_coef(alpha, 0.15, p, name="alpha")
     gamma = _normalize_coef(gamma, 0.05, o, name="gamma")
@@ -493,15 +486,12 @@ def simulate_garch_m(
     >>> result.params["garch_m_form"]
     'var'
     """
-    n, burn = validate_sample(n, burn)
     p = validate_int("p", p, minimum=1)
     q = validate_int("q", q, minimum=0)
     omega = validate_real("omega", omega, positive=True)
     garch_m_kappa = validate_real("garch_m_kappa", garch_m_kappa)
-    validate_real("mean_const", mean_const)
     validate_choice("garch_m_form", garch_m_form, ("vol", "var", "log"))
     validate_choice("mean_model", mean_model, ("constant", "zero"))
-    validate_choice("dist", dist, ("normal", "t"))
 
     alpha = _normalize_coef(alpha, 0.20, p, name="alpha", nonnegative=True)
     beta = _normalize_coef(beta, 0.60, q, name="beta", nonnegative=True)

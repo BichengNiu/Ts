@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from Ts.TsSims import simulate_sarima
-from Ts.TsTests._outlier import (
+from Ts.TsModels._outlier import (
     OutlierDetector,
     OutlierDetectorResult,
     _ar_ma_coefficients,
@@ -14,7 +14,6 @@ from Ts.TsTests._outlier import (
     _outlier_footprint,
     _pi_weights,
     _scan_outlier_type,
-    _whitened_regressor,
 )
 
 
@@ -90,15 +89,15 @@ def test_pure_outlier_footprints_ar1_omega6():
     np.testing.assert_allclose(io, [6.0] + [0.0] * (n - 1))
 
 
-def test_whitened_regressor_places_footprint_at_candidate_time():
+def test_outlier_footprint_places_weight_at_candidate_time():
     weights = np.array([1.0, 0.7, 0.0, 0.0])
-    w = _whitened_regressor(2, weights, 6)
+    w = _outlier_footprint(1.0, weights, 2, 6)
     np.testing.assert_allclose(w, [0.0, 0.0, 1.0, -0.7, 0.0, 0.0])
 
 
-def test_whitened_regressor_truncates_at_sample_end():
+def test_outlier_footprint_truncates_at_sample_end():
     weights = np.array([1.0, 0.7, 0.0, 0.0])
-    w = _whitened_regressor(5, weights, 6)
+    w = _outlier_footprint(1.0, weights, 5, 6)
     np.testing.assert_allclose(w, [0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
 
 
@@ -113,10 +112,10 @@ def test_omega_matches_explicit_ols_regression():
     e = rng.normal(size=n)
     pi = _pi_weights(np.array([1.0, 0.7]), np.array([1.0]), n)
     position = 15
-    e = e + 6.0 * _whitened_regressor(position, pi, n)
+    e = e + 6.0 * _outlier_footprint(1.0, pi, position, n)
 
     omega, lstat, standard_error = _scan_outlier_type(e, pi, 1.0)
-    w = _whitened_regressor(position, pi, n)
+    w = _outlier_footprint(1.0, pi, position, n)
     expected = np.dot(w, e) / np.dot(w, w)
     assert omega[position] == pytest.approx(expected)
     assert standard_error[position] == pytest.approx(1.0 / np.sqrt(np.dot(w, w)))
@@ -130,7 +129,7 @@ def test_ls_estimate_is_invariant_to_omega_scale():
     pi = _pi_weights(np.array([1.0, 0.7]), np.array([1.0]), n)
     c = _c_weights(pi)
     position = 30
-    w = _whitened_regressor(position, c, n)
+    w = _outlier_footprint(1.0, c, position, n)
 
     estimates = []
     for scale in (1.0, 6.0):

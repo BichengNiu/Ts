@@ -10,26 +10,13 @@ import statsmodels.api as sm
 
 from ._base import BaseTest, BaseTestResult
 from ._break_utils import (
-    _validate_nonnegative_int,
+    _ic_from_ssr,
+    _select_lag_by_tstat,
+    _validate_lag_parameters,
     _validate_time_axis,
 )
-from ._utils import _parse_input
-
-
-_LS_MODEL_A_CRITICAL = {
-    "1%": -4.545,
-    "5%": -3.842,
-    "10%": -3.504,
-}
-
-_LS_MODEL_C_CRITICAL = {
-    (0.2, 0.4): {"1%": -6.16, "5%": -5.59, "10%": -5.27},
-    (0.2, 0.6): {"1%": -6.41, "5%": -5.74, "10%": -5.32},
-    (0.2, 0.8): {"1%": -6.33, "5%": -5.71, "10%": -5.33},
-    (0.4, 0.6): {"1%": -6.45, "5%": -5.67, "10%": -5.31},
-    (0.4, 0.8): {"1%": -6.42, "5%": -5.65, "10%": -5.32},
-    (0.6, 0.8): {"1%": -6.32, "5%": -5.73, "10%": -5.32},
-}
+from ._critical_values import _LS_MODEL_A_CRITICAL, _LS_MODEL_C_CRITICAL
+from ._utils import _parse_input, _validate_nonnegative_int
 
 
 @dataclass(frozen=True)
@@ -180,31 +167,26 @@ def _select_lm_regression(
         except (ValueError, np.linalg.LinAlgError, FloatingPointError):
             fit = None
         fits.append(fit)
-        if fit is not None:
+        if fit is not None and lag_method in ("aic", "bic"):
             n_effective = len(fit.residuals)
             nparams = len(fit.coefficients)
             ssr = float(fit.residuals @ fit.residuals)
-            if lag_method == "aic":
-                criteria[lag] = np.log(ssr / n_effective) + (2 * nparams / n_effective)
-            elif lag_method == "bic":
-                criteria[lag] = np.log(ssr / n_effective) + (
-                    nparams * np.log(n_effective) / n_effective
-                )
+            criteria[lag] = _ic_from_ssr(ssr, n_effective, nparams, lag_method)
 
     if lag_method in ("aic", "bic"):
         if np.all(np.isnan(criteria)):
             raise np.linalg.LinAlgError("no estimable lag specification")
         selected_lag = int(np.nanargmin(criteria))
     else:
-        selected_lag = 0
-        for lag in range(max_lags, 0, -1):
-            fit = fits[lag]
-            if fit is None:
-                continue
-            tstat = fit.tvalues[f"dS_lag{lag}"]
-            if abs(tstat) >= lag_crit:
-                selected_lag = lag
-                break
+        selected_lag = _select_lag_by_tstat(
+            max_lags,
+            lambda lag: (
+                fits[lag].tvalues[f"dS_lag{lag}"]
+                if fits[lag] is not None
+                else None
+            ),
+            lag_crit,
+        )
         if fits[selected_lag] is None:
             valid_lags = [lag for lag, fit in enumerate(fits) if fit is not None]
             if not valid_lags:
@@ -436,18 +418,9 @@ class LeeStrazicichTwoBreakTest(BaseTest):
         if not isinstance(model, str) or model.upper() not in ("A", "C"):
             raise ValueError("model must be 'A' or 'C'")
         self.model = model.upper()
-        self.lags = (
-            None if lags is None else _validate_nonnegative_int(lags, name="lags")
+        self.lags, self.max_lags, self.lag_crit, self.lag_method = (
+            _validate_lag_parameters(lags, max_lags, lag_crit, lag_method)
         )
-        self.max_lags = _validate_nonnegative_int(max_lags, name="max_lags")
-        if lag_method not in ("tstat", "aic", "bic"):
-            raise ValueError("lag_method must be 'tstat', 'aic', or 'bic'")
-        self.lag_method = lag_method
-        if isinstance(lag_crit, bool) or not np.isscalar(lag_crit):
-            raise TypeError("lag_crit must be a positive finite scalar")
-        self.lag_crit = float(lag_crit)
-        if not np.isfinite(self.lag_crit) or self.lag_crit <= 0:
-            raise ValueError("lag_crit must be a positive finite scalar")
         if isinstance(trim, bool) or not np.isscalar(trim):
             raise TypeError("trim must be a finite scalar between 0 and 0.5")
         self.trim = float(trim)

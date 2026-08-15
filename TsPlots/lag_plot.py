@@ -12,10 +12,11 @@ import pandas as pd
 
 from .style import (
     AXIS_LABEL_FONTSIZE,
-    DEFAULT_PALETTE,
     FIGSIZE,
     TITLE_FONTSIZE,
     _ensure_fonts,
+    _resolve_bar_colors,
+    _validate_max_ticks,
     draw_note_and_bottom_title,
     style_axes,
 )
@@ -68,17 +69,6 @@ def _normalise_lag_response(data):
         raise ValueError("time lags must be strictly increasing")
     frame.index = pd.Index(integer_lags, name=frame.index.name or "lag")
     return frame
-
-
-def _resolve_colors(color, count):
-    if color is None:
-        return [DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)] for index in range(count)]
-    if is_color_like(color):
-        return [color] * count
-    colors = list(color)
-    if len(colors) != count:
-        raise ValueError("color must contain one value per response")
-    return colors
 
 
 def plot_lag_response(
@@ -149,13 +139,7 @@ def plot_lag_response(
     3
     """
     _ensure_fonts()
-    if (
-        isinstance(max_ticks, (bool, np.bool_))
-        or not isinstance(max_ticks, (int, np.integer))
-        or int(max_ticks) < 1
-    ):
-        raise ValueError("max_ticks must be a positive integer")
-    max_ticks = int(max_ticks)
+    max_ticks = _validate_max_ticks(max_ticks)
     frame = _normalise_lag_response(data)
     line_frame = None
     if line_data is not None:
@@ -167,7 +151,7 @@ def plot_lag_response(
         if not is_color_like(line_color):
             raise ValueError("line_color must be a valid matplotlib color")
     count = frame.shape[1]
-    colors = _resolve_colors(color, count)
+    colors = _resolve_bar_colors(color, count)
 
     if count > 1 and ax is not None:
         raise ValueError("ax cannot be supplied for multiple lag responses")

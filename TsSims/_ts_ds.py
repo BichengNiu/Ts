@@ -12,7 +12,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from Ts.TsPlots import plot_series
 from ._base import BaseSimResult
 from ._validation import validate_real, validate_sample
 
@@ -50,6 +49,12 @@ class SimTSDSResult(BaseSimResult):
     'trend_stationary'
     """
 
+    def _default_title(self) -> str:
+        """Return the default chart title for a TS/DS simulation."""
+        process_type = self.params.get("process_type", "TS/DS")
+        label = _PROCESS_LABELS.get(process_type, process_type)
+        return f"{label} Process Simulation"
+
     def summary(self) -> str:
         """Return a formatted parameter summary string.
 
@@ -84,44 +89,6 @@ class SimTSDSResult(BaseSimResult):
         if "burn" in p:
             lines.append(f"Burn-in           : {p.get('burn', 'N/A')}")
         return "\n".join(lines)
-
-    def plot(self, title=None, **kwargs):
-        """Plot the generated time series.
-
-        Uses :func:`TsPlots.plot_series` for unified styling.
-
-        Parameters
-        ----------
-        title : str, optional
-            Chart title. Defaults to a process-type based title.
-        **kwargs
-            Forwarded to :func:`TsPlots.plot_series`.
-
-        Returns
-        -------
-        fig : matplotlib.figure.Figure
-        ax : matplotlib.axes.Axes
-
-        Examples
-        --------
-        >>> from Ts.TsSims import simulate_difference_stationary
-        >>> result = simulate_difference_stationary(n=50, seed=42)
-        >>> fig, ax = result.plot()
-        """
-        if title is None:
-            process_type = self.params.get("process_type", "TS/DS")
-            label = _PROCESS_LABELS.get(process_type, process_type)
-            title = f"{label} Process Simulation"
-
-        fig, ax = plot_series(
-            self.data,
-            title=title,
-            ytitle="Value",
-            xtitle="Time",
-            show_legend=False,
-            **kwargs,
-        )
-        return fig, ax
 
 
 # ---------------------------------------------------------------------------

@@ -1,40 +1,8 @@
-"""Structural contracts used by forecast evaluation."""
+"""Structural contract used by forecast evaluation."""
 
 from __future__ import annotations
 
 from typing import Any, Protocol
-
-
-class PredictionProtocol(Protocol):
-    """Forecast arrays returned by a fitted model."""
-
-    mean: Any
-    lower: Any | None
-    upper: Any | None
-
-
-class FittedModelProtocol(Protocol):
-    """Fitted model state required by the evaluation engine."""
-
-    nobs: int
-    model_type: str
-
-    def predict(
-        self,
-        *,
-        start: int,
-        end: int,
-        alpha: float,
-        **kwargs: Any,
-    ) -> PredictionProtocol:
-        """Return forecasts over an inclusive range."""
-
-
-class EvaluationCloneProtocol(Protocol):
-    """Isolated model clone that can be fitted."""
-
-    def fit(self, **kwargs: Any) -> FittedModelProtocol:
-        """Fit the isolated evaluation window."""
 
 
 class EvaluationModelProtocol(Protocol):
@@ -49,7 +17,7 @@ class EvaluationModelProtocol(Protocol):
         exog: Any | None = None,
         *,
         dates: Any | None = None,
-    ) -> EvaluationCloneProtocol:
+    ) -> Any:
         """Clone model configuration with isolated evaluation data."""
 
     def _evaluation_actual(self, observed: Any, train_data: Any) -> Any:

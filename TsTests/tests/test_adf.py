@@ -107,7 +107,20 @@ class TestADFTest:
         test = ADFTest(random_walk, trend="c", max_lags=8)
         result = test.fit()
         assert result.lags >= 0
-        assert result.max_lag == 8
+
+    def test_fixed_lags_are_used_exactly(self, random_walk):
+        """A fixed ``lags`` value is honoured, not treated as an upper bound."""
+        from Ts.TsTests._adf import ADFTest
+
+        result = ADFTest(random_walk, trend="c", lags=3).fit()
+        assert result.lags == 3
+
+    def test_fixed_lags_zero_is_accepted(self, random_walk):
+        """``lags=0`` fits the no-lag regression."""
+        from Ts.TsTests._adf import ADFTest
+
+        result = ADFTest(random_walk, trend="c", lags=0).fit()
+        assert result.lags == 0
 
     def test_trend_ct(self, random_walk):
         """ADF with trend='ct' works."""

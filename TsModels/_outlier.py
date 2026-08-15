@@ -15,10 +15,15 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from ._base import BaseTestResult
-from ._utils import _as_1d_float
-
 _OUTLIER_TYPES = ("AO", "LS", "IO")
+
+
+def _as_1d_float(data, *, name: str = "data") -> np.ndarray:
+    """Convert input to a 1-D float array without silently flattening it."""
+    values = np.asarray(data, dtype=float)
+    if values.ndim != 1:
+        raise ValueError(f"{name} must be 1-D, got shape {values.shape}")
+    return values
 
 
 # ---------------------------------------------------------------------------
@@ -117,20 +122,6 @@ def _c_weights(pi):
 # ---------------------------------------------------------------------------
 
 
-def _whitened_regressor(i, weights, n):
-    """Return the whitened outlier regressor for candidate time ``i``.
-
-    The regressor has value 1 at time ``i`` and value ``-weights[j]`` at
-    time ``i + j``, truncated at the sample end.
-    """
-    regressor = np.zeros(n)
-    regressor[i] = 1.0
-    available = n - i - 1
-    if available > 0:
-        regressor[i + 1 :] = -weights[1 : available + 1]
-    return regressor
-
-
 def _outlier_footprint(omega, weights, i, n):
     """Return the residual footprint of one detected outlier.
 
@@ -174,12 +165,6 @@ def _scan_outlier_type(e, weights, sigma):
     return omega, lstat, standard_error
 
 
-def _scan_io(e, sigma):
-    """Scan innovational outliers: the raw residual is the estimator."""
-    n = len(e)
-    return e.copy(), e / sigma, np.full(n, sigma)
-
-
 def _initial_skip(order, seasonal_order):
     """Return the number of leading residuals excluded from candidate times.
 
@@ -204,7 +189,7 @@ def _full_scan(e, pi, c, sigma):
     """Return stacked (L, omega, standard_error) arrays over all types."""
     omega_ao, l_ao, se_ao = _scan_outlier_type(e, pi, sigma)
     omega_ls, l_ls, se_ls = _scan_outlier_type(e, c, sigma)
-    omega_io, l_io, se_io = _scan_io(e, sigma)
+    omega_io, l_io, se_io = _scan_outlier_type(e, np.zeros(len(e)), sigma)
     return (
         np.stack([l_ao, l_ls, l_io]),
         np.stack([omega_ao, omega_ls, omega_io]),
@@ -218,14 +203,21 @@ def _full_scan(e, pi, c, sigma):
 
 
 @dataclass
-class OutlierDetectorResult(BaseTestResult):
+class OutlierDetectorResult:
     """Result of ARIMA-residual AO/LS/IO outlier detection.
 
     Parameters
     ----------
-    statistic, pvalue, lags, nobs, residuals : see BaseTestResult
-        ``statistic`` is the maximum |L| of the final scan; residuals are
-        the original one-step-ahead prediction errors.
+    statistic : float
+        Maximum |L| of the final scan.
+    pvalue : float or None
+        Always ``None`` — detection uses a fixed critical value.
+    lags : int or None
+        Always ``None`` — detection has no lag parameter.
+    nobs : int
+        Number of usable residuals.
+    residuals : numpy.ndarray or None
+        Original one-step-ahead prediction errors.
     events : pandas.DataFrame
         Detected events with columns ``time``, ``type`` (one of
         ``"AO"``, ``"LS"``, ``"IO"``), ``omega``, ``standard_error``, and
@@ -250,7 +242,7 @@ class OutlierDetectorResult(BaseTestResult):
     Examples
     --------
     >>> import numpy as np
-    >>> from Ts.TsTests import OutlierDetector
+    >>> from Ts.TsModels import OutlierDetector
     >>> from Ts.TsSims import simulate_sarima
     >>> data = simulate_sarima(n=120, order=(1, 0, 0), ar=[0.7], seed=42).data
     >>> data = data.copy()
@@ -260,6 +252,11 @@ class OutlierDetectorResult(BaseTestResult):
     ['time', 'type', 'omega', 'standard_error', 'L']
     """
 
+    statistic: float
+    pvalue: float | None
+    lags: int | None
+    nobs: int
+    residuals: np.ndarray | None = None
     events: pd.DataFrame = field(
         default_factory=lambda: pd.DataFrame(
             [], columns=["time", "type", "omega", "standard_error", "L"]
@@ -300,7 +297,7 @@ class OutlierDetectorResult(BaseTestResult):
         Examples
         --------
         >>> import numpy as np
-        >>> from Ts.TsTests import OutlierDetector
+        >>> from Ts.TsModels import OutlierDetector
         >>> from Ts.TsSims import simulate_sarima
         >>> data = simulate_sarima(n=120, order=(1, 0, 0), ar=[0.7], seed=42).data
         >>> data = data.copy()
@@ -323,7 +320,7 @@ class OutlierDetectorResult(BaseTestResult):
 
         Examples
         --------
-        >>> from Ts.TsTests import OutlierDetector
+        >>> from Ts.TsModels import OutlierDetector
         >>> from Ts.TsSims import simulate_sarima
         >>> data = simulate_sarima(n=120, order=(1, 0, 0), ar=[0.7], seed=42).data
         >>> data = data.copy()
@@ -424,7 +421,7 @@ class OutlierDetector:
 
     Examples
     --------
-    >>> from Ts.TsTests import OutlierDetector
+    >>> from Ts.TsModels import OutlierDetector
     >>> from Ts.TsSims import simulate_sarima
     >>> data = simulate_sarima(n=120, order=(1, 0, 0), ar=[0.7], seed=42).data
     >>> data = data.copy()
@@ -492,7 +489,7 @@ class OutlierDetector:
 
         Examples
         --------
-        >>> from Ts.TsTests import OutlierDetector
+        >>> from Ts.TsModels import OutlierDetector
         >>> from Ts.TsSims import simulate_sarima
         >>> data = simulate_sarima(n=120, order=(1, 0, 0), ar=[0.7], seed=42).data
         >>> data = data.copy()
@@ -508,7 +505,7 @@ class OutlierDetector:
         if not np.all(np.isfinite(values)):
             raise ValueError("series must contain only finite values")
 
-        from Ts.TsModels import SARIMAX
+        from ._sarimax import SARIMAX
 
         model = SARIMAX(
             values,

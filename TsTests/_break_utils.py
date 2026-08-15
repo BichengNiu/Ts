@@ -6,9 +6,13 @@ lag selection for ADF-type regressions, and regression-data assembly.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+
+from ._utils import _validate_nonnegative_int
 
 
 # ---------------------------------------------------------------------------
@@ -49,13 +53,62 @@ def _make_zivot_break_dummies(
     }[model]
 
 
-def _validate_nonnegative_int(value, *, name: str) -> int:
-    """Return *value* as int after rejecting booleans and negative values."""
-    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
-        raise TypeError(f"{name} must be an integer")
-    if value < 0:
-        raise ValueError(f"{name} must be non-negative")
-    return int(value)
+def _validate_lag_parameters(
+    lags: int | None,
+    max_lags: int,
+    lag_crit: float,
+    lag_method: str,
+) -> tuple[int | None, int, float, str]:
+    """Validate and normalise the shared lag-selection parameters."""
+    lags_norm = None if lags is None else _validate_nonnegative_int(lags, name="lags")
+    max_lags_norm = _validate_nonnegative_int(max_lags, name="max_lags")
+    if isinstance(lag_crit, bool) or not np.isscalar(lag_crit):
+        raise TypeError("lag_crit must be a positive finite scalar")
+    lag_crit_norm = float(lag_crit)
+    if not np.isfinite(lag_crit_norm) or lag_crit_norm <= 0:
+        raise ValueError("lag_crit must be a positive finite scalar")
+    if lag_method not in ("tstat", "aic", "bic"):
+        raise ValueError(
+            f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
+        )
+    return lags_norm, max_lags_norm, lag_crit_norm, lag_method
+
+
+def _format_break_test_summary(
+    header: str,
+    break_label: str,
+    stat_label: str,
+    model: str,
+    break_year: float,
+    lags: int,
+    nobs: int,
+    rho_hat: float,
+    rho_se: float,
+    statistic: float,
+    cv_01: float,
+    cv_05: float,
+    cv_10: float,
+) -> str:
+    """Format the common summary body of a structural-break unit root test."""
+    return (
+        f"{header} — Model {model}\n"
+        f"{'=' * 50}\n"
+        f"{break_label:<20}: {break_year}\n"
+        f"Number of lags (k)   : {lags}\n"
+        f"Effective obs. (T)   : {nobs}\n"
+        f"\n"
+        f"ρ̂ (coeff on y_t-1)   : {rho_hat:.4f}\n"
+        f"s.e.(ρ̂)              : {rho_se:.4f}\n"
+        f"{stat_label:<20}: {statistic:.3f}\n"
+        f"\n"
+        f"Critical values:\n"
+        f"  1%                 : {cv_01:.3f}\n"
+        f"  5%                 : {cv_05:.3f}\n"
+        f"  10%                : {cv_10:.3f}\n"
+        f"\n"
+        f"Conclusion (5%): "
+        f"{'Reject H0 (unit root); evidence favors stationarity around a breaking trend' if statistic < cv_05 else 'Cannot reject H0 (unit root)'}\n"
+    )
 
 
 def _validate_time_axis(time_index: np.ndarray) -> None:
@@ -83,6 +136,27 @@ def _locate_known_break(time_index: np.ndarray, break_year: float) -> int:
 # ---------------------------------------------------------------------------
 # Lag selection
 # ---------------------------------------------------------------------------
+
+
+def _select_lag_by_tstat(
+    max_lags: int,
+    tstat_of: Callable[[int], float | None],
+    crit: float = 1.60,
+) -> int:
+    """General-to-specific lag selection over a t-statistic oracle.
+
+    ``tstat_of(lag)`` returns the t-statistic of the highest lag at *lag*,
+    or ``None`` when that lag specification cannot be estimated. Returns
+    the largest lag whose t-statistic reaches *crit* in absolute value,
+    else 0.
+    """
+    for lag in range(max_lags, 0, -1):
+        tstat = tstat_of(lag)
+        if tstat is None:
+            continue
+        if abs(tstat) >= crit:
+            return lag
+    return 0
 
 
 def _select_lags_by_tstat(
@@ -120,7 +194,10 @@ def _select_lags_by_tstat(
     # Deterministic trend is positional (0-based).
     trend = np.arange(T, dtype=float)
 
-    for k in range(max_lags, -1, -1):
+    def tstat_of(k: int) -> float | None:
+        if k == 0:
+            return 0.0
+
         # Build regressor matrix
         regs = [y_lag1[k:]]  # start from k because we need k initial diffs
         regs.append(np.ones(T - 1 - k))  # constant
@@ -139,25 +216,28 @@ def _select_lags_by_tstat(
         y_dep = dy[k:]  # Δy_t, trimmed
 
         if X.shape[0] <= X.shape[1]:
-            continue  # not enough obs
+            return None  # not enough obs
 
         try:
             res = sm.OLS(y_dep, X).fit()
         except (ValueError, np.linalg.LinAlgError, FloatingPointError):
-            continue
-
-        if k == 0:
-            return 0
+            return None
 
         # The last regressor is the time trend; the second-to-last
         # is the highest lagged difference dy_lagk.
         # regs = [y_lag1, const, dummies..., dy_lag1..dy_lagk, trend]
         last_lagdiff_idx = len(regs) - 2  # dy_lagk
-        t_val = res.tvalues[last_lagdiff_idx]
-        if abs(t_val) >= crit:
-            return k
+        return float(res.tvalues[last_lagdiff_idx])
 
-    return 0
+    return _select_lag_by_tstat(max_lags, tstat_of, crit)
+
+
+def _ic_from_ssr(ssr: float, n_effective: int, n_params: int, ic_type: str) -> float:
+    """Return the AIC or BIC value from residual SSR."""
+    log_sigma2 = np.log(ssr / n_effective)
+    if ic_type == "aic":
+        return log_sigma2 + 2 * n_params / n_effective
+    return log_sigma2 + n_params * np.log(n_effective) / n_effective
 
 
 def _select_lags_by_ic(
@@ -213,12 +293,7 @@ def _select_lags_by_ic(
         T_eff = len(y_dep)
         n_params = X.shape[1]
         ssr = np.sum(res.resid**2)
-        log_sigma2 = np.log(ssr / T_eff)
-
-        if ic_type == "aic":
-            ic = log_sigma2 + 2 * n_params / T_eff
-        else:  # bic
-            ic = log_sigma2 + n_params * np.log(T_eff) / T_eff
+        ic = _ic_from_ssr(ssr, T_eff, n_params, ic_type)
 
         ic_values[k] = ic
 

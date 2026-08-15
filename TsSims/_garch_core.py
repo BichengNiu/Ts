@@ -25,11 +25,6 @@ from ._validation import (
 # ---------------------------------------------------------------------------
 
 
-def _to_list(val):
-    """Normalise optional coefficients to a finite list."""
-    return normalize_coefficients("mean_ar", val)
-
-
 def _normalize_coef(
     val,
     default_val,
@@ -62,6 +57,18 @@ def _make_standard_variance_fn(omega, alpha, beta, p, q):
     return _variance_fn
 
 
+def _t_dist_df(dist_params: dict | None) -> float:
+    """Return the validated Student-t degrees of freedom."""
+    df = 5.0
+    if dist_params is not None and "df" in dist_params:
+        df = validate_real("dist_params['df']", dist_params["df"], positive=True)
+    if df <= 2:
+        raise ValueError(
+            f"Student's t requires df > 2 for finite variance, got df={df}"
+        )
+    return df
+
+
 def _generate_innovations(n_total, dist, dist_params, rng):
     """Generate i.i.d. innovations from the specified distribution.
 
@@ -80,13 +87,7 @@ def _generate_innovations(n_total, dist, dist_params, rng):
     np.ndarray
     """
     if dist == "t":
-        df = 5.0
-        if dist_params is not None and "df" in dist_params:
-            df = validate_real("dist_params['df']", dist_params["df"], positive=True)
-        if df <= 2:
-            raise ValueError(
-                f"Student's t requires df > 2 for finite variance, got df={df}"
-            )
+        df = _t_dist_df(dist_params)
         raw = scipy_stats.t.rvs(df=df, size=n_total, random_state=rng)
         return raw / np.sqrt(df / (df - 2))
     # normal (default)

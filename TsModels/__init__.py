@@ -18,6 +18,8 @@ VECM
 SVAR
     Structural VAR with short-run (A/B) and long-run (Blanchard-Quah)
     identification restrictions.
+OutlierDetector
+    Iterative AO / LS / IO outlier detection on ARIMA residuals (Tsay 1988).
 
 Result classes
 --------------
@@ -67,6 +69,7 @@ from ._distributed_lag import RationalLagResult, RationalLagSpec
 from ._garch import GARCH
 from ._garch_result import GARCHResult
 from ._intervention import EventSpec, PolicyEffectResult
+from ._outlier import OutlierDetector, OutlierDetectorResult
 from ._sarimax import ARCycleResult, SARIMAX, SARIMAXResult, ScenarioForecastResult
 from ._svar import SVAR, SVARResult
 from ._var import (
@@ -97,6 +100,8 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "RationalLagResult",
     "EventSpec",
     "PolicyEffectResult",
+    "OutlierDetector",
+    "OutlierDetectorResult",
     "GARCH",
     "GARCHResult",
     "VAR",

@@ -31,6 +31,7 @@ from Ts.TsModels._base import (
     BaseModelResult,
     _normalise_model_dates,
 )
+from Ts.TsModels._garch_base import _VolEvaluationMixin
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
 
@@ -807,6 +808,18 @@ class _BaseAutoModel(BaseModel):
             search_messages,
         )
 
+    @staticmethod
+    def _validate_range(rng, name, min_val=0):
+        """Validate and convert a (min, max) range tuple."""
+        if not isinstance(rng, (tuple, list)) or len(rng) != 2:
+            raise ValueError(f"{name} must be a (min, max) tuple, got {rng}")
+        lo, hi = int(rng[0]), int(rng[1])
+        if lo < min_val:
+            raise ValueError(f"{name} min must be >= {min_val}, got {lo}")
+        if lo > hi:
+            raise ValueError(f"{name}: min ({lo}) must be <= max ({hi})")
+        return (lo, hi)
+
 
 class AutoSARIMAX(_BaseAutoModel):
     """Auto SARIMAX model selection via grid search.
@@ -961,18 +974,6 @@ class AutoSARIMAX(_BaseAutoModel):
         self.trend = trend
         self.enforce_stationarity = enforce_stationarity
         self.enforce_invertibility = enforce_invertibility
-
-    @staticmethod
-    def _validate_range(rng, name):
-        """Validate and convert a (min, max) range tuple."""
-        if not isinstance(rng, (tuple, list)) or len(rng) != 2:
-            raise ValueError(f"{name} must be a (min, max) tuple, got {rng}")
-        lo, hi = int(rng[0]), int(rng[1])
-        if lo < 0 or hi < 0:
-            raise ValueError(f"{name} range values must be >= 0, got ({lo}, {hi})")
-        if lo > hi:
-            raise ValueError(f"{name}: min ({lo}) must be <= max ({hi})")
-        return (lo, hi)
 
     def _candidate_exog(self):
         """Return copied historical and default-future exog for one candidate."""
@@ -1148,7 +1149,7 @@ class AutoSARIMAX(_BaseAutoModel):
         return auto_result
 
 
-class AutoGARCH(_BaseAutoModel):
+class AutoGARCH(_VolEvaluationMixin, _BaseAutoModel):
     """Auto GARCH-family model selection via grid search.
 
     Searches over a user-specified range of ``(p, o, q)`` combinations,
@@ -1216,21 +1217,6 @@ class AutoGARCH(_BaseAutoModel):
     >>> len(result.candidate_orders)
     2
     """
-
-    _evaluation_target_name = "absolute_demeaned_return_proxy"
-    _backcast_target_name = "conditional_volatility"
-
-    def _evaluation_actual(self, observed, train_data):
-        """Use absolute returns centred on the active training-window mean."""
-        return np.abs(np.asarray(observed, dtype=float) - np.mean(train_data))
-
-    def _validate_evaluation(self, context):
-        """Reject evaluation that lacks required future exogenous values."""
-        if self.exog is not None:
-            raise NotImplementedError(
-                f"AutoGARCH {context} with exog requires explicit future "
-                "or pre-sample exogenous values"
-            )
 
     def __init__(
         self,
@@ -1315,18 +1301,6 @@ class AutoGARCH(_BaseAutoModel):
         self.garch_m_form = garch_m_form
         self.ar_lags = ar_lags
         self.exog = exog
-
-    @staticmethod
-    def _validate_range(rng, name, min_val=0):
-        """Validate and convert a (min, max) range tuple."""
-        if not isinstance(rng, (tuple, list)) or len(rng) != 2:
-            raise ValueError(f"{name} must be a (min, max) tuple, got {rng}")
-        lo, hi = int(rng[0]), int(rng[1])
-        if lo < min_val:
-            raise ValueError(f"{name} min must be >= {min_val}, got {lo}")
-        if lo > hi:
-            raise ValueError(f"{name}: min ({lo}) must be <= max ({hi})")
-        return (lo, hi)
 
     def fit(self):
         """Run grid search and return the best model.

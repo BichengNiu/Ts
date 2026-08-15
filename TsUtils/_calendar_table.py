@@ -6,22 +6,13 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 from pandas.tseries.offsets import (
-    BMonthBegin,
-    BMonthEnd,
     BQuarterBegin,
-    BQuarterEnd,
-    BusinessDay,
-    Day,
-    MonthBegin,
-    MonthEnd,
     QuarterBegin,
-    QuarterEnd,
-    Week,
     YearBegin,
     YearEnd,
 )
 
-from ._calendar import resolve_frequency, resolve_time_index
+from ._calendar import _classify_offset_family, resolve_frequency, resolve_time_index
 
 
 def _select_series(data, *, col):
@@ -74,33 +65,25 @@ def _complete_series(series, offset):
 
 def _classify_frequency(offset):
     """Return the supported unit calendar family for a pandas offset."""
-    if offset.n != 1:
-        raise ValueError(
-            f"calendar_table does not support frequency {offset.freqstr!r}"
-        )
-    if isinstance(offset, BusinessDay):
-        return "business_daily"
-    if isinstance(offset, Day):
-        return "daily"
-    if isinstance(offset, Week):
-        return "weekly"
-    if isinstance(offset, (BMonthBegin, BMonthEnd, MonthBegin, MonthEnd)):
-        return "monthly"
-    if isinstance(
-        offset,
-        (BQuarterBegin, BQuarterEnd, QuarterBegin, QuarterEnd),
-    ):
+    family = _classify_offset_family(offset, allow_annual=True)
+    if family == "quarterly":
         if isinstance(offset, (BQuarterBegin, QuarterBegin)):
             natural = offset.startingMonth == 1
         else:
             natural = offset.startingMonth == 12
-        if natural:
-            return "quarterly"
-    if isinstance(offset, YearBegin) and offset.month == 1:
-        return "annual"
-    if isinstance(offset, YearEnd) and offset.month == 12:
-        return "annual"
-    raise ValueError(f"calendar_table does not support frequency {offset.freqstr!r}")
+        if not natural:
+            raise ValueError(
+                f"calendar_table does not support frequency {offset.freqstr!r}"
+            )
+    elif family == "annual":
+        if not (
+            (isinstance(offset, YearBegin) and offset.month == 1)
+            or (isinstance(offset, YearEnd) and offset.month == 12)
+        ):
+            raise ValueError(
+                f"calendar_table does not support frequency {offset.freqstr!r}"
+            )
+    return family
 
 
 def _calendar_timestamps(index):

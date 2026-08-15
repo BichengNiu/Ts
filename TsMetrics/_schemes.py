@@ -5,11 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 
 from Ts.TsUtils._validation import validate_positive_int
 
-from ._periods import _resolve_period
+from ._periods import _resolve_period, _validated_dates
 
 
 def _validated_split_inputs(nobs, dates):
@@ -17,19 +16,7 @@ def _validated_split_inputs(nobs, dates):
     nobs = validate_positive_int("nobs", nobs)
     if dates is None:
         return nobs, None
-    try:
-        dates = pd.DatetimeIndex(dates)
-    except (TypeError, ValueError) as error:
-        raise TypeError("dates must be datetime-like") from error
-    if len(dates) != nobs:
-        raise ValueError("dates must contain one date per observation")
-    if dates.hasnans:
-        raise ValueError("dates must not contain missing dates")
-    if not dates.is_unique:
-        raise ValueError("dates must be unique")
-    if not dates.is_monotonic_increasing:
-        raise ValueError("dates must be strictly increasing")
-    return nobs, dates.copy()
+    return nobs, _validated_dates(dates, name="dates", expected_length=nobs)
 
 
 def _nonnegative_int(name, value):
