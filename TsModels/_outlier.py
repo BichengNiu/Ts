@@ -15,15 +15,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from Ts.TsUtils._validation import as_1d_float
+
 _OUTLIER_TYPES = ("AO", "LS", "IO")
-
-
-def _as_1d_float(data, *, name: str = "data") -> np.ndarray:
-    """Convert input to a 1-D float array without silently flattening it."""
-    values = np.asarray(data, dtype=float)
-    if values.ndim != 1:
-        raise ValueError(f"{name} must be 1-D, got shape {values.shape}")
-    return values
 
 
 # ---------------------------------------------------------------------------
@@ -498,7 +492,7 @@ class OutlierDetector:
         >>> result.events.iloc[0]["time"]
         60
         """
-        values = _as_1d_float(series)
+        values = as_1d_float(series)
         index = series.index if isinstance(series, pd.Series) else None
         if len(values) < 10:
             raise ValueError(f"Need at least 10 observations, got {len(values)}")

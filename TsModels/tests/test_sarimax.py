@@ -1108,7 +1108,7 @@ class TestSARIMAXSparseLags:
             (([1, 1], 0, 0), ValueError, "p lags must be unique"),
             (([1, 2.5], 0, 0), TypeError, "p lags must be positive"),
             ((True, 0, 0), TypeError, "p must be a non-negative"),
-            ((1, True, 0), TypeError, "d must be a non-negative"),
+            ((1, True, 0), TypeError, "d must be an integer >= 0"),
         ],
     )
     def test_invalid_sparse_orders_raise_clear_errors(

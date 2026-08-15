@@ -58,8 +58,8 @@ class _BaseVolModel(_VolEvaluationMixin, BaseModel):
     def __init__(
         self,
         data,
-        p,
-        q,
+        p=1,
+        q=1,
         o=0,
         vol="GARCH",
         mean="Constant",

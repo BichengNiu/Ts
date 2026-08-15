@@ -28,6 +28,7 @@ from ._break_utils import (
     _select_lags_by_tstat,
     _validate_lag_parameters,
     _validate_time_axis,
+    _validate_trim,
 )
 from ._unitroot_plot import _render_tstat_plot, _render_ic_plot
 
@@ -216,11 +217,7 @@ class ZivotAndrewsTest(BaseTest):
         self.lags, self.max_lags, self.lag_crit, self.lag_method = (
             _validate_lag_parameters(lags, max_lags, lag_crit, lag_method)
         )
-        if isinstance(trim, bool) or not np.isscalar(trim):
-            raise TypeError("trim must be a finite scalar between 0 and 0.5")
-        self.trim = float(trim)
-        if not np.isfinite(self.trim) or not 0 < self.trim < 0.5:
-            raise ValueError("trim must be between 0 and 0.5")
+        self.trim = _validate_trim(trim)
         self.result_: ZivotAndrewsTestResult | None = None
 
     def fit(self) -> ZivotAndrewsTestResult:

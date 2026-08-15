@@ -277,25 +277,9 @@ class AutoModelResult(BaseModelResult):
                 "Response Scale     : original (log fit; bias-adjusted mean)",
             )
 
-        # Rebuild base summary from fields directly to get the clean table
-        base_lines = [
-            f"{self.model_type} Model Estimation Result",
-            "=" * 50,
-            f"Observations       : {self.nobs}",
-            f"Log-Likelihood     : {self.log_likelihood:.4f}",
-            f"AIC                : {self.aic:.4f}",
-            f"BIC                : {self.bic:.4f}",
-            "",
-            "Parameter Estimates:",
-            "-" * 50,
-        ]
-        for name in self.params:
-            val = self.params[name]
-            se = self.std_errors.get(name)
-            pv = self.p_values.get(name)
-            se_str = f"{se:.4f}" if se is not None else "N/A"
-            pv_str = f"{pv:.4f}" if pv is not None else "N/A"
-            base_lines.append(f"  {name:<20s} {val:>10.4f}  ({se_str})  p={pv_str}")
+        # Delegate to the base parameter table, which renders the shared
+        # estimation fields identically for every model result.
+        base_lines = super().summary().splitlines()
 
         return "\n".join(lines + base_lines)
 

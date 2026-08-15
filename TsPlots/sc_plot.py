@@ -47,7 +47,11 @@ from .style import (
     DEFAULT_PALETTE,
     DEFAULT_MARKERS,
     AXIS_LABEL_FONTSIZE,
-    TITLE_FONTSIZE,
+    REFERENCE_LINE_COLOR,
+    REFERENCE_LINE_STYLE,
+    REFERENCE_LINE_WIDTH,
+    SHADE_COLOR,
+    SHADE_ALPHA,
     draw_shade,
     draw_vlines,
     draw_hlines,
@@ -128,16 +132,16 @@ def plot_scatter(
     note=None,
     grid=False,
     vlines=None,
-    vline_color="#d9534f",
-    vline_linestyle="--",
-    vline_linewidth=1.5,
+    vline_color=REFERENCE_LINE_COLOR,
+    vline_linestyle=REFERENCE_LINE_STYLE,
+    vline_linewidth=REFERENCE_LINE_WIDTH,
     hlines=None,
-    hline_color="#d9534f",
-    hline_linestyle="--",
-    hline_linewidth=1.5,
+    hline_color=REFERENCE_LINE_COLOR,
+    hline_linestyle=REFERENCE_LINE_STYLE,
+    hline_linewidth=REFERENCE_LINE_WIDTH,
     shade=None,
-    shade_color="#d0d0d0",
-    shade_alpha=0.3,
+    shade_color=SHADE_COLOR,
+    shade_alpha=SHADE_ALPHA,
     alpha=0.7,
     fit_line=False,
     fit_linewidth=2,
@@ -399,14 +403,6 @@ def plot_scatter(
                     color=color,
                 )
 
-    if title is not None and title_position == "top":
-        ax.set_title(
-            title,
-            fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
-            loc=title_loc,
-            pad=title_pad,
-        )
     ax.set_xlabel(
         xtitle if xtitle is not None else default_xlabel,
         fontsize=AXIS_LABEL_FONTSIZE,
@@ -450,7 +446,6 @@ def plot_scatter(
     if equal_aspect:
         ax.set_aspect("equal")
 
-    labels = [lbl for lbl, _, _ in series]
     ctx.finalize(
         title=title,
         title_position=title_position,
@@ -462,7 +457,6 @@ def plot_scatter(
         legend_labels=legend_labels,
         legend_loc=legend_loc,
         legend_bbox=legend_bbox,
-        labels=labels,
         unit=y_unit,
         x_unit=x_unit,
     )

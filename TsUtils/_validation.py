@@ -1,12 +1,21 @@
-"""Shared private validation helpers for TsUtils."""
+"""Shared validation and normalisation helpers.
+
+These helpers are reused across sub-packages (TsModels, TsMetrics, TsSims,
+TsTests) so that scalar and small-array validation stays in one place.
+"""
 
 from __future__ import annotations
 
 import numpy as np
 
 
-def validate_positive_int(name, value, minimum=1):
-    """Return an integer argument after rejecting booleans and small values."""
+def validate_int(name, value, *, minimum=0):
+    """Return an integer after rejecting booleans and values below *minimum*.
+
+    This is the shared integer validator across sub-packages. The default
+    ``minimum=0`` covers non-negative integers; pass ``minimum=1`` for a
+    strictly positive integer.
+    """
     if isinstance(value, (bool, np.bool_)) or not isinstance(
         value,
         (int, np.integer),
@@ -18,6 +27,11 @@ def validate_positive_int(name, value, minimum=1):
     return value
 
 
+def validate_positive_int(name, value, minimum=1):
+    """Return an integer argument after rejecting booleans and small values."""
+    return validate_int(name, value, minimum=minimum)
+
+
 def validate_alpha(alpha):
     """Return a finite significance level strictly between zero and one."""
     try:
@@ -27,6 +41,37 @@ def validate_alpha(alpha):
     if not np.isfinite(alpha) or not 0.0 < alpha < 1.0:
         raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
     return alpha
+
+
+def optional_array(values):
+    """Return a copied float array while preserving ``None``."""
+    if values is None:
+        return None
+    return np.array(values, dtype=float, copy=True)
+
+
+def as_1d_float(data, *, name="data"):
+    """Convert input to a 1-D float array without silently flattening it."""
+    values = np.asarray(data, dtype=float)
+    if values.ndim != 1:
+        raise ValueError(f"{name} must be 1-D, got shape {values.shape}")
+    return values
+
+
+def significance_stars(pvalue):
+    """Return the shared significance star code for a p-value.
+
+    ``**`` p<0.01, ``*`` p<0.05, ``.`` p<0.10, ``" "`` otherwise.
+    Non-significant results return a single space so callers can append the
+    code directly to a line without changing column alignment.
+    """
+    if pvalue < 0.01:
+        return "**"
+    if pvalue < 0.05:
+        return "*"
+    if pvalue < 0.10:
+        return "."
+    return " "
 
 
 def _resolve_missing_rows(finite_rows, missing, *, name="data"):

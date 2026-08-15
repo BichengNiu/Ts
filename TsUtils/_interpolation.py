@@ -189,12 +189,8 @@ def _numeric_frame(data):
             numeric = np.asarray(data, dtype=float)
         except (TypeError, ValueError) as error:
             raise TypeError("data must contain only numeric values") from error
-        if numeric.ndim == 1:
-            frame = pd.DataFrame(numeric)
-            kind = "array1d"
-        else:
-            frame = pd.DataFrame(numeric)
-            kind = "array2d"
+        kind = "array1d" if numeric.ndim == 1 else "array2d"
+        frame = pd.DataFrame(numeric)
 
     if frame.shape[0] == 0:
         raise ValueError("data must contain at least one observation")

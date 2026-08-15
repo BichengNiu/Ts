@@ -25,24 +25,6 @@ from ._validation import (
 # ---------------------------------------------------------------------------
 
 
-def _normalize_coef(
-    val,
-    default_val,
-    length,
-    *,
-    name="coefficient",
-    nonnegative=False,
-):
-    """Normalise coefficients and enforce the declared model order."""
-    return normalize_coefficients(
-        name,
-        val,
-        length=length,
-        default=default_val,
-        nonnegative=nonnegative,
-    )
-
-
 def _make_standard_variance_fn(omega, alpha, beta, p, q):
     """Return a variance_fn closure for standard GARCH/ARCH/IGARCH/GARCH-M."""
 

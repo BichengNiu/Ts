@@ -9,13 +9,17 @@ from __future__ import annotations
 import numpy as np
 
 from ._garch_core import (
-    _normalize_coef,
     _t_dist_df,
     _make_standard_variance_fn,
     _run_garch_simulation,
 )
 from ._garch_result import SimGARCHResult
-from ._validation import validate_choice, validate_int, validate_real
+from ._validation import (
+    normalize_coefficients,
+    validate_choice,
+    validate_int,
+    validate_real,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -286,9 +290,13 @@ def simulate_gjr_garch(
     omega = validate_real("omega", omega, positive=True)
     validate_choice("mean_model", mean_model, ("constant", "zero"))
 
-    alpha = _normalize_coef(alpha, 0.10, p, name="alpha", nonnegative=True)
-    gamma = _normalize_coef(gamma, 0.10, o, name="gamma")
-    beta = _normalize_coef(beta, 0.70, q, name="beta", nonnegative=True)
+    alpha = normalize_coefficients(
+        "alpha", alpha, length=p, default=0.10, nonnegative=True
+    )
+    gamma = normalize_coefficients("gamma", gamma, length=o, default=0.10)
+    beta = normalize_coefficients(
+        "beta", beta, length=q, default=0.70, nonnegative=True
+    )
 
     return _simulate_gjr_garch(
         n=n,
@@ -390,9 +398,9 @@ def simulate_egarch(
     omega = validate_real("omega", omega)
     validate_choice("mean_model", mean_model, ("constant", "zero"))
 
-    alpha = _normalize_coef(alpha, 0.15, p, name="alpha")
-    gamma = _normalize_coef(gamma, 0.05, o, name="gamma")
-    beta = _normalize_coef(beta, 0.30, q, name="beta")
+    alpha = normalize_coefficients("alpha", alpha, length=p, default=0.15)
+    gamma = normalize_coefficients("gamma", gamma, length=o, default=0.05)
+    beta = normalize_coefficients("beta", beta, length=q, default=0.30)
 
     return _simulate_egarch(
         n=n,
@@ -493,8 +501,12 @@ def simulate_garch_m(
     validate_choice("garch_m_form", garch_m_form, ("vol", "var", "log"))
     validate_choice("mean_model", mean_model, ("constant", "zero"))
 
-    alpha = _normalize_coef(alpha, 0.20, p, name="alpha", nonnegative=True)
-    beta = _normalize_coef(beta, 0.60, q, name="beta", nonnegative=True)
+    alpha = normalize_coefficients(
+        "alpha", alpha, length=p, default=0.20, nonnegative=True
+    )
+    beta = normalize_coefficients(
+        "beta", beta, length=q, default=0.60, nonnegative=True
+    )
 
     model_type = "ARCH-M" if q == 0 else "GARCH-M"
 

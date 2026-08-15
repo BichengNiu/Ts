@@ -77,39 +77,3 @@ class GARCH(_BaseVolModel):
     >>> arch.model_type.startswith("ARCH")
     True
     """
-
-    def __init__(
-        self,
-        data,
-        p=1,
-        q=1,
-        o=0,
-        vol="GARCH",
-        mean="Constant",
-        dist="normal",
-        garch_m=False,
-        garch_m_form="vol",
-        ar_lags=None,
-        exog=None,
-        dates=None,
-        igarch=False,
-        compare_lags=True,
-        missing="drop",
-    ):
-        super().__init__(
-            data=data,
-            p=p,
-            q=q,
-            o=o,
-            vol=vol,
-            mean=mean,
-            dist=dist,
-            garch_m=garch_m,
-            garch_m_form=garch_m_form,
-            ar_lags=ar_lags,
-            exog=exog,
-            dates=dates,
-            igarch=igarch,
-            compare_lags=compare_lags,
-            missing=missing,
-        )

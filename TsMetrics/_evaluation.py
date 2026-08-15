@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from inspect import Parameter, signature
 from collections.abc import Mapping
+from typing import Any
 
 import numpy as np
 
 
-from ._protocols import EvaluationModelProtocol
 from ._results import _normalise_names
 
 
@@ -163,7 +163,7 @@ def parameter_snapshot(fitted):
 
 
 def fit_and_forecast(
-    model: EvaluationModelProtocol,
+    model: Any,
     train_data,
     exog,
     dates,
@@ -238,7 +238,7 @@ def training_dates(dates, start, stop):
 
 
 def validate_model_protocol(
-    model: EvaluationModelProtocol,
+    model: Any,
     context: str,
 ) -> str:
     """Validate the evaluation contract and return its target name."""

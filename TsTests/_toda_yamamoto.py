@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import stats as scipy_stats
 
+from Ts.TsUtils._validation import significance_stars
 from Ts.TsTests._base import BaseMultiTestResult, BaseTest
 from Ts.TsTests._utils import _clean_2d
 
@@ -28,20 +29,6 @@ _AUTO_DMAX_ALPHA = 0.10
 
 # Valid trend specifications for the VAR in levels.
 _VALID_TRENDS = frozenset({"c", "ct", "n"})
-
-
-def _sig_star(p_value):
-    """Return significance star code.
-
-    ``**`` p<0.01, ``*`` p<0.05, ``.`` p<0.10, `` `` otherwise.
-    """
-    if p_value < 0.01:
-        return "**"
-    if p_value < 0.05:
-        return "*"
-    if p_value < 0.10:
-        return "."
-    return " "
 
 
 @dataclass
@@ -150,7 +137,7 @@ class TodaYamamotoTestResult(BaseMultiTestResult):
             prev_caused = e.caused
 
             cause_str = ", ".join(e.causing)
-            sig = _sig_star(e.p_value)
+            sig = significance_stars(e.p_value)
 
             lines.append(
                 f"{e.caused:<{eq_w}s} {cause_str:<{ex_w}s} "

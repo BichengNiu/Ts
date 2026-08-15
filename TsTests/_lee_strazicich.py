@@ -14,9 +14,11 @@ from ._break_utils import (
     _select_lag_by_tstat,
     _validate_lag_parameters,
     _validate_time_axis,
+    _validate_trim,
 )
 from ._critical_values import _LS_MODEL_A_CRITICAL, _LS_MODEL_C_CRITICAL
-from ._utils import _parse_input, _validate_nonnegative_int
+from ._utils import _parse_input
+from Ts.TsUtils._validation import validate_int
 
 
 @dataclass(frozen=True)
@@ -421,18 +423,15 @@ class LeeStrazicichTwoBreakTest(BaseTest):
         self.lags, self.max_lags, self.lag_crit, self.lag_method = (
             _validate_lag_parameters(lags, max_lags, lag_crit, lag_method)
         )
-        if isinstance(trim, bool) or not np.isscalar(trim):
-            raise TypeError("trim must be a finite scalar between 0 and 0.5")
-        self.trim = float(trim)
-        if not np.isfinite(self.trim) or not 0 < self.trim < 0.5:
-            raise ValueError("trim must be between 0 and 0.5")
+        self.trim = _validate_trim(trim)
         default_distance = 2 if self.model == "A" else 3
         self.min_break_distance = (
             default_distance
             if min_break_distance is None
-            else _validate_nonnegative_int(
+            else validate_int(
+                "min_break_distance",
                 min_break_distance,
-                name="min_break_distance",
+                minimum=0,
             )
         )
         if self.min_break_distance < default_distance:

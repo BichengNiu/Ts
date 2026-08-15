@@ -14,17 +14,10 @@ from statsmodels.tsa.statespace.tools import (
     unconstrain_stationary_univariate,
 )
 
+from Ts.TsUtils._validation import validate_int
+
 
 _RDL_INITIALIZATIONS = frozenset({"auto", "zero", "steady_state"})
-
-
-def _normalise_nonnegative_integer(value, name):
-    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
-        raise TypeError(f"{name} must be a non-negative integer")
-    value = int(value)
-    if value < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
-    return value
 
 
 def _resolve_impulse_plot_steps(steps, sample_weights):
@@ -47,7 +40,7 @@ def _normalise_active_lags(value, name, *, include_zero, allow_empty):
     validated element-wise and returned sorted with duplicates rejected.
     """
     if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
-        order = _normalise_nonnegative_integer(value, name)
+        order = validate_int(name, value, minimum=0)
         start = 0 if include_zero else 1
         return tuple(range(start, order + 1))
     if isinstance(value, (str, bytes)):
@@ -81,19 +74,9 @@ def _normalise_active_lags(value, name, *, include_zero, allow_empty):
 def _normalise_lag_order(value, name):
     """Return an integer order or immutable tuple of active positive lags."""
     if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
-        return _normalise_nonnegative_integer(value, name)
+        return validate_int(name, value, minimum=0)
     lags = _normalise_active_lags(value, name, include_zero=False, allow_empty=True)
     return lags if lags else 0
-
-
-def _normalise_polynomial_lags(value, name, *, include_zero, allow_empty):
-    """Return the active lag tuple for one RDL polynomial."""
-    return _normalise_active_lags(
-        value,
-        name,
-        include_zero=include_zero,
-        allow_empty=allow_empty,
-    )
 
 
 def _rdl_parameter_name(input_name, component, lag):
@@ -147,19 +130,19 @@ class RationalLagSpec:
     denominator_lags: tuple[int, ...] = field(init=False)
 
     def __post_init__(self):
-        numerator_lags = _normalise_polynomial_lags(
+        numerator_lags = _normalise_active_lags(
             self.numerator,
             "numerator",
             include_zero=True,
             allow_empty=False,
         )
-        denominator_lags = _normalise_polynomial_lags(
+        denominator_lags = _normalise_active_lags(
             self.denominator,
             "denominator",
             include_zero=False,
             allow_empty=True,
         )
-        delay = _normalise_nonnegative_integer(self.delay, "delay")
+        delay = validate_int("delay", self.delay, minimum=0)
         if self.initialization not in _RDL_INITIALIZATIONS:
             raise ValueError(
                 "initialization must be 'auto', 'zero', or 'steady_state'"
@@ -438,7 +421,7 @@ class RationalLagResult:
         >>> result.weights(4).tolist()
         [1.0, 0.5, 0.25, 0.125]
         """
-        steps = _normalise_nonnegative_integer(steps, "steps")
+        steps = validate_int("steps", steps, minimum=0)
         if steps == 0:
             raise ValueError("steps must be strictly positive")
         numerator, denominator = _coefficient_arrays(

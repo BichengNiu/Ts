@@ -18,6 +18,7 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX as StatsmodelsSARIMAX
 from Ts.TsUtils._validation import (
     _resolve_missing_rows,
     validate_alpha as _validate_prediction_alpha,
+    validate_int,
 )
 
 from Ts.TsModels._base import (
@@ -31,7 +32,6 @@ from Ts.TsModels._distributed_lag import (
     RationalLagSpec,
     _make_rational_lag_results,
     _normalise_lag_order,
-    _normalise_nonnegative_integer,
     _resolve_impulse_plot_steps,
     _RationalLagSARIMAX,
 )
@@ -83,7 +83,7 @@ def _normalise_order(order):
     p, d, q = order
     return (
         _normalise_lag_order(p, "p"),
-        _normalise_nonnegative_integer(d, "d"),
+        validate_int("d", d, minimum=0),
         _normalise_lag_order(q, "q"),
     )
 
@@ -96,9 +96,9 @@ def _normalise_seasonal_order(seasonal_order):
     P, D, Q, s = seasonal_order
     return (
         _normalise_lag_order(P, "P"),
-        _normalise_nonnegative_integer(D, "D"),
+        validate_int("D", D, minimum=0),
         _normalise_lag_order(Q, "Q"),
-        _normalise_nonnegative_integer(s, "s"),
+        validate_int("s", s, minimum=0),
     )
 
 

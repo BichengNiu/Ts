@@ -3,19 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from numbers import Integral, Real
+from numbers import Real
 
 import numpy as np
 
-
-def validate_int(name: str, value: object, *, minimum: int) -> int:
-    """Return *value* as an int after enforcing an inclusive lower bound."""
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        raise TypeError(f"{name} must be an integer, got {type(value).__name__}")
-    result = int(value)
-    if result < minimum:
-        raise ValueError(f"{name} must be >= {minimum}, got {result}")
-    return result
+from Ts.TsUtils._validation import validate_int
 
 
 def validate_real(

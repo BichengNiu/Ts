@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ._base import BaseSimResult
-from ._validation import validate_real, validate_sample
+from ._validation import validate_int, validate_real, validate_sample
 
 
 _PROCESS_LABELS = {
@@ -142,7 +142,7 @@ def simulate_trend_stationary(
     >>> result.params["slope"]
     0.1
     """
-    n, _ = validate_sample(n)
+    n = validate_int("n", n, minimum=1)
     intercept = validate_real("intercept", intercept)
     slope = validate_real("slope", slope)
     sigma = validate_real("sigma", sigma, positive=True)

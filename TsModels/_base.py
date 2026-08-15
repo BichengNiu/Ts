@@ -164,7 +164,6 @@ class PredictResult:
         >>> fig, ax = prediction.plot(ci=True)
         """
         import matplotlib.pyplot as plt
-        import numpy as np
         from matplotlib.ticker import MaxNLocator
 
         from Ts.TsPlots.style import (

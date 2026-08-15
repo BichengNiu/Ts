@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from ._utils import _validate_nonnegative_int
+from Ts.TsUtils._validation import validate_int
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +60,8 @@ def _validate_lag_parameters(
     lag_method: str,
 ) -> tuple[int | None, int, float, str]:
     """Validate and normalise the shared lag-selection parameters."""
-    lags_norm = None if lags is None else _validate_nonnegative_int(lags, name="lags")
-    max_lags_norm = _validate_nonnegative_int(max_lags, name="max_lags")
+    lags_norm = None if lags is None else validate_int("lags", lags, minimum=0)
+    max_lags_norm = validate_int("max_lags", max_lags, minimum=0)
     if isinstance(lag_crit, bool) or not np.isscalar(lag_crit):
         raise TypeError("lag_crit must be a positive finite scalar")
     lag_crit_norm = float(lag_crit)
@@ -72,6 +72,16 @@ def _validate_lag_parameters(
             f"lag_method must be 'tstat', 'aic', or 'bic', got {lag_method!r}"
         )
     return lags_norm, max_lags_norm, lag_crit_norm, lag_method
+
+
+def _validate_trim(trim):
+    """Return a validated structural-break trimming fraction in (0, 0.5)."""
+    if isinstance(trim, bool) or not np.isscalar(trim):
+        raise TypeError("trim must be a finite scalar between 0 and 0.5")
+    trim = float(trim)
+    if not np.isfinite(trim) or not 0 < trim < 0.5:
+        raise ValueError("trim must be between 0 and 0.5")
+    return trim
 
 
 def _format_break_test_summary(

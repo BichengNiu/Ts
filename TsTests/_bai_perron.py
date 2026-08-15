@@ -16,11 +16,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from ._base import BaseTest, BaseTestResult
+from ._break_utils import _validate_trim
 from ._regression_break_utils import (
     RegressionBreakDesign,
     _prepare_regression_break_design,
 )
-from ._utils import _validate_nonnegative_int
+from Ts.TsUtils._validation import validate_int
 
 
 @dataclass(frozen=True)
@@ -508,17 +509,14 @@ class BaiPerronTest(BaseTest):
             exog_cols=exog_cols,
         )
         nobs, nparams = self.design.exog.shape
-        if isinstance(trim, bool) or not np.isscalar(trim):
-            raise TypeError("trim must be a finite scalar between 0 and 0.5")
-        self.trim = float(trim)
-        if not np.isfinite(self.trim) or not 0 < self.trim < 0.5:
-            raise ValueError("trim must be between 0 and 0.5")
+        self.trim = _validate_trim(trim)
         if min_segment_size is None:
             segment_size = int(np.floor(self.trim * nobs))
         else:
-            segment_size = _validate_nonnegative_int(
+            segment_size = validate_int(
+                "min_segment_size",
                 min_segment_size,
-                name="min_segment_size",
+                minimum=0,
             )
         if segment_size <= nparams:
             raise ValueError(
@@ -528,7 +526,7 @@ class BaiPerronTest(BaseTest):
             raise ValueError("min_segment_size must not exceed half the observations")
         self.min_segment_size = segment_size
 
-        self.max_breaks = _validate_nonnegative_int(max_breaks, name="max_breaks")
+        self.max_breaks = validate_int("max_breaks", max_breaks, minimum=0)
         if self.max_breaks < 1:
             raise ValueError("max_breaks must be at least 1")
         max_admissible = nobs // segment_size - 1
@@ -538,7 +536,7 @@ class BaiPerronTest(BaseTest):
                 f"{max_admissible} for min_segment_size={segment_size}"
             )
         if breaks is not None:
-            self.breaks = _validate_nonnegative_int(breaks, name="breaks")
+            self.breaks = validate_int("breaks", breaks, minimum=0)
             if self.breaks > self.max_breaks:
                 raise ValueError("breaks must not exceed max_breaks")
         else:
@@ -552,9 +550,10 @@ class BaiPerronTest(BaseTest):
         if not 0 < confidence_level < 1:
             raise ValueError("confidence_level must be between 0 and 1")
         self.confidence_level = float(confidence_level)
-        self.n_bootstrap = _validate_nonnegative_int(
+        self.n_bootstrap = validate_int(
+            "n_bootstrap",
             n_bootstrap,
-            name="n_bootstrap",
+            minimum=0,
         )
         if self.n_bootstrap < 19:
             raise ValueError("n_bootstrap must be at least 19")

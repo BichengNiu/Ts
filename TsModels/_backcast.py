@@ -11,14 +11,7 @@ from Ts.TsMetrics._evaluation import (
     model_data,
     prediction_arrays,
 )
-from Ts.TsUtils._validation import validate_alpha, validate_positive_int
-
-
-def _optional_array(values):
-    """Return a copied float array while preserving None."""
-    if values is None:
-        return None
-    return np.array(values, dtype=float, copy=True)
+from Ts.TsUtils._validation import optional_array, validate_alpha, validate_positive_int
 
 
 @dataclass
@@ -58,8 +51,8 @@ class BackcastResult:
     def __post_init__(self):
         """Normalise arrays and require one index per backcast period."""
         self.mean = np.array(self.mean, dtype=float, copy=True)
-        self.lower = _optional_array(self.lower)
-        self.upper = _optional_array(self.upper)
+        self.lower = optional_array(self.lower)
+        self.upper = optional_array(self.upper)
         self.indices = np.array(self.indices, dtype=int, copy=True)
         if self.mean.ndim not in (1, 2):
             raise ValueError("mean must have shape (steps,) or (steps, n_series)")

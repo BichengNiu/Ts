@@ -9,7 +9,7 @@ import pandas as pd
 
 from ._metrics import ERROR_METRIC_NAMES, compute_metrics
 from ._schemes import ForecastSplit
-from Ts.TsUtils._validation import validate_alpha
+from Ts.TsUtils._validation import optional_array, validate_alpha
 
 
 PARAMETER_ESTIMATE_COLUMNS = (
@@ -31,10 +31,6 @@ PARAMETER_TABLE_COLUMNS = (
     "std_error",
     "p_value",
 )
-
-
-def _optional_array(values):
-    return None if values is None else np.array(values, dtype=float, copy=True)
 
 
 def _validate_alpha(alpha):
@@ -241,8 +237,8 @@ class ForecastEvaluationResult:
     def __post_init__(self):
         self.mean = np.array(self.mean, dtype=float, copy=True)
         self.actual = np.array(self.actual, dtype=float, copy=True)
-        self.lower = _optional_array(self.lower)
-        self.upper = _optional_array(self.upper)
+        self.lower = optional_array(self.lower)
+        self.upper = optional_array(self.upper)
         if self.mean.ndim not in (2, 3):
             raise ValueError(
                 "mean must have shape (split, horizon) or "

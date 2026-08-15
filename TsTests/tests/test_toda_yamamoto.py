@@ -269,13 +269,13 @@ class TestTodaYamamotoInternals:
     """Test internal helper functions and dunder methods."""
 
     def test__sig_star_levels(self, bivariate_independent):
-        """_sig_star returns correct significance codes."""
-        from Ts.TsTests._toda_yamamoto import _sig_star
+        """significance_stars returns correct significance codes."""
+        from Ts.TsUtils._validation import significance_stars
 
-        assert _sig_star(0.005) == "**"
-        assert _sig_star(0.03) == "*"
-        assert _sig_star(0.07) == "."
-        assert _sig_star(0.50) == " "
+        assert significance_stars(0.005) == "**"
+        assert significance_stars(0.03) == "*"
+        assert significance_stars(0.07) == "."
+        assert significance_stars(0.50) == " "
 
     def test__TYEntry_fields(self, bivariate_independent):
         """_TYEntry dataclass stores test fields."""

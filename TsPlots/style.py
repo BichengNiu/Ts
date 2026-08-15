@@ -144,6 +144,15 @@ DEFAULT_LINESTYLES = [
 # Distinct marker shapes to reinforce B&W distinction
 DEFAULT_MARKERS = ["o", "o", "^", "D", "v", "P", "X", "*"]
 
+# Shared reference-line and shading cosmetics (single source of truth).
+REFERENCE_LINE_COLOR = "#d9534f"
+REFERENCE_LINE_STYLE = "--"
+REFERENCE_LINE_WIDTH = 1.5
+SHADE_COLOR = "#d0d0d0"
+SHADE_ALPHA = 0.3
+BAND_COLOR = "#d0d0d0"
+BAND_ALPHA = 0.4
+
 # --- Cosmetic size constants ----------------------------------------------
 FIGSIZE = (10, 5.5)
 TITLE_FONTSIZE = 14
@@ -522,7 +531,6 @@ class _FigureContext:
         legend_labels=None,
         legend_loc="best",
         legend_bbox=None,
-        labels=None,
         unit=None,
         x_unit=None,
     ):
@@ -545,7 +553,7 @@ class _FigureContext:
 
         style_axes(self.ax, grid=grid, tick_labelsize=TICK_LABELSIZE)
 
-        if show_legend and labels:
+        if show_legend:
             draw_legend(
                 self.ax,
                 show_legend=show_legend,

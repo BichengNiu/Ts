@@ -261,7 +261,7 @@ class TestVARResultMethods:
         covers: code/python/Ts/TsModels/_var.py::GrangerCausalityResult.__str__ [function]
         covers: code/python/Ts/TsModels/_var.py::GrangerCausalityResult.summary [function]
         covers: code/python/Ts/TsModels/_var.py::_format_single [function]
-        covers: code/python/Ts/TsModels/_var.py::_sig_star [function]
+        covers: code/python/Ts/TsUtils/_validation.py::significance_stars [function]
         """
         gc = fitted_var.granger_causality(caused=0, causing=1)
         text = str(gc)

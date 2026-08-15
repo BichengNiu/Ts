@@ -12,6 +12,7 @@ from scipy import stats as scipy_stats
 
 from Ts.TsUtils._validation import (
     _resolve_missing_rows,
+    significance_stars,
     validate_alpha as _validate_prediction_alpha,
 )
 
@@ -571,7 +572,7 @@ def _format_single(entry, kind):
         if isinstance(entry.df, tuple)
         else str(entry.df)
     )
-    sig = _sig_star(entry.p_value)
+    sig = significance_stars(entry.p_value)
     cause_str = ", ".join(entry.causing)
     eq_w = max(len(entry.caused), 8) + 2
     ex_w = max(len(cause_str), 8) + 2
@@ -619,7 +620,7 @@ def _format_table(entries, kind):
 
         cause_str = ", ".join(e.causing)
         df_str = f"{e.df[0]}, {e.df[1]}" if isinstance(e.df, tuple) else str(e.df)
-        sig = _sig_star(e.p_value)
+        sig = significance_stars(e.p_value)
 
         lines.append(
             f"{e.caused:<{eq_w}s} {cause_str:<{ex_w}s} "
@@ -763,21 +764,6 @@ def _render_pair_table(names, k, periods, header_label, value_cells, steps):
             )
             idx += 1
     return lines
-
-
-def _sig_star(p_value: float) -> str:
-    """Return significance star code for a p-value.
-
-    ``**`` for p < 0.01, ``*`` for p < 0.05, ``.`` for p < 0.10,
-    `` `` otherwise.
-    """
-    if p_value < 0.01:
-        return "**"
-    if p_value < 0.05:
-        return "*"
-    if p_value < 0.10:
-        return "."
-    return " "
 
 
 def _run_granger_all(result_obj, k, data_names, kind):

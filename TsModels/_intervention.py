@@ -733,10 +733,6 @@ def _empirical_intervals(
 class _BootstrapError(RuntimeError):
     """Bootstrap threshold failure with per-attempt diagnostics."""
 
-    def __init__(self, message, failures):
-        super().__init__(message)
-        self.failures = tuple(failures)
-
 
 def _bootstrap_refit(result, rng):
     from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -828,7 +824,7 @@ def _bootstrap_intervals(
             f"bootstrap produced {success_count}/{n_draws} successful "
             f"refits, below the required 80%; failures: {diagnostic}"
         )
-        raise _BootstrapError(message, failures)
+        raise _BootstrapError(message)
 
     return _empirical_intervals(np.asarray(paths), alpha)
 

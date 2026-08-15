@@ -178,7 +178,6 @@ def boxcox(data, *, lmbda=None):
             index=data.index,
             name=data.name,
         )
-        transformed_data.index = data.index
         return BoxCoxResult(data=transformed_data, lmbda=fitted_lmbda)
 
     resolved_lmbdas = _resolve_dataframe_lmbdas(data, lmbda)
@@ -200,8 +199,6 @@ def boxcox(data, *, lmbda=None):
         index=data.index,
         columns=data.columns,
     )
-    transformed_data.index = data.index
-    transformed_data.columns = data.columns
     fitted = pd.Series(
         fitted_lmbdas,
         index=data.columns,

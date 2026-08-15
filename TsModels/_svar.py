@@ -59,6 +59,46 @@ def _param_to_matrices(params, A_mask, B_mask, A_template, B_template):
     return A, B
 
 
+def _cholesky_initial_params(A_mask, B_mask, A_template, B_template, sigma_u, k):
+    """Return Cholesky-based initial free parameters for A/B MLE.
+
+    Fills the B diagonal from the Cholesky diagonal, the A lower triangle from
+    ``-L[i,j] / L[j,j]``, and the B off-diagonal from ``L[i,j]``. A ``None``
+    mask means that matrix has no free parameters.
+    """
+    try:
+        L = np.linalg.cholesky(sigma_u)
+    except np.linalg.LinAlgError:
+        L = np.eye(k)
+
+    init_A = A_template.copy()
+    init_B = B_template.copy()
+
+    if B_mask is not None:
+        for i in range(k):
+            if B_mask[i, i]:
+                init_B[i, i] = max(L[i, i], 0.01)
+
+    if A_mask is not None:
+        for i in range(k):
+            for j in range(k):
+                if A_mask[i, j] and i > j and L[j, j] > 0:
+                    init_A[i, j] = -L[i, j] / L[j, j]
+
+    if B_mask is not None:
+        for i in range(k):
+            for j in range(k):
+                if B_mask[i, j] and i != j:
+                    init_B[i, j] = L[i, j]
+
+    params = []
+    if A_mask is not None and np.any(A_mask):
+        params.extend(init_A[A_mask])
+    if B_mask is not None and np.any(B_mask):
+        params.extend(init_B[B_mask])
+    return np.asarray(params, dtype=float)
+
+
 def _nll_ab(params, A_mask, B_mask, A_template, B_template, sigma_u, nobs):
     """Negative concentrated log-likelihood for the AB-model.
 
@@ -507,37 +547,14 @@ class SVARResult(VARResult):
                     A_d = self._A_template
                     B_d = self._B_template
                 else:
-                    # Cholesky-based initial guess
-                    try:
-                        L_chol = np.linalg.cholesky(sigma_u_d)
-                    except np.linalg.LinAlgError:
-                        L_chol = np.eye(k)
-
-                    init_A = self._A_template.copy()
-                    init_B = self._B_template.copy()
-
-                    for i in range(k):
-                        if b_mask is not None and b_mask[i, i]:
-                            init_B[i, i] = max(L_chol[i, i], 0.01)
-
-                    if n_a > 0:
-                        for i in range(k):
-                            for j in range(k):
-                                if a_mask[i, j] and i > j and L_chol[j, j] > 0:
-                                    init_A[i, j] = -L_chol[i, j] / L_chol[j, j]
-
-                    if n_b > 0:
-                        for i in range(k):
-                            for j in range(k):
-                                if b_mask is not None and b_mask[i, j] and i != j:
-                                    init_B[i, j] = L_chol[i, j]
-
-                    init_params = []
-                    if n_a > 0:
-                        init_params.extend(init_A[a_mask])
-                    if n_b > 0:
-                        init_params.extend(init_B[b_mask])
-                    init_params = np.asarray(init_params, dtype=float)
+                    init_params = _cholesky_initial_params(
+                        a_mask,
+                        b_mask,
+                        self._A_template,
+                        self._B_template,
+                        sigma_u_d,
+                        k,
+                    )
 
                     try:
                         res = minimize(
@@ -818,41 +835,14 @@ class SVAR(BaseModel):
                 A_est = A_tpl.copy()
                 B_est = B_tpl.copy()
             else:
-                # Cholesky-based initial guess
-                try:
-                    L_chol = np.linalg.cholesky(sigma_u)  # lower
-                except np.linalg.LinAlgError:
-                    L_chol = np.eye(k)
-
-                init_A = A_tpl.copy()
-                init_B = B_tpl.copy()
-
-                # Fill B diagonal from Cholesky diagonal
-                for i in range(k):
-                    if B_mask[i, i]:
-                        init_B[i, i] = max(L_chol[i, i], 0.01)
-
-                # Fill A off-diagonal from Cholesky: A^{-1} B = L
-                # For lower-triangular A: A[i,j] = -L[i,j] / L[j,j] (i > j)
-                if np.any(A_mask):
-                    for i in range(k):
-                        for j in range(k):
-                            if A_mask[i, j] and i > j and L_chol[j, j] > 0:
-                                init_A[i, j] = -L_chol[i, j] / L_chol[j, j]
-
-                # Fill remaining B off-diagonal entries from Cholesky
-                if np.any(B_mask):
-                    for i in range(k):
-                        for j in range(k):
-                            if B_mask[i, j] and (i != j):
-                                init_B[i, j] = L_chol[i, j]
-
-                init_params = []
-                if np.any(A_mask):
-                    init_params.extend(init_A[A_mask])
-                if np.any(B_mask):
-                    init_params.extend(init_B[B_mask])
-                init_params = np.asarray(init_params, dtype=float)
+                init_params = _cholesky_initial_params(
+                    A_mask,
+                    B_mask,
+                    A_tpl,
+                    B_tpl,
+                    sigma_u,
+                    k,
+                )
                 res = minimize(
                     _nll_ab,
                     init_params,

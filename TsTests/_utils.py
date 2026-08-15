@@ -11,40 +11,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from Ts.TsUtils._validation import as_1d_float as _as_1d_float
+
 
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
 _VALID_MODELS = ("intercept", "slope", "both")
-
-
-def _validate_nonnegative_int(value, *, name: str) -> int:
-    """Return *value* as int after rejecting booleans and negative values.
-
-    Parameters
-    ----------
-    value : int
-    name : str
-        Parameter name used in error messages.
-
-    Returns
-    -------
-    int
-        The validated non-negative integer.
-
-    Raises
-    ------
-    TypeError
-        If *value* is not an integer (or a bool).
-    ValueError
-        If *value* is negative.
-    """
-    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
-        raise TypeError(f"{name} must be an integer")
-    if value < 0:
-        raise ValueError(f"{name} must be non-negative")
-    return int(value)
 
 
 def _validate_model(model: str) -> None:
@@ -122,14 +96,6 @@ def _validate_alpha(alpha) -> float:
 # ---------------------------------------------------------------------------
 # Input parsing
 # ---------------------------------------------------------------------------
-
-
-def _as_1d_float(data: Any, *, name: str = "data") -> np.ndarray:
-    """Convert input to a 1-D float array without silently flattening it."""
-    values = np.asarray(data, dtype=float)
-    if values.ndim != 1:
-        raise ValueError(f"{name} must be 1-D, got shape {values.shape}")
-    return values
 
 
 def _clean_1d(data: Any, *, name: str = "data") -> np.ndarray:
