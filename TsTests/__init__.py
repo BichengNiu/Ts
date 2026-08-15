@@ -39,6 +39,11 @@ This package implements statistical tests for time series analysis:
 - :class:`ResidualCCFTest` — residual cross-correlations and the joint
   Box-Jenkins S* adequacy test for prewhitened transfer inputs.
 
+**Outlier detection**
+
+- :class:`OutlierDetector` — iterative AO / LS / IO outlier detection on
+  ARIMA residuals (Tsay 1988 procedure).
+
 Quick start
 -----------
 >>> from Ts.TsTests import (
@@ -63,6 +68,7 @@ from ._lee_strazicich import (
 )
 from ._ljungbox import LjungBoxTest, LjungBoxTestResult
 from ._normality import NormalityTest, NormalityTestResult
+from ._outlier import OutlierDetector, OutlierDetectorResult
 from ._perron import PerronTest, PerronTestResult
 from ._phillips_perron import PhillipsPerronTest, PhillipsPerronTestResult
 from ._residual_ccf import (
@@ -100,6 +106,8 @@ __all__ = [
     "LjungBoxTestResult",
     "NormalityTest",
     "NormalityTestResult",
+    "OutlierDetector",
+    "OutlierDetectorResult",
     "PerronTest",
     "PerronTestResult",
     "PhillipsPerronTest",
