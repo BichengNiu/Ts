@@ -647,8 +647,8 @@ class _FigureContext:
     axis labels, legend drawing, unit labels, tight_layout, and note rendering.
     """
 
-    def __init__(self, ax=None):
-        self.fig, self.ax = _fig_axes(ax)
+    def __init__(self, ax=None, figsize=None):
+        self.fig, self.ax = _fig_axes(ax, figsize=figsize)
 
     def finalize(
         self,

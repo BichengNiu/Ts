@@ -237,6 +237,42 @@ class TestPlotSeries:
                 third_axis_vars=["b"],
             )
 
+    def test_figsize_applies_to_single_axes(self):
+        fig, _ax = plot_series(
+            {"a": [1, 2, 3]}, facet=False, figsize=(8.0, 4.0)
+        )
+        assert fig.get_size_inches()[0] == 8.0
+        assert fig.get_size_inches()[1] == 4.0
+        plt.close(fig)
+
+    def test_facet_rows_and_cols_layout(self):
+        data = {"a": [1, 2], "b": [2, 3], "c": [3, 4], "d": [4, 5]}
+
+        fig, axes = plot_series(data, facet=True, facet_rows=2, facet_cols=2)
+        assert len(axes) == 4
+        assert fig.axes.count is not None
+        assert [ax.get_visible() for ax in fig.axes][:4] == [True] * 4
+        plt.close(fig)
+
+        fig, axes = plot_series(
+            data, facet=True, facet_cols=3, figsize=(12.0, 8.0)
+        )
+        assert len(axes) == 4
+        assert fig.get_size_inches()[0] == 12.0
+        assert fig.get_size_inches()[1] == 8.0
+        plt.close(fig)
+
+    def test_rejects_facet_grid_too_small(self):
+        with pytest.raises(ValueError, match="cannot fit"):
+            plot_series(
+                {"a": [1], "b": [2], "c": [3]},
+                facet=True,
+                facet_rows=1,
+                facet_cols=2,
+            )
+        with pytest.raises(ValueError, match="facet_rows must be"):
+            plot_series({"a": [1, 2]}, facet=True, facet_rows=0)
+
     @pytest.mark.parametrize(
         ("axis_groups", "max_y_axes", "message"),
         [

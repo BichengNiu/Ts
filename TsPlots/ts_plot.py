@@ -665,6 +665,9 @@ def plot_series(
     facet: bool = True,
     sharex: bool = True,
     sharey: bool = False,
+    facet_rows: int | None = None,
+    facet_cols: int | None = None,
+    figsize: tuple[float, float] | None = None,
     auto_dual_y: bool = True,
     scale_ratio_threshold: float = 10.0,
     axis_groups: Mapping[str, object] | None = None,
@@ -812,6 +815,19 @@ def plot_series(
     sharey : bool
         Whether faceted panels share the same y-axis scale. Defaults to
         ``False``.
+    facet_rows : int or None
+        Number of rows in the facet grid. When only one of
+        ``facet_rows`` / ``facet_cols`` is given the other adapts to fit
+        every panel; when both are given unused cells are hidden. Defaults
+        to None (one column, one panel per row).
+    facet_cols : int or None
+        Number of columns in the facet grid. Defaults to None (see
+        ``facet_rows``).
+    figsize : tuple of float, optional
+        Figure size ``(width, height)`` in inches for the single-axes and
+        faceted figures. Defaults to the package default (``(10, 5.5)``;
+        faceted figures grow their height with the panel count when this
+        is not given).
     auto_dual_y : bool
         When ``facet=False`` and ``axis_groups`` is not supplied,
         automatically group similar robust scales and create additional
@@ -918,6 +934,10 @@ def plot_series(
     facet = _validate_bool("facet", facet)
     sharex = _validate_bool("sharex", sharex)
     sharey = _validate_bool("sharey", sharey)
+    if facet_rows is not None and (not isinstance(facet_rows, int) or facet_rows < 1):
+        raise ValueError("facet_rows must be a positive integer or None")
+    if facet_cols is not None and (not isinstance(facet_cols, int) or facet_cols < 1):
+        raise ValueError("facet_cols must be a positive integer or None")
     auto_dual_y = _validate_bool("auto_dual_y", auto_dual_y)
     scale_ratio_threshold = _validate_positive_step(
         "scale_ratio_threshold",
@@ -1004,16 +1024,31 @@ def plot_series(
             )
 
         _ensure_fonts()
-        figure_height = max(FIGSIZE[1], 3.5 * len(series))
-        fig, axes = plt.subplots(
-            len(series),
-            1,
-            figsize=(FIGSIZE[0], figure_height),
+        panel_count = len(series)
+        rows, cols = facet_rows, facet_cols
+        if rows is None and cols is None:
+            rows, cols = panel_count, 1
+        elif rows is None:
+            rows = -(-panel_count // cols)
+        elif cols is None:
+            cols = -(-panel_count // rows)
+        if rows * cols < panel_count:
+            raise ValueError(
+                f"facet grid {rows}x{cols} cannot fit {panel_count} series"
+            )
+        if figsize is None:
+            figsize = (FIGSIZE[0], max(FIGSIZE[1], 3.5 * rows))
+        fig, grid_axes = plt.subplots(
+            rows,
+            cols,
+            figsize=figsize,
             sharex=sharex,
             sharey=sharey,
             squeeze=False,
         )
-        axes = axes[:, 0]
+        axes = np.asarray(list(grid_axes.ravel())[:panel_count])
+        for unused in grid_axes.ravel()[panel_count:]:
+            unused.set_visible(False)
         x_label = xtitle if xtitle is not None else default_xlabel
         display_labels = legend_labels or list(series)
 
@@ -1103,7 +1138,7 @@ def plot_series(
         return fig, axes
 
     _ensure_fonts()
-    ctx = _FigureContext(ax=ax)
+    ctx = _FigureContext(ax=ax, figsize=figsize)
     fig, ax = ctx.fig, ctx.ax
 
     resolved_groups = _resolve_axis_groups(
