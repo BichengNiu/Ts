@@ -609,6 +609,9 @@ def plot_series(
     title_position: str = "top",
     note: str | None = None,
     grid: bool = False,
+    grid_axis: str = "both",
+    grid_linewidth: float = 0.6,
+    grid_linestyle: str = "--",
     show_values: bool = False,
     value_decimals: int = 1,
     vlines=None,
@@ -724,7 +727,16 @@ def plot_series(
     note : str, optional
         Free-text note placed at the lower-left of the figure.
     grid : bool
-        Whether to show a dashed grid on both axes. Defaults to False.
+        Whether to show a grid. Defaults to False.
+    grid_axis : {"both", "x", "y"}
+        Which grid lines to draw when ``grid`` is True: ``"x"`` draws
+        vertical lines at the x-ticks, ``"y"`` horizontal lines at the
+        y-ticks, ``"both"`` draws both. Defaults to ``"both"``.
+    grid_linewidth : float
+        Line width of the grid lines in points. Defaults to ``0.6``.
+    grid_linestyle : str
+        Line style of the grid lines (any matplotlib linestyle). Defaults
+        to ``"--"``.
     show_values : bool
         Annotate each data point with its numeric value. Defaults to False.
         Adjacent labels alternate above/below the line so they stay readable
@@ -848,6 +860,11 @@ def plot_series(
     )
     max_y_axes = _validate_max_ticks(max_y_axes, name="max_y_axes")
     year_ruler = _validate_bool("year_ruler", year_ruler)
+    if grid_axis not in ("both", "x", "y"):
+        raise ValueError(
+            f"grid_axis={grid_axis!r} is not valid. Choose from: 'both', 'x', 'y'"
+        )
+    grid_linewidth = _validate_positive_step("grid_linewidth", grid_linewidth)
 
     if bar_series is None:
         bar_series = []
@@ -978,7 +995,13 @@ def plot_series(
                 panel_ax.set_xlim(left=xmin)
             if ymin is not None:
                 panel_ax.set_ylim(bottom=ymin)
-            style_axes(panel_ax, grid=grid)
+            style_axes(
+                panel_ax,
+                grid=grid,
+                grid_axis=grid_axis,
+                grid_linewidth=grid_linewidth,
+                grid_linestyle=grid_linestyle,
+            )
             if show_legend:
                 draw_legend(
                     panel_ax,
@@ -1118,6 +1141,9 @@ def plot_series(
         title_pad=title_pad,
         note=note,
         grid=grid,
+        grid_axis=grid_axis,
+        grid_linewidth=grid_linewidth,
+        grid_linestyle=grid_linestyle,
         show_legend=False,
         unit=unit,
     )

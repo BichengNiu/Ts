@@ -238,6 +238,33 @@ class TestPlotSeries:
         # grid should be visible
         plt.close(fig)
 
+    def test_grid_axis_controls_direction(self):
+        data = np.random.randn(20)
+        fig, ax = plot_series(data, grid=True, grid_axis="x")
+        assert any(line.get_visible() for line in ax.get_xgridlines())
+        assert not any(line.get_visible() for line in ax.get_ygridlines())
+        plt.close(fig)
+
+        fig, ax = plot_series(data, grid=True, grid_axis="y")
+        assert any(line.get_visible() for line in ax.get_ygridlines())
+        assert not any(line.get_visible() for line in ax.get_xgridlines())
+        plt.close(fig)
+
+    def test_grid_width_and_linestyle(self):
+        data = np.random.randn(20)
+        fig, ax = plot_series(
+            data, grid=True, grid_linewidth=1.5, grid_linestyle=":"
+        )
+        fig.canvas.draw()
+        line = next(l for l in ax.get_ygridlines() if l.get_visible())
+        assert line.get_linewidth() == 1.5
+        assert line.get_linestyle() == ":"
+        plt.close(fig)
+
+    def test_rejects_invalid_grid_axis(self):
+        with pytest.raises(ValueError, match="grid_axis"):
+            plot_series([1, 2, 3], grid=True, grid_axis="z")
+
     def test_vlines_and_shade(self):
         data = np.random.randn(30)
         fig, _ax = plot_series(data, vlines=15, shade=(10, 20))

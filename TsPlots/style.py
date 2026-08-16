@@ -245,16 +245,34 @@ def _validate_positive_step(name, value, *, integer=False):
     return int(value) if integer else numeric
 
 
-def style_axes(ax, *, grid=False, tick_labelsize=TICK_LABELSIZE):
+def style_axes(
+    ax,
+    *,
+    grid=False,
+    grid_axis="both",
+    grid_linewidth=0.6,
+    grid_linestyle="--",
+    tick_labelsize=TICK_LABELSIZE,
+):
     """Apply the shared axes cosmetics: hide the top and right spines, set the
-    tick label size, and optionally draw a dashed grid on both axes.
+    tick label size, and optionally draw a dashed grid on one or both axes.
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes
         Axes to style.
     grid : bool
-        Whether to show a dashed grid on both axes. Defaults to ``False``.
+        Whether to show a grid. Defaults to ``False``.
+    grid_axis : {"both", "x", "y"}
+        Which grid lines to draw: ``"x"`` draws vertical lines at the
+        x-ticks (纵网格), ``"y"`` horizontal lines at the y-ticks
+        (横网格), ``"both"`` draws both. Only used when ``grid`` is
+        ``True``. Defaults to ``"both"``.
+    grid_linewidth : float
+        Line width of the grid lines, in points. Defaults to ``0.6``.
+    grid_linestyle : str
+        Line style of the grid lines (any matplotlib linestyle, e.g.
+        ``"--"``, ``":"``, ``"-."``, ``"-"``). Defaults to ``"--"``.
     tick_labelsize : float
         Font size of the tick labels. Defaults to ``14``.
 
@@ -291,7 +309,12 @@ def style_axes(ax, *, grid=False, tick_labelsize=TICK_LABELSIZE):
             title.set_fontfamily(title_family)
 
     if grid:
-        ax.grid(axis="both", alpha=0.4, linestyle="--")
+        ax.grid(
+            axis=grid_axis,
+            alpha=0.4,
+            linestyle=grid_linestyle,
+            linewidth=grid_linewidth,
+        )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.tick_params(axis="both", labelsize=tick_labelsize)
@@ -637,6 +660,9 @@ class _FigureContext:
         title_pad=12,
         note=None,
         grid=False,
+        grid_axis="both",
+        grid_linewidth=0.6,
+        grid_linestyle="--",
         show_legend=True,
         legend_labels=None,
         legend_loc="best",
@@ -661,7 +687,14 @@ class _FigureContext:
         if ytitle:
             self.ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
 
-        style_axes(self.ax, grid=grid, tick_labelsize=TICK_LABELSIZE)
+        style_axes(
+            self.ax,
+            grid=grid,
+            grid_axis=grid_axis,
+            grid_linewidth=grid_linewidth,
+            grid_linestyle=grid_linestyle,
+            tick_labelsize=TICK_LABELSIZE,
+        )
 
         if show_legend:
             draw_legend(
