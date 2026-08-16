@@ -129,6 +129,72 @@ def test_plot_series_xtitle_loc_invalid_raises() -> None:
         plot_series({"a": [1, 2, 3]}, xtitle="X", xtitle_loc="top")
 
 
+def test_plot_series_ytick_count_limits_ticks() -> None:
+    """Y 轴刻度数：刻度数量与请求值一致（含端点）。"""
+    fig, ax = plot_series(
+        {"a": range(50)},
+        ytitle="V",
+        xtitle="",
+        ytick_count=3,
+        facet=False,
+        show_legend=False,
+    )
+    fig.canvas.draw()
+    ticks = ax.get_yticks()
+    assert len(ticks) == 3
+
+
+def test_plot_series_ylabel_count_thins_labels() -> None:
+    """Y 轴标签数：刻度全保留、标签抽稀。"""
+    fig, ax = plot_series(
+        {"a": range(50)},
+        ytitle="V",
+        xtitle="",
+        ytick_count=11,
+        ylabel_count=3,
+        facet=False,
+        show_legend=False,
+    )
+    fig.canvas.draw()
+    ticks = ax.get_yticks()
+    labels = [t.get_text() for t in ax.get_yticklabels()]
+    non_empty = [label for label in labels if label]
+    assert len(ticks) >= 4
+    assert 1 <= len(non_empty) <= 3
+
+
+def test_plot_series_xlabel_count_thins_labels() -> None:
+    """X 轴标签数：日期轴标签抽稀，刻度保留。"""
+    import pandas as pd
+
+    index = pd.date_range("2020-01-01", periods=60, freq="MS")
+    frame = pd.DataFrame({"v": range(60)}, index=index)
+    fig, ax = plot_series(
+        frame, xtitle="", ytitle="V", xlabel_count=3, facet=False, show_legend=False
+    )
+    fig.canvas.draw()
+    labels = [t.get_text() for t in ax.get_xticklabels()]
+    non_empty = [label for label in labels if label]
+    assert 1 <= len(non_empty) <= 3
+
+
+def test_plot_series_xmin_sets_left_limit() -> None:
+    """X 轴起点：时间轴从指定日期开始。"""
+    import pandas as pd
+
+    index = pd.date_range("2020-01-01", periods=24, freq="MS")
+    frame = pd.DataFrame({"v": range(24)}, index=index)
+    start = pd.Timestamp("2020-06-01")
+    fig, ax = plot_series(
+        frame, xtitle="", ytitle="V", xmin=start, facet=False, show_legend=False
+    )
+    fig.canvas.draw()
+    import matplotlib.dates as mdates
+
+    left = ax.get_xlim()[0]
+    assert abs(left - mdates.date2num(start)) < 1.0
+
+
 def test_plot_acf_top_end_horizontal() -> None:
     fig, ax = plot_acf(np.arange(20.0), nlags=8)
     text, rotation, (x, y) = _ylabel_state(ax)

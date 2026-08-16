@@ -643,6 +643,56 @@ def _configure_x_axis(
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
 
+def _evenly_spaced(ticks, count):
+    """从有序 tick 序列中均匀取 ``count`` 个，保留首尾。"""
+    if len(ticks) <= count:
+        return ticks
+    if count <= 2:
+        return [ticks[0], ticks[-1]]
+    indices = {round(i * (len(ticks) - 1) / (count - 1)) for i in range(count)}
+    return [ticks[i] for i in sorted(indices)]
+
+
+def _configure_y_axis(ax, *, ytick_count=None, ylabel_count=None) -> None:
+    """Apply y-axis tick density and optional label thinning."""
+    if ytick_count is not None:
+        locator = MaxNLocator(nbins=max(1, ytick_count - 1))
+        ax.yaxis.set_major_locator(locator)
+        ticks = list(locator())
+        if len(ticks) > ytick_count:
+            ax.set_yticks(_evenly_spaced(ticks, ytick_count))
+    if ylabel_count is None:
+        return
+    ticks = list(ax.yaxis.get_major_locator()())
+    if len(ticks) <= ylabel_count:
+        return
+    step = (len(ticks) + ylabel_count - 1) // ylabel_count
+    formatter = ax.yaxis.get_major_formatter()
+    # 先 set_locs 初始化 formatter（未 draw 时 ScalarFormatter 会返回空串）
+    formatter.set_locs(ticks)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels(
+        [formatter(t) if i % step == 0 else "" for i, t in enumerate(ticks)]
+    )
+
+
+def _thin_x_labels(ax, *, count=None) -> None:
+    """Thin x-axis tick labels to at most *count*, keeping every tick."""
+    if count is None:
+        return
+    ticks = list(ax.xaxis.get_major_locator()())
+    if len(ticks) <= count:
+        return
+    step = (len(ticks) + count - 1) // count
+    formatter = ax.xaxis.get_major_formatter()
+    # 先 set_locs 初始化 formatter（未 draw 时 ScalarFormatter 会返回空串）
+    formatter.set_locs(ticks)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(
+        [formatter(t) if i % step == 0 else "" for i, t in enumerate(ticks)]
+    )
+
+
 def plot_series(
     data,
     x=None,
@@ -663,6 +713,10 @@ def plot_series(
     freq: str | None = None,
     year_ruler: bool = False,
     ymin: float | None = None,
+    xmin: float | None = None,
+    ytick_count: int | None = None,
+    ylabel_count: int | None = None,
+    xlabel_count: int | None = None,
     show_legend: bool = True,
     legend_labels=None,
     legend_loc: str = "best",
@@ -758,6 +812,20 @@ def plot_series(
         Defaults to ``False``.
     ymin : float or None
         Lower limit of the y-axis. Defaults to None (automatic); pass a float to set a fixed minimum.
+    xmin : float, datetime-like, or None
+        Lower limit of the x-axis. Defaults to None (automatic). Accepts a
+        float for numeric axes or a datetime/Timestamp for datetime axes.
+    ytick_count : int or None
+        Number of y-axis ticks (including endpoints). Defaults to None
+        (automatic); matplotlib picks "nice" values close to the request.
+    ylabel_count : int or None
+        Maximum number of y-axis tick labels to display. Defaults to None
+        (label every tick). When smaller than the tick count, labels are
+        thinned evenly.
+    xlabel_count : int or None
+        Maximum number of x-axis tick labels to display. Defaults to None
+        (label every tick). When smaller than the tick count, labels are
+        thinned evenly.
     show_legend : bool
         Whether to display the legend. Defaults to ``True``.
     legend_labels : sequence of str, optional
@@ -1027,6 +1095,14 @@ def plot_series(
                 freq=freq,
                 year_ruler=year_ruler,
             )
+            _thin_x_labels(panel_ax, count=xlabel_count)
+            _configure_y_axis(
+                panel_ax,
+                ytick_count=ytick_count,
+                ylabel_count=ylabel_count,
+            )
+            if xmin is not None:
+                panel_ax.set_xlim(left=xmin)
             if ymin is not None:
                 panel_ax.set_ylim(bottom=ymin)
             style_axes(panel_ax, grid=grid)
@@ -1120,6 +1196,15 @@ def plot_series(
         freq=freq,
         year_ruler=year_ruler,
     )
+    _thin_x_labels(ax, count=xlabel_count)
+    _configure_y_axis(
+        ax,
+        ytick_count=ytick_count,
+        ylabel_count=ylabel_count,
+    )
+
+    if xmin is not None:
+        ax.set_xlim(left=xmin)
 
     if ymin is not None:
         for y_axis in [ax, *right_axes]:
