@@ -161,7 +161,7 @@ FIGSIZE = (10, 5.5)
 TITLE_FONTSIZE = 14
 AXIS_LABEL_FONTSIZE = 15
 TICK_LABELSIZE = 14
-LEGEND_FONTSIZE = 14
+LEGEND_FONTSIZE = 15
 NOTE_FONTSIZE = 9
 TIGHT_PAD = 1.5
 #: Figure rectangle reserved for facet grids with a figure-level suptitle.
@@ -407,7 +407,7 @@ def draw_legend(
     legend_bbox : tuple, optional
         ``bbox_to_anchor`` for the legend.
     fontsize : float
-        Legend font size. Defaults to ``14``.
+        Legend font size. Defaults to ``15``（与轴标题字号一致）。
     """
     if not show_legend:
         return
@@ -426,6 +426,8 @@ def draw_legend(
         final_labels,
         frameon=False,
         fontsize=fontsize,
+        markerscale=1.6,
+        handlelength=2.6,
         loc=legend_loc,
         bbox_to_anchor=legend_bbox,
     )
@@ -456,19 +458,16 @@ def draw_unit_label(ax, unit, *, axis="y"):
         raise ValueError(f"axis={axis!r} is not valid. Choose 'x' or 'y'.")
 
 
-def place_ylabel_at_top(ax, *, clear_left_title=False, title_pad=12):
+def place_ylabel_at_top(ax):
     """将 y 轴标题置于轴的上端点、横排显示，并正对 y 轴（丁字布局）。
+
+    标题横排居中在轴顶端上方：左轴正对轴心（x=0），右侧双轴正对右轴
+    轴心（x=1）；轴线的顶端落在标题横笔正中，形成「丁」字。
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes
         要调整的坐标轴；右侧双轴（twinx）同样适用。
-    clear_left_title : bool, default False
-        轴顶端左对齐放置了图标题时置 ``True``：y 轴标题改为右对齐贴轴
-        左侧，与图标题同一高度并留出间隙，避免二者重叠。
-    title_pad : float, default 12
-        图标题与轴顶端的间距（points），用于把 y 轴标题对齐到图标题的
-        高度。
 
     Notes
     -----
@@ -479,17 +478,34 @@ def place_ylabel_at_top(ax, *, clear_left_title=False, title_pad=12):
         return
     label.set_rotation(0)
     label.set_verticalalignment("bottom")
+    label.set_horizontalalignment("center")
     side = ax.yaxis.get_label_position()
-    if clear_left_title and side == "left":
-        label.set_horizontalalignment("right")
-        x = -0.02
-        fig_height = ax.figure.get_figheight()
-        y = 1.0 + title_pad / (fig_height * 72)
-    else:
-        label.set_horizontalalignment("center")
-        x = 0.0 if side == "left" else 1.0
-        y = 1.05
-    ax.yaxis.set_label_coords(x, y)
+    x = 0.0 if side == "left" else 1.0
+    ax.yaxis.set_label_coords(x, 1.05)
+
+
+def place_left_title_right_of_ylabel(ax, *, pad_points=8):
+    """把左上角图标题移到 y 轴标题（置顶横排）右侧，避免二者重叠。
+
+    y 轴标题保持正对轴心不动；图标题左缘移动到 y 标题右缘 + 间隙
+    （points）。无图标题或无 y 标题时不做任何改动。
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        要调整的坐标轴（图标题已以 ``loc="left"`` 绘制在左上角）。
+    pad_points : float, default 8
+        图标题左缘与 y 标题右缘之间的最小间隙（points）。
+    """
+    title = ax._left_title
+    label = ax.yaxis.get_label()
+    if not title.get_text() or not label.get_text():
+        return
+    renderer = ax.figure.canvas.get_renderer()
+    label_bbox = label.get_window_extent(renderer)
+    gap = pad_points * ax.figure.dpi / 72
+    x = ax.transAxes.inverted().transform((label_bbox.x1 + gap, 0))[0]
+    title.set_position((x, title.get_position()[1]))
 
 
 def draw_note_and_bottom_title(

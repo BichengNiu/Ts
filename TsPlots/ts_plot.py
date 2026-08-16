@@ -69,6 +69,7 @@ from .style import (
     style_axes,
     draw_unit_label,
     place_ylabel_at_top,
+    place_left_title_right_of_ylabel,
     draw_note_and_bottom_title,
     draw_legend,
     draw_shade,
@@ -318,9 +319,17 @@ def _clip_vlines_to_data(vlines, x_values):
     data_min, data_max = float(np.nanmin(x_nums)), float(np.nanmax(x_nums))
     clipped = []
     for position in positions:
+        # matplotlib 3.11 的 date2num 不接受纯字符串（0-d 数组报错），
+        # 先统一转成 Timestamp 再转换。
+        if isinstance(position, str):
+            try:
+                position = pd.to_datetime(position)
+            except (ValueError, TypeError):
+                clipped.append(position)
+                continue
         if isinstance(
             position,
-            (date, datetime, str, np.datetime64),
+            (date, datetime, np.datetime64),
         ):
             try:
                 value = float(mdates.date2num(position))
@@ -588,16 +597,11 @@ def _plot_one_series(
     for point_index, (x_value, y_value) in enumerate(
         zip(x_values, values, strict=False)
     ):
-        previous = float(values[point_index - 1]) if point_index > 0 else float(y_value)
-        following = (
-            float(values[point_index + 1])
-            if point_index < n_points - 1
-            else float(y_value)
-        )
-        if float(y_value) >= (previous + following) / 2:
-            y_offset, vertical_alignment = -(markersize + 10), "top"
+        # 相邻标注交替上/下错开：密集数据下避免挤在一起。
+        if point_index % 2 == 0:
+            y_offset, vertical_alignment = -(markersize + 12), "top"
         else:
-            y_offset, vertical_alignment = markersize + 4, "bottom"
+            y_offset, vertical_alignment = markersize + 6, "bottom"
         ax.annotate(
             f"{y_value:{fmt}}",
             xy=(x_value, y_value),
@@ -648,6 +652,7 @@ def plot_series(
     colors=None,
     title: str | None = None,
     xtitle: str | None = None,
+    xtitle_loc: str = "center",
     ytitle: str = "Value",
     ytitle_position: str = "top",
     linewidth: float = 3,
@@ -717,6 +722,9 @@ def plot_series(
         Plot title. Defaults to None (no title).
     xtitle : str, optional
         Label for the x-axis. Defaults to None (detected from data).
+        Pass ``""`` to suppress the label entirely.
+    xtitle_loc : {"left", "center", "right"}, default "center"
+        Horizontal alignment of the x-axis label.
     ytitle : str, optional
         Label for the y-axis. Defaults to ``"Value"``.
     ytitle_position : {"top", "side"}, default "top"
@@ -772,8 +780,8 @@ def plot_series(
         Whether to show a dashed grid on both axes. Defaults to False.
     show_values : bool
         Annotate each data point with its numeric value. Defaults to False.
-        Labels are placed **above** local minima and **below** local maxima so
-        they do not overlap with adjacent line segments.
+        Adjacent labels alternate above/below the line so they stay readable
+        on dense data.
     value_decimals : int
         Decimal places for ``show_values`` annotations. Defaults to 1.
     vlines : float or list of float, optional
@@ -923,6 +931,12 @@ def plot_series(
             "Choose 'top' or 'side'."
         )
 
+    if xtitle_loc not in ("left", "center", "right"):
+        raise ValueError(
+            f"xtitle_loc={xtitle_loc!r} is not valid. "
+            "Choose 'left', 'center' or 'right'."
+        )
+
     if axis_groups is not None and facet and len(series) >= 2:
         raise ValueError("axis_groups requires facet=False for multiple series")
 
@@ -994,13 +1008,17 @@ def plot_series(
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
             if ytitle_position == "top":
-                # 分面面板标题恒为左上角（系列名），y 标题置顶时让位：
-                # 与面板标题同一高度、左右留间隙。
-                place_ylabel_at_top(panel_ax, clear_left_title=True, title_pad=6)
+                place_ylabel_at_top(panel_ax)
+                # 面板标题恒为左上角（系列名），移到 y 标题右侧避免重叠。
+                place_left_title_right_of_ylabel(panel_ax, pad_points=6)
             if unit is not None:
                 draw_unit_label(panel_ax, unit, axis="y")
             if not sharex or index == len(axes) - 1:
-                panel_ax.set_xlabel(x_label, fontsize=AXIS_LABEL_FONTSIZE)
+                panel_ax.set_xlabel(
+                    x_label,
+                    fontsize=AXIS_LABEL_FONTSIZE,
+                    loc=xtitle_loc,
+                )
             _configure_x_axis(
                 panel_ax,
                 x_values,
@@ -1087,17 +1105,12 @@ def plot_series(
     ax.set_xlabel(
         xtitle if xtitle is not None else default_xlabel,
         fontsize=AXIS_LABEL_FONTSIZE,
+        loc=xtitle_loc,
     )
     if ytitle is not None:
         ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
     if ytitle_position == "top":
-        place_ylabel_at_top(
-            ax,
-            clear_left_title=bool(
-                title and title_position == "top" and title_loc == "left"
-            ),
-            title_pad=title_pad,
-        )
+        place_ylabel_at_top(ax)
 
     _configure_x_axis(
         ax,
@@ -1151,6 +1164,16 @@ def plot_series(
         show_legend=False,
         unit=unit,
     )
+
+    if (
+        ytitle_position == "top"
+        and title
+        and title_position == "top"
+        and title_loc == "left"
+    ):
+        # 图标题靠左 + y 标题置顶：y 标题保持正对轴心，图标题移到
+        # 其右侧并留出间隙，避免二者重叠。
+        place_left_title_right_of_ylabel(ax, pad_points=8)
 
     if len(right_axes) >= 2:
         right_margin = max(0.5, 0.88 - 0.10 * (len(right_axes) - 1))

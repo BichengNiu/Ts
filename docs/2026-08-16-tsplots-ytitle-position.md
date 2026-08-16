@@ -51,14 +51,20 @@ ACF/PACF 相关图）统一生效。
 图标题靠左（`title_loc="left"`，含分面面板的左上系列名标题）且 y 标题
 置顶时，二者同处轴顶端会重叠。处理规则：
 
-- 单轴：`title and title_position == "top" and title_loc == "left"` 时，
-  y 标题改为右对齐贴轴左侧（x=-0.02），高度对齐图标题
-  （`y = 1.0 + title_pad / (figheight × 72)`），同一水平线、左右留间隙。
-- 分面：面板标题恒为左上角（系列名，pad=6），y 标题置顶时恒让位。
+- **y 轴标题位置不变**：仍正对轴心（x=0 / x=1，y=1.05）。
+- **图标题右移**：`place_left_title_right_of_ylabel` 测量 y 标题的实际
+  宽度，把左上标题的左缘移到 y 标题右缘 + 间隙（单轴 8pt、分面面板
+  6pt）处，二者互不重叠。
+- 单轴：仅当 `title and title_position == "top" and title_loc == "left"`
+  时右移；分面：面板标题恒为左上角，恒右移。
 - 右侧双轴不受左侧图标题影响。
 
-`place_ylabel_at_top` 新增 `clear_left_title` / `title_pad` 参数控制该
-行为（默认 `False`，不影响原布局）。
+## 参考线与阴影的日期字符串兼容
+
+matplotlib 3.11 的 `mdates.date2num` 不再接受纯字符串（把字符串当作
+0-d 数组索引报 ``too many indices``）。`_clip_vlines_to_data` 对字符串
+位置先用 ``pd.to_datetime`` 归一化为 `Timestamp` 再转换；日期类型的
+参考线/阴影区间在 3.11 下正常绘制。
 
 ## 测试
 
