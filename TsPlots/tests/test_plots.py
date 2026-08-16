@@ -47,7 +47,7 @@ class TestPlotSeries:
         assert axes[0].get_shared_x_axes().joined(axes[0], axes[1])
         assert not axes[0].get_shared_y_axes().joined(axes[0], axes[1])
         assert [axis.lines[0].get_label() for axis in axes] == ["small", "large"]
-        assert [axis.get_title(loc="left") for axis in axes] == ["small", "large"]
+        assert [axis.get_title() for axis in axes] == ["small", "large"]
         plt.close(fig)
 
     def test_facet_can_share_y_without_sharing_x(self):

@@ -78,15 +78,16 @@ def test_plot_series_left_title_moves_right_of_top_ylabel() -> None:
     assert title_x0 > label_x1
 
 
-def test_plot_series_facet_panel_titles_move_right_of_top_ylabel() -> None:
-    """分面面板标题恒为左上角，y 标题置顶时标题让位、y 标题位置不变。"""
+def test_plot_series_facet_panel_titles_centered() -> None:
+    """分面面板标题默认上居中，y 标题置顶时互不重叠。"""
     fig, axes = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]})
     for panel in np.asarray(axes).ravel():
         label = panel.yaxis.get_label()
         assert label.get_rotation() == 0
         assert label.get_ha() == "center"
         assert label.get_position()[0] == 0
-        assert panel._left_title.get_text()  # 面板标题仍在
+        assert panel.get_title()  # 面板标题居中槽
+        assert panel.title.get_horizontalalignment() == "center"
 
 
 def test_plot_series_vlines_accepts_date_strings() -> None:

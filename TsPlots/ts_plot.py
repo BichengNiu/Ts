@@ -1061,15 +1061,13 @@ def plot_series(
             panel_ax.set_title(
                 display_labels[index],
                 fontsize=AXIS_LABEL_FONTSIZE,
-                loc="left",
+                loc="center",
                 pad=6,
             )
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
             if ytitle_position == "top":
                 place_ylabel_at_top(panel_ax)
-                # 面板标题恒为左上角（系列名），移到 y 标题右侧避免重叠。
-                place_left_title_right_of_ylabel(panel_ax, pad_points=6)
             if unit is not None:
                 draw_unit_label(panel_ax, unit, axis="y")
             if not sharex or index == len(axes) - 1:
