@@ -613,6 +613,32 @@ class ScenarioForecastResult:
         return fig, ax
 
 
+def _validate_scenario_index(index, expected_dates, name):
+    """校验场景行索引与预测日历对齐。
+
+    日期模型要求索引与预测日期完全一致；无日期模型（``expected_dates``
+    为 RangeIndex）按位置对齐，接受任意起点的 RangeIndex（例如 UI 以
+    第 1 期起标记未来行）。
+    """
+    if len(index) != len(expected_dates):
+        raise ValueError(
+            f"scenario {name!r} rows must contain exactly "
+            f"{len(expected_dates)} rows, got {len(index)}"
+        )
+    if isinstance(expected_dates, pd.RangeIndex):
+        if not isinstance(index, pd.RangeIndex):
+            raise ValueError(
+                f"scenario {name!r} rows must use a RangeIndex "
+                "when the forecast has no dates"
+            )
+        return
+    if not index.equals(expected_dates):
+        raise ValueError(
+            f"scenario {name!r} dates/rows must exactly match "
+            "the requested future dates"
+        )
+
+
 def _coerce_future_frame(
     values,
     *,
@@ -640,11 +666,7 @@ def _coerce_future_frame(
             )
         else:
             index = values.index
-        if len(index) != len(expected_dates) or not index.equals(expected_dates):
-            raise ValueError(
-                f"scenario {name!r} dates/rows must exactly match "
-                "the requested future dates"
-            )
+        _validate_scenario_index(index, expected_dates, name)
         array = _numeric_array(values, f"scenario {name!r}").reshape(-1, 1)
     elif isinstance(values, pd.DataFrame):
         actual_columns = tuple(values.columns)
@@ -660,11 +682,7 @@ def _coerce_future_frame(
             )
         else:
             index = values.index
-        if len(index) != len(expected_dates) or not index.equals(expected_dates):
-            raise ValueError(
-                f"scenario {name!r} dates/rows must exactly match "
-                "the requested future dates"
-            )
+        _validate_scenario_index(index, expected_dates, name)
         array = _numeric_array(values, f"scenario {name!r}")
     else:
         if not array_dates_provided:
@@ -2687,7 +2705,11 @@ class SARIMAX(BaseModel):
             )
             fitted_vals[:burn] = np.nan
         else:
-            fitted_vals = np.asarray(fitted.fittedvalues)
+            # 状态空间初始化期的拟合值无统计意义（statsmodels 以先验
+            # 均值 0 填充），置为 NaN 与 log 分支、residuals（自 burn 起）
+            # 及绘图掩码（_fitted_values_for_plot）的语义保持一致。
+            fitted_vals = np.asarray(fitted.fittedvalues, dtype=float).copy()
+            fitted_vals[:burn] = np.nan
 
         result = SARIMAXResult(
             model_type="SARIMAX",

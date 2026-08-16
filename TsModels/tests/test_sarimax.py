@@ -444,7 +444,9 @@ class TestSARIMAXResult:
 
         burn = result._statsmodels_result.loglikelihood_burn
         assert burn == 13
-        assert result.fitted_values[0] == pytest.approx(0.0)
+        assert np.isnan(result.fitted_values[0])
+        assert np.all(np.isnan(result.fitted_values[:burn]))
+        assert np.all(np.isfinite(result.fitted_values[burn:]))
 
         fig, ax = result.plot_fit()
         fitted_line = next(line for line in ax.lines if line.get_label() == "Fitted")
