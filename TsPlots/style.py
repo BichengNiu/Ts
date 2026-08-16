@@ -162,7 +162,8 @@ TITLE_FONTSIZE = 14
 AXIS_LABEL_FONTSIZE = 15
 TICK_LABELSIZE = 14
 LEGEND_FONTSIZE = 15
-NOTE_FONTSIZE = 9
+# 图注与刻度/标题同字号，避免与图内其他文字比例失调。
+NOTE_FONTSIZE = TICK_LABELSIZE
 TIGHT_PAD = 1.5
 #: Figure rectangle reserved for facet grids with a figure-level suptitle.
 FACET_RECT = (0.0, 0.0, 1.0, 0.96)

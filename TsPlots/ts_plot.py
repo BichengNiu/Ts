@@ -406,6 +406,39 @@ def _automatic_axis_groups(
     ]
 
 
+def _manual_second_third_groups(
+    series: dict,
+    *,
+    second_axis_vars,
+    third_axis_vars,
+) -> list[list[str]]:
+    """Build explicit first/second/third axis groups.
+
+    ``second_axis_vars`` / ``third_axis_vars`` name the series to draw on
+    the second (inner right) and third (outer right) axes; everything else
+    stays on the first (left) axis. Empty groups are dropped, so passing
+    no variables yields a single-axis plot.
+    """
+    series_labels = list(series)
+    second = list(second_axis_vars or [])
+    third = list(third_axis_vars or [])
+    for name, labels in (("second_axis_vars", second), ("third_axis_vars", third)):
+        unknown = sorted(set(labels) - set(series_labels))
+        if unknown:
+            raise ValueError(
+                f"{name} contains unknown series: {unknown}; "
+                f"available: {series_labels}"
+            )
+    overlap = sorted(set(second) & set(third))
+    if overlap:
+        raise ValueError(
+            f"series cannot be on both the second and third axes: {overlap}"
+        )
+    first = [label for label in series_labels if label not in second and label not in third]
+    groups = [first, second, third]
+    return [group for group in groups if group]
+
+
 def _resolve_axis_groups(
     series: dict,
     *,
@@ -413,10 +446,18 @@ def _resolve_axis_groups(
     auto_dual_y: bool,
     threshold: float,
     max_y_axes: int,
+    second_axis_vars=None,
+    third_axis_vars=None,
 ) -> list[list[str]]:
     """Resolve manual groups or automatically group series by robust scale."""
     if axis_groups is not None:
         return _manual_axis_groups(series, axis_groups, max_y_axes)
+    if second_axis_vars is not None or third_axis_vars is not None:
+        return _manual_second_third_groups(
+            series,
+            second_axis_vars=second_axis_vars,
+            third_axis_vars=third_axis_vars,
+        )
     if len(series) < 2 or not auto_dual_y:
         return [list(series)]
     return _automatic_axis_groups(series, threshold, max_y_axes)
@@ -627,6 +668,11 @@ def plot_series(
     auto_dual_y: bool = True,
     scale_ratio_threshold: float = 10.0,
     axis_groups: Mapping[str, object] | None = None,
+    second_axis_vars: list[str] | None = None,
+    third_axis_vars: list[str] | None = None,
+    second_axis_title: str | None = None,
+    third_axis_title: str | None = None,
+    log_vars: list[str] | None = None,
     max_y_axes: int = 3,
     ax=None,
     unit: str | None = None,
@@ -779,6 +825,25 @@ def plot_series(
         ``facet=False``. Series with the same hashable group identifier share
         one y-axis. The mapping must contain every plotted label exactly once
         and overrides ``auto_dual_y``. Defaults to automatic scale grouping.
+    second_axis_vars : list of str, optional
+        Series labels to draw on the second (inner right) y-axis when
+        ``facet=False``. Everything else stays on the first (left) axis.
+        When supplied (or ``third_axis_vars`` is), it overrides
+        ``auto_dual_y``; empty lists disable the axis. Defaults to None.
+    third_axis_vars : list of str, optional
+        Series labels to draw on the third (outer right) y-axis when
+        ``facet=False``. A series cannot be on both the second and third
+        axes. Defaults to None.
+    second_axis_title : str, optional
+        Custom title for the second y-axis; None falls back to the joined
+        series labels. Defaults to None.
+    third_axis_title : str, optional
+        Custom title for the third y-axis; None falls back to the joined
+        series labels. Defaults to None.
+    log_vars : list of str, optional
+        Series labels whose axis uses a logarithmic y-scale. The scale is
+        applied to whichever axis the series is drawn on (first, second or
+        third). Defaults to None (linear).
     max_y_axes : int
         Maximum total number of y-axes, including the primary left axes.
         Automatic groups beyond this limit are merged by the closest scale
@@ -1047,6 +1112,8 @@ def plot_series(
         auto_dual_y=auto_dual_y,
         threshold=scale_ratio_threshold,
         max_y_axes=max_y_axes,
+        second_axis_vars=second_axis_vars,
+        third_axis_vars=third_axis_vars,
     )
     right_axes = []
     for group_index in range(1, len(resolved_groups)):
@@ -1070,6 +1137,15 @@ def plot_series(
     for index, (label, values) in enumerate(series.items()):
         target_ax = axis_by_label[label]
         lines.append(_draw_one(target_ax, label, values, index))
+
+    if log_vars:
+        for label in log_vars:
+            if label not in axis_by_label:
+                raise ValueError(
+                    f"log_vars contains unknown series: {label}; "
+                    f"available: {list(series)}"
+                )
+            axis_by_label[label].set_yscale("log")
 
     for label in bar_series:
         axis_by_label[label].set_ylim(bottom=0)
@@ -1107,13 +1183,14 @@ def plot_series(
 
     display_labels = legend_labels or list(series)
     display_name_by_label = dict(zip(series, display_labels, strict=True))
-    for group_labels, right_axis in zip(
-        resolved_groups[1:],
-        right_axes,
-        strict=True,
+    right_axis_titles = {1: second_axis_title, 2: third_axis_title}
+    for group_index, (group_labels, right_axis) in enumerate(
+        zip(resolved_groups[1:], right_axes, strict=True),
+        start=1,
     ):
         right_axis.set_ylabel(
-            " / ".join(display_name_by_label[label] for label in group_labels),
+            right_axis_titles.get(group_index)
+            or " / ".join(display_name_by_label[label] for label in group_labels),
             fontsize=AXIS_LABEL_FONTSIZE,
         )
         if ytitle_position == "top":

@@ -165,6 +165,78 @@ class TestPlotSeries:
         assert ax.extra_y_axes == [ax.right_ax]
         plt.close(fig)
 
+    def test_second_and_third_axis_vars(self):
+        data = {"a": [1, 2, 3], "b": [100, 200, 300], "c": [5, 6, 7]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            second_axis_vars=["b"],
+            third_axis_vars=["c"],
+        )
+
+        assert [line.get_label() for line in ax.lines] == ["a"]
+        assert [line.get_label() for line in ax.extra_y_axes[0].lines] == ["b"]
+        assert [line.get_label() for line in ax.extra_y_axes[1].lines] == ["c"]
+        plt.close(fig)
+
+    def test_second_third_axis_titles(self):
+        data = {"a": [1, 2, 3], "b": [100, 200, 300], "c": [5, 6, 7]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            second_axis_vars=["b"],
+            third_axis_vars=["c"],
+            second_axis_title="第二轴",
+            third_axis_title="第三轴",
+        )
+
+        assert ax.extra_y_axes[0].get_ylabel() == "第二轴"
+        assert ax.extra_y_axes[1].get_ylabel() == "第三轴"
+        plt.close(fig)
+
+    def test_log_vars_applies_log_scale(self):
+        data = {"a": [1, 2, 3], "b": [100, 200, 300]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            log_vars=["a"],
+        )
+
+        assert ax.get_yscale() == "log"
+        plt.close(fig)
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            second_axis_vars=["b"],
+            log_vars=["b"],
+        )
+        assert ax.extra_y_axes[0].get_yscale() == "log"
+        assert ax.get_yscale() == "linear"
+        plt.close(fig)
+
+    def test_rejects_unknown_axis_and_log_vars(self):
+        with pytest.raises(ValueError, match="second_axis_vars contains unknown"):
+            plot_series(
+                {"a": [1, 2]}, facet=False, second_axis_vars=["nope"]
+            )
+        with pytest.raises(ValueError, match="log_vars contains unknown"):
+            plot_series({"a": [1, 2]}, facet=False, log_vars=["nope"])
+        with pytest.raises(ValueError, match="both the second and third axes"):
+            plot_series(
+                {"a": [1, 2], "b": [2, 3]},
+                facet=False,
+                second_axis_vars=["b"],
+                third_axis_vars=["b"],
+            )
+
     @pytest.mark.parametrize(
         ("axis_groups", "max_y_axes", "message"),
         [
