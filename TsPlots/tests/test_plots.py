@@ -273,6 +273,24 @@ class TestPlotSeries:
         with pytest.raises(ValueError, match="facet_rows must be"):
             plot_series({"a": [1, 2]}, facet=True, facet_rows=0)
 
+    def test_legend_title_and_cols(self):
+        data = {"a": [1, 2, 3], "b": [2, 3, 4], "c": [3, 4, 5], "d": [4, 5, 6]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            legend_title="变量",
+            legend_cols=2,
+        )
+        legend = ax.get_legend()
+        assert legend is not None
+        assert legend.get_title().get_text() == "变量"
+        assert legend._ncols == 2
+        plt.close(fig)
+
+        with pytest.raises(ValueError, match="legend_cols must be"):
+            plot_series({"a": [1, 2]}, facet=False, legend_cols=0)
+
     @pytest.mark.parametrize(
         ("axis_groups", "max_y_axes", "message"),
         [

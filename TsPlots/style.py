@@ -413,6 +413,8 @@ def draw_legend(
     legend_loc="best",
     legend_bbox=None,
     fontsize=LEGEND_FONTSIZE,
+    legend_title=None,
+    legend_cols=None,
 ):
     """Draw a frameless legend, optionally overriding the entry text.
 
@@ -432,6 +434,11 @@ def draw_legend(
         ``bbox_to_anchor`` for the legend.
     fontsize : float
         Legend font size. Defaults to ``15``（与轴标题字号一致）。
+    legend_title : str, optional
+        Title shown above the legend entries; ``None`` hides it.
+    legend_cols : int, optional
+        Number of columns for the legend entries; ``None`` lets
+        matplotlib choose.
     """
     if not show_legend:
         return
@@ -454,6 +461,9 @@ def draw_legend(
         handlelength=2.6,
         loc=legend_loc,
         bbox_to_anchor=legend_bbox,
+        title=legend_title or None,
+        title_fontsize=fontsize,
+        ncol=legend_cols or 1,
     )
 
 
@@ -668,6 +678,8 @@ class _FigureContext:
         legend_labels=None,
         legend_loc="best",
         legend_bbox=None,
+        legend_title=None,
+        legend_cols=None,
         unit=None,
         x_unit=None,
     ):
@@ -704,6 +716,8 @@ class _FigureContext:
                 legend_labels=legend_labels,
                 legend_loc=legend_loc,
                 legend_bbox=legend_bbox,
+                legend_title=legend_title,
+                legend_cols=legend_cols,
             )
 
         if unit is not None:

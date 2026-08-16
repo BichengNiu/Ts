@@ -645,6 +645,8 @@ def plot_series(
     legend_labels=None,
     legend_loc: str = "best",
     legend_bbox=None,
+    legend_title: str | None = None,
+    legend_cols: int | None = None,
     title_loc: str = "center",
     title_pad: float = 12,
     title_position: str = "top",
@@ -767,6 +769,11 @@ def plot_series(
         ``"best"``.
     legend_bbox : tuple, optional
         ``bbox_to_anchor`` for the legend, e.g. ``(1.02, 1)``.
+    legend_title : str, optional
+        Title shown above the legend entries; ``None`` hides it.
+    legend_cols : int, optional
+        Number of columns for the legend entries; ``None`` lets
+        matplotlib choose.
     title_loc : str
         Title horizontal alignment: ``"center"``, ``"left"``, or ``"right"``.
     title_pad : float
@@ -949,6 +956,10 @@ def plot_series(
         raise ValueError(
             f"grid_axis={grid_axis!r} is not valid. Choose from: 'both', 'x', 'y'"
         )
+    if legend_cols is not None and (
+        not isinstance(legend_cols, int) or legend_cols < 1
+    ):
+        raise ValueError("legend_cols must be a positive integer or None")
     grid_linewidth = _validate_positive_step("grid_linewidth", grid_linewidth)
 
     if bar_series is None:
@@ -1106,6 +1117,8 @@ def plot_series(
                     legend_labels=[display_labels[index]],
                     legend_loc=legend_loc,
                     legend_bbox=legend_bbox,
+                    legend_title=legend_title,
+                    legend_cols=legend_cols,
                 )
 
         if title and title_position == "top":
@@ -1242,6 +1255,8 @@ def plot_series(
             legend_labels=display_labels,
             legend_loc=legend_loc,
             legend_bbox=legend_bbox,
+            legend_title=legend_title,
+            legend_cols=legend_cols,
         )
 
     ctx.finalize(
