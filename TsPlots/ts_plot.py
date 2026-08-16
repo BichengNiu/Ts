@@ -44,7 +44,7 @@ from datetime import date, datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from matplotlib.ticker import MaxNLocator, FuncFormatter
+from matplotlib.ticker import MaxNLocator, FuncFormatter, MultipleLocator
 import numpy as np
 import pandas as pd
 
@@ -643,37 +643,40 @@ def _configure_x_axis(
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
 
-def _evenly_spaced(ticks, count):
-    """从有序 tick 序列中均匀取 ``count`` 个，保留首尾。"""
-    if len(ticks) <= count:
-        return ticks
-    if count <= 2:
-        return [ticks[0], ticks[-1]]
-    indices = {round(i * (len(ticks) - 1) / (count - 1)) for i in range(count)}
-    return [ticks[i] for i in sorted(indices)]
+def _configure_y_axis(ax, *, ylabel_count=None, ytick_count=None) -> None:
+    """Apply y-axis label thinning and minor-tick density.
+
+    ``ylabel_count`` limits the number of tick labels (major ticks are
+    kept, labels are thinned evenly). ``ytick_count`` draws that many
+    unlabelled minor ticks between two adjacent major ticks (0 or None
+    disables minor ticks).
+    """
+    if ylabel_count is not None:
+        ticks = list(ax.yaxis.get_major_locator()())
+        if len(ticks) > ylabel_count:
+            step = (len(ticks) + ylabel_count - 1) // ylabel_count
+            formatter = ax.yaxis.get_major_formatter()
+            # 先 set_locs 初始化 formatter（未 draw 时 ScalarFormatter 会返回空串）
+            formatter.set_locs(ticks)
+            ax.set_yticks(ticks)
+            ax.set_yticklabels(
+                [formatter(t) if i % step == 0 else "" for i, t in enumerate(ticks)]
+            )
+    if ytick_count:
+        major = list(ax.yaxis.get_major_locator()())
+        if len(major) >= 2:
+            base = float(np.median(np.diff(major))) / (ytick_count + 1)
+            ax.yaxis.set_minor_locator(MultipleLocator(base))
 
 
-def _configure_y_axis(ax, *, ytick_count=None, ylabel_count=None) -> None:
-    """Apply y-axis tick density and optional label thinning."""
-    if ytick_count is not None:
-        locator = MaxNLocator(nbins=max(1, ytick_count - 1))
-        ax.yaxis.set_major_locator(locator)
-        ticks = list(locator())
-        if len(ticks) > ytick_count:
-            ax.set_yticks(_evenly_spaced(ticks, ytick_count))
-    if ylabel_count is None:
+def _apply_x_minor_ticks(ax, *, xtick_count=None) -> None:
+    """Draw *xtick_count* unlabelled minor ticks between major x-ticks."""
+    if not xtick_count:
         return
-    ticks = list(ax.yaxis.get_major_locator()())
-    if len(ticks) <= ylabel_count:
-        return
-    step = (len(ticks) + ylabel_count - 1) // ylabel_count
-    formatter = ax.yaxis.get_major_formatter()
-    # 先 set_locs 初始化 formatter（未 draw 时 ScalarFormatter 会返回空串）
-    formatter.set_locs(ticks)
-    ax.set_yticks(ticks)
-    ax.set_yticklabels(
-        [formatter(t) if i % step == 0 else "" for i, t in enumerate(ticks)]
-    )
+    major = list(ax.xaxis.get_major_locator()())
+    if len(major) >= 2:
+        base = float(np.median(np.diff(major))) / (xtick_count + 1)
+        ax.xaxis.set_minor_locator(MultipleLocator(base))
 
 
 def _thin_x_labels(ax, *, count=None) -> None:
@@ -716,6 +719,7 @@ def plot_series(
     xmin: float | None = None,
     ytick_count: int | None = None,
     ylabel_count: int | None = None,
+    xtick_count: int | None = None,
     xlabel_count: int | None = None,
     show_legend: bool = True,
     legend_labels=None,
@@ -816,12 +820,17 @@ def plot_series(
         Lower limit of the x-axis. Defaults to None (automatic). Accepts a
         float for numeric axes or a datetime/Timestamp for datetime axes.
     ytick_count : int or None
-        Number of y-axis ticks (including endpoints). Defaults to None
-        (automatic); matplotlib picks "nice" values close to the request.
+        Number of **minor ticks between two adjacent major (labelled)
+        ticks** on the y-axis. Defaults to None (no minor ticks). For
+        example ``3`` draws three unlabelled grid lines between each pair
+        of labels.
     ylabel_count : int or None
         Maximum number of y-axis tick labels to display. Defaults to None
         (label every tick). When smaller than the tick count, labels are
         thinned evenly.
+    xtick_count : int or None
+        Number of **minor ticks between two adjacent major (labelled)
+        ticks** on the x-axis. Defaults to None (no minor ticks).
     xlabel_count : int or None
         Maximum number of x-axis tick labels to display. Defaults to None
         (label every tick). When smaller than the tick count, labels are
@@ -1098,9 +1107,10 @@ def plot_series(
             _thin_x_labels(panel_ax, count=xlabel_count)
             _configure_y_axis(
                 panel_ax,
-                ytick_count=ytick_count,
                 ylabel_count=ylabel_count,
+                ytick_count=ytick_count,
             )
+            _apply_x_minor_ticks(panel_ax, xtick_count=xtick_count)
             if xmin is not None:
                 panel_ax.set_xlim(left=xmin)
             if ymin is not None:
@@ -1199,9 +1209,10 @@ def plot_series(
     _thin_x_labels(ax, count=xlabel_count)
     _configure_y_axis(
         ax,
-        ytick_count=ytick_count,
         ylabel_count=ylabel_count,
+        ytick_count=ytick_count,
     )
+    _apply_x_minor_ticks(ax, xtick_count=xtick_count)
 
     if xmin is not None:
         ax.set_xlim(left=xmin)

@@ -129,19 +129,51 @@ def test_plot_series_xtitle_loc_invalid_raises() -> None:
         plot_series({"a": [1, 2, 3]}, xtitle="X", xtitle_loc="top")
 
 
-def test_plot_series_ytick_count_limits_ticks() -> None:
-    """Y 轴刻度数：刻度数量与请求值一致（含端点）。"""
+def test_plot_series_ytick_count_minor_ticks() -> None:
+    """Y 轴刻度数 = 两个主刻度（标签）之间的子刻度线数。"""
+    import numpy as np
+
     fig, ax = plot_series(
         {"a": range(50)},
         ytitle="V",
         xtitle="",
-        ytick_count=3,
+        ytick_count=2,
         facet=False,
         show_legend=False,
     )
     fig.canvas.draw()
-    ticks = ax.get_yticks()
-    assert len(ticks) == 3
+    lo, hi = ax.get_ylim()
+    majors = [m for m in ax.get_yticks() if lo <= m <= hi]
+    minors = ax.get_yticks(minor=True)
+    assert len(minors) > 0
+    per_interval = len([m for m in minors if majors[0] < m < majors[1]])
+    assert per_interval == 2
+
+
+def test_plot_series_xtick_count_minor_ticks() -> None:
+    """X 轴刻度数 = 两个主刻度（标签）之间的子刻度线数。"""
+    import pandas as pd
+
+    index = pd.date_range("2020-01-01", periods=60, freq="MS")
+    frame = pd.DataFrame({"v": range(60)}, index=index)
+    fig, ax = plot_series(
+        frame, xtitle="", ytitle="V", xtick_count=3, facet=False, show_legend=False
+    )
+    fig.canvas.draw()
+    lo, hi = ax.get_xlim()
+    majors = [m for m in ax.get_xticks() if lo <= m <= hi]
+    minors = ax.get_xticks(minor=True)
+    assert len(minors) > 0
+    # 日期主刻度间隔 365/366 天波动，允许 ±1
+    per_interval = len([m for m in minors if majors[0] < m < majors[1]])
+    assert 2 <= per_interval <= 4
+
+
+def test_plot_series_no_minor_ticks_by_default() -> None:
+    """默认不画子刻度。"""
+    fig, ax = plot_series({"a": range(10)}, ytitle="V", xtitle="", facet=False)
+    fig.canvas.draw()
+    assert len(ax.get_yticks(minor=True)) == 0
 
 
 def test_plot_series_ylabel_count_thins_labels() -> None:
@@ -150,7 +182,6 @@ def test_plot_series_ylabel_count_thins_labels() -> None:
         {"a": range(50)},
         ytitle="V",
         xtitle="",
-        ytick_count=11,
         ylabel_count=3,
         facet=False,
         show_legend=False,
