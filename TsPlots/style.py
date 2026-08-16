@@ -456,16 +456,19 @@ def draw_unit_label(ax, unit, *, axis="y"):
         raise ValueError(f"axis={axis!r} is not valid. Choose 'x' or 'y'.")
 
 
-def place_ylabel_at_top(ax):
+def place_ylabel_at_top(ax, *, clear_left_title=False, title_pad=12):
     """将 y 轴标题置于轴的上端点、横排显示，并正对 y 轴（丁字布局）。
-
-    标题横排居中在轴顶端上方：左轴正对轴心（x=0），右侧双轴正对右轴
-    轴心（x=1）；轴线的顶端落在标题横笔正中，形成「丁」字。
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes
         要调整的坐标轴；右侧双轴（twinx）同样适用。
+    clear_left_title : bool, default False
+        轴顶端左对齐放置了图标题时置 ``True``：y 轴标题改为右对齐贴轴
+        左侧，与图标题同一高度并留出间隙，避免二者重叠。
+    title_pad : float, default 12
+        图标题与轴顶端的间距（points），用于把 y 轴标题对齐到图标题的
+        高度。
 
     Notes
     -----
@@ -476,10 +479,17 @@ def place_ylabel_at_top(ax):
         return
     label.set_rotation(0)
     label.set_verticalalignment("bottom")
-    label.set_horizontalalignment("center")
     side = ax.yaxis.get_label_position()
-    x = 0.0 if side == "left" else 1.0
-    ax.yaxis.set_label_coords(x, 1.05)
+    if clear_left_title and side == "left":
+        label.set_horizontalalignment("right")
+        x = -0.02
+        fig_height = ax.figure.get_figheight()
+        y = 1.0 + title_pad / (fig_height * 72)
+    else:
+        label.set_horizontalalignment("center")
+        x = 0.0 if side == "left" else 1.0
+        y = 1.05
+    ax.yaxis.set_label_coords(x, y)
 
 
 def draw_note_and_bottom_title(

@@ -53,6 +53,46 @@ def test_plot_series_invalid_position_raises() -> None:
         plot_series({"a": [1, 2, 3]}, ytitle_position="left")
 
 
+def test_plot_series_left_title_and_top_ylabel_do_not_overlap() -> None:
+    """图标题靠左 + y 标题置顶：同一高度、左右留间隙、互不重叠。"""
+    fig, ax = plot_series(
+        {"a": [1, 2, 3]},
+        title="左侧标题",
+        title_loc="left",
+        ytitle_position="top",
+        facet=False,
+    )
+    label = ax.yaxis.get_label()
+    text, rotation, (x, y) = _ylabel_state(ax)
+    assert text == "Value"
+    assert rotation == 0
+    assert label.get_ha() == "right"
+    assert x < 0
+    # 左侧图标题仍存在（matplotlib 3.11 写入 _left_title 槽位）
+    assert ax._left_title.get_text() == "左侧标题"
+    # 同一高度：y 轴标题底边与图标题底边接近（同一水平线）
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    inv = fig.transFigure.inverted()
+    label_bottom = inv.transform(
+        (0, label.get_window_extent(renderer).y0)
+    )[1]
+    title_bottom = inv.transform(
+        (0, ax._left_title.get_window_extent(renderer).y0)
+    )[1]
+    assert abs(label_bottom - title_bottom) < 0.05
+
+
+def test_plot_series_facet_panel_titles_clear_top_ylabel() -> None:
+    """分面面板标题恒为左上角，y 标题置顶时同样让位。"""
+    fig, axes = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]})
+    for panel in np.asarray(axes).ravel():
+        label = panel.yaxis.get_label()
+        assert label.get_rotation() == 0
+        assert label.get_ha() == "right"
+        assert label.get_position()[0] < 0
+
+
 def test_plot_acf_top_end_horizontal() -> None:
     fig, ax = plot_acf(np.arange(20.0), nlags=8)
     text, rotation, (x, y) = _ylabel_state(ax)

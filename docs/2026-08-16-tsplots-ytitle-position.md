@@ -46,6 +46,20 @@ ACF/PACF 相关图）统一生效。
 - 公共 API 的 docstring 已同步补充参数说明（仓库
   `test_public_help_is_complete` 契约要求每个签名参数都被文档化）。
 
+## 与图标题的避让
+
+图标题靠左（`title_loc="left"`，含分面面板的左上系列名标题）且 y 标题
+置顶时，二者同处轴顶端会重叠。处理规则：
+
+- 单轴：`title and title_position == "top" and title_loc == "left"` 时，
+  y 标题改为右对齐贴轴左侧（x=-0.02），高度对齐图标题
+  （`y = 1.0 + title_pad / (figheight × 72)`），同一水平线、左右留间隙。
+- 分面：面板标题恒为左上角（系列名，pad=6），y 标题置顶时恒让位。
+- 右侧双轴不受左侧图标题影响。
+
+`place_ylabel_at_top` 新增 `clear_left_title` / `title_pad` 参数控制该
+行为（默认 `False`，不影响原布局）。
+
 ## 测试
 
 `tests/test_ytitle_position.py` 覆盖：

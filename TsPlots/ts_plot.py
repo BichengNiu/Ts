@@ -994,7 +994,9 @@ def plot_series(
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
             if ytitle_position == "top":
-                place_ylabel_at_top(panel_ax)
+                # 分面面板标题恒为左上角（系列名），y 标题置顶时让位：
+                # 与面板标题同一高度、左右留间隙。
+                place_ylabel_at_top(panel_ax, clear_left_title=True, title_pad=6)
             if unit is not None:
                 draw_unit_label(panel_ax, unit, axis="y")
             if not sharex or index == len(axes) - 1:
@@ -1089,7 +1091,13 @@ def plot_series(
     if ytitle is not None:
         ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
     if ytitle_position == "top":
-        place_ylabel_at_top(ax)
+        place_ylabel_at_top(
+            ax,
+            clear_left_title=bool(
+                title and title_position == "top" and title_loc == "left"
+            ),
+            title_pad=title_pad,
+        )
 
     _configure_x_axis(
         ax,
