@@ -456,6 +456,32 @@ def draw_unit_label(ax, unit, *, axis="y"):
         raise ValueError(f"axis={axis!r} is not valid. Choose 'x' or 'y'.")
 
 
+def place_ylabel_at_top(ax):
+    """将 y 轴标题置于轴的上端点、横排显示，并正对 y 轴（丁字布局）。
+
+    标题横排居中在轴顶端上方：左轴正对轴心（x=0），右侧双轴正对右轴
+    轴心（x=1）；轴线的顶端落在标题横笔正中，形成「丁」字。
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        要调整的坐标轴；右侧双轴（twinx）同样适用。
+
+    Notes
+    -----
+    仅当该轴已有 y 轴标题文本时生效；无标题的轴不做任何改动。
+    """
+    label = ax.yaxis.get_label()
+    if not label.get_text():
+        return
+    label.set_rotation(0)
+    label.set_verticalalignment("bottom")
+    label.set_horizontalalignment("center")
+    side = ax.yaxis.get_label_position()
+    x = 0.0 if side == "left" else 1.0
+    ax.yaxis.set_label_coords(x, 1.05)
+
+
 def draw_note_and_bottom_title(
     fig,
     *,

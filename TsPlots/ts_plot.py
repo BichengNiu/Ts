@@ -68,6 +68,7 @@ from .style import (
     SHADE_ALPHA,
     style_axes,
     draw_unit_label,
+    place_ylabel_at_top,
     draw_note_and_bottom_title,
     draw_legend,
     draw_shade,
@@ -648,6 +649,7 @@ def plot_series(
     title: str | None = None,
     xtitle: str | None = None,
     ytitle: str = "Value",
+    ytitle_position: str = "top",
     linewidth: float = 3,
     markersize: float = 7,
     marker_edge_width: float = 2.5,
@@ -717,6 +719,12 @@ def plot_series(
         Label for the x-axis. Defaults to None (detected from data).
     ytitle : str, optional
         Label for the y-axis. Defaults to ``"Value"``.
+    ytitle_position : {"top", "side"}, default "top"
+        Placement of the y-axis title. ``"top"`` draws the title
+        horizontally at the top end of the axis (T-shaped layout, the
+        axis descends from the title); ``"side"`` keeps the traditional
+        vertical title beside the axis. Applies to the primary y-axis,
+        faceted panels, and extra (twin) y-axes alike.
     linewidth : float
         Width of every line. Defaults to 3.
     markersize : float
@@ -909,6 +917,12 @@ def plot_series(
 
     legend_labels = _validate_label_count("legend_labels", legend_labels, len(series))
 
+    if ytitle_position not in ("top", "side"):
+        raise ValueError(
+            f"ytitle_position={ytitle_position!r} is not valid. "
+            "Choose 'top' or 'side'."
+        )
+
     if axis_groups is not None and facet and len(series) >= 2:
         raise ValueError("axis_groups requires facet=False for multiple series")
 
@@ -979,6 +993,8 @@ def plot_series(
             )
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+            if ytitle_position == "top":
+                place_ylabel_at_top(panel_ax)
             if unit is not None:
                 draw_unit_label(panel_ax, unit, axis="y")
             if not sharex or index == len(axes) - 1:
@@ -1072,6 +1088,8 @@ def plot_series(
     )
     if ytitle is not None:
         ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+    if ytitle_position == "top":
+        place_ylabel_at_top(ax)
 
     _configure_x_axis(
         ax,
@@ -1097,6 +1115,8 @@ def plot_series(
             " / ".join(display_name_by_label[label] for label in group_labels),
             fontsize=AXIS_LABEL_FONTSIZE,
         )
+        if ytitle_position == "top":
+            place_ylabel_at_top(right_axis)
         if unit is not None:
             draw_unit_label(right_axis, unit, axis="y")
         style_axes(right_axis, grid=False)

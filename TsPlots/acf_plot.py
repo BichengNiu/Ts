@@ -50,6 +50,7 @@ from .style import (
     _set_lag_ticks,
     _validate_max_ticks,
     draw_note_and_bottom_title,
+    place_ylabel_at_top,
     style_axes,
 )
 from .lag_plot import _normalise_lag_response
@@ -121,6 +122,7 @@ def _draw_correlogram(
     band_alpha: float,
     xtitle: str,
     ytitle: str,
+    ytitle_position: str = "top",
     title: str | None,
     title_position: str,
     max_ticks: int,
@@ -152,6 +154,10 @@ def _draw_correlogram(
         X-axis label.
     ytitle : str
         Y-axis label.
+    ytitle_position : {"top", "side"}, default "top"
+        Placement of the y-axis title. ``"top"`` draws the title
+        horizontally at the top end of the axis (T-shaped layout);
+        ``"side"`` keeps the traditional vertical title beside the axis.
     title : str or None
         Optional top title.
     title_position : str
@@ -201,6 +207,13 @@ def _draw_correlogram(
     # --- Axis labels -------------------------------------------------------
     ax.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)
     ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+    if ytitle_position not in ("top", "side"):
+        raise ValueError(
+            f"ytitle_position={ytitle_position!r} is not valid. "
+            "Choose 'top' or 'side'."
+        )
+    if ytitle_position == "top":
+        place_ylabel_at_top(ax)
 
     # --- X-axis ticks ------------------------------------------------------
     # Show every lag when there are few enough; otherwise let MaxNLocator
@@ -259,6 +272,7 @@ def plot_correlogram(
     title=None,
     xtitle="Lag",
     ytitle="Correlation",
+    ytitle_position="top",
     bar_color=None,
     band_color=BAND_COLOR,
     band_alpha=BAND_ALPHA,
@@ -288,6 +302,10 @@ def plot_correlogram(
         Axis title for one response or figure title for multiple responses.
     xtitle, ytitle : str
         Axis labels.
+    ytitle_position : {"top", "side"}, default "top"
+        Placement of the y-axis title. ``"top"`` draws the title
+        horizontally at the top end of the axis (T-shaped layout);
+        ``"side"`` keeps the traditional vertical title beside the axis.
     bar_color : color or sequence of colors, optional
         One shared bar color or one color per response.
     band_color : color, default "#d0d0d0"
@@ -344,6 +362,7 @@ def plot_correlogram(
             band_alpha=band_alpha,
             xtitle=xtitle,
             ytitle=ytitle,
+            ytitle_position=ytitle_position,
             title=panel_title,
             title_position=title_position,
             max_ticks=int(max_ticks),
@@ -366,6 +385,7 @@ def plot_correlogram(
             band_alpha=band_alpha,
             xtitle=xtitle,
             ytitle=ytitle,
+            ytitle_position=ytitle_position,
             title=str(name),
             title_position="top",
             max_ticks=int(max_ticks),
@@ -394,6 +414,7 @@ def plot_acf(
     title: str | None = None,
     xtitle: str = "滞后期数",
     ytitle: str = "ACF值",
+    ytitle_position: str = "top",
     bar_color: str | None = None,
     band_color: str = BAND_COLOR,
     band_alpha: float = BAND_ALPHA,
@@ -435,6 +456,10 @@ def plot_acf(
         X-axis label. Defaults to ``"滞后期数"`` (Lag Number).
     ytitle : str
         Y-axis label. Defaults to ``"ACF值"`` (ACF Value).
+    ytitle_position : {"top", "side"}, default "top"
+        Placement of the y-axis title. ``"top"`` draws the title
+        horizontally at the top end of the axis (T-shaped layout);
+        ``"side"`` keeps the traditional vertical title beside the axis.
     bar_color : str, optional
         Bar colour. Defaults to ``DEFAULT_PALETTE[0]`` (deep blue).
     band_color : str
@@ -512,6 +537,7 @@ def plot_acf(
         band_alpha=band_alpha,
         xtitle=xtitle,
         ytitle=ytitle,
+        ytitle_position=ytitle_position,
         title=title,
         title_position=title_position,
         max_ticks=max_ticks,
@@ -533,6 +559,7 @@ def plot_pacf(
     title: str | None = None,
     xtitle: str = "滞后期数",
     ytitle: str = "PACF值",
+    ytitle_position: str = "top",
     bar_color: str | None = None,
     band_color: str = BAND_COLOR,
     band_alpha: float = BAND_ALPHA,
@@ -572,6 +599,10 @@ def plot_pacf(
         X-axis label. Defaults to ``"滞后期数"`` (Lag Number).
     ytitle : str
         Y-axis label. Defaults to ``"PACF值"`` (PACF Value).
+    ytitle_position : {"top", "side"}, default "top"
+        Placement of the y-axis title. ``"top"`` draws the title
+        horizontally at the top end of the axis (T-shaped layout);
+        ``"side"`` keeps the traditional vertical title beside the axis.
     bar_color : str, optional
         Bar colour. Defaults to ``DEFAULT_PALETTE[0]`` (deep blue).
     band_color : str
@@ -646,6 +677,7 @@ def plot_pacf(
         band_alpha=band_alpha,
         xtitle=xtitle,
         ytitle=ytitle,
+        ytitle_position=ytitle_position,
         title=title,
         title_position=title_position,
         max_ticks=max_ticks,
