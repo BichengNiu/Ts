@@ -44,7 +44,7 @@ from datetime import date, datetime, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from matplotlib.ticker import MaxNLocator, FuncFormatter, MultipleLocator
+from matplotlib.ticker import MaxNLocator, MultipleLocator
 import numpy as np
 import pandas as pd
 
@@ -75,117 +75,6 @@ from .style import (
     draw_shade,
     draw_vlines,
 )
-
-
-_VALID_FREQS = {"day", "week", "month", "quarter", "year"}
-
-
-def _make_chinese_formatter(freq: str) -> FuncFormatter:
-    """Return a FuncFormatter that renders datetime ticks in Chinese.
-
-    Formats
-    -------
-    day     : XXXX年X月X日      e.g. 2026年6月27日
-    week    : XXXX年X月第X周    e.g. 2026年6月第4周
-    month   : XXXX年X月         e.g. 2026年6月
-    quarter : XXXX年第X季度     e.g. 2026年第2季度
-    year    : XXXX年             e.g. 2026年
-    """
-    if freq == "day":
-
-        def _fmt(x, _pos):
-            dt = mdates.num2date(x)
-            return f"{dt.year}年{dt.month}月{dt.day}日"
-
-    elif freq == "week":
-
-        def _fmt(x, _pos):
-            dt = mdates.num2date(x)
-            week_of_month = (dt.day - 1) // 7 + 1
-            return f"{dt.year}年{dt.month}月第{week_of_month}周"
-
-    elif freq == "month":
-
-        def _fmt(x, _pos):
-            dt = mdates.num2date(x)
-            return f"{dt.year}年{dt.month}月"
-
-    elif freq == "quarter":
-
-        def _fmt(x, _pos):
-            dt = mdates.num2date(x)
-            quarter = (dt.month - 1) // 3 + 1
-            return f"{dt.year}年第{quarter}季度"
-
-    elif freq == "year":
-
-        def _fmt(x, _pos):
-            dt = mdates.num2date(x)
-            return f"{dt.year}年"
-
-    else:
-        raise ValueError(
-            f"freq={freq!r} is not valid. Choose from: "
-            + ", ".join(sorted(_VALID_FREQS))
-        )
-
-    return FuncFormatter(_fmt)
-
-
-def _apply_freq_ticks(ax, x_values, freq: str, max_ticks: int = 12) -> None:
-    """Apply a matplotlib.dates locator/formatter for the given frequency.
-
-    The locator interval is calculated from the data's date range and
-    ``max_ticks`` so that at most ``max_ticks`` ticks are displayed.
-
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-    x_values : array-like
-        The x data (must be datetime-like for this function to have any effect).
-    freq : str
-        One of 'day', 'week', 'month', 'quarter', 'year'.
-    max_ticks : int
-        Upper bound on the number of ticks. Defaults to 12.
-    """
-    if freq not in _VALID_FREQS:
-        raise ValueError(
-            f"freq={freq!r} is not valid. Choose from: "
-            + ", ".join(sorted(_VALID_FREQS))
-        )
-
-    x_dt = pd.DatetimeIndex(pd.to_datetime(x_values))
-    d_min, d_max = x_dt.min(), x_dt.max()
-
-    if freq == "day":
-        n = max(1, (d_max - d_min).days + 1)
-        interval = max(1, int(np.ceil(n / max_ticks)))
-        locator = mdates.DayLocator(interval=interval)
-
-    elif freq == "week":
-        n = max(1, (d_max - d_min).days // 7 + 1)
-        interval = max(1, int(np.ceil(n / max_ticks)))
-        locator = mdates.WeekdayLocator(byweekday=mdates.MO, interval=interval)
-
-    elif freq == "month":
-        n = (d_max.year - d_min.year) * 12 + (d_max.month - d_min.month) + 1
-        interval = max(1, int(np.ceil(n / max_ticks)))
-        locator = mdates.MonthLocator(interval=interval)
-
-    elif freq == "quarter":
-        n_months = (d_max.year - d_min.year) * 12 + (d_max.month - d_min.month) + 1
-        n = max(1, int(np.ceil(n_months / 3)))
-        interval = max(1, int(np.ceil(n / max_ticks)))
-        locator = mdates.MonthLocator(interval=3 * interval)
-
-    elif freq == "year":
-        n = max(1, d_max.year - d_min.year + 1)
-        interval = max(1, int(np.ceil(n / max_ticks)))
-        locator = mdates.YearLocator(base=interval)
-
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(_make_chinese_formatter(freq))
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
 
 def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
@@ -619,9 +508,7 @@ def _configure_x_axis(
     ax,
     x_values,
     *,
-    xtick_step,
     max_ticks,
-    freq,
     year_ruler=False,
 ) -> None:
     """Apply datetime or numeric tick selection to one axes."""
@@ -631,14 +518,8 @@ def _configure_x_axis(
     )
     is_numeric = np.issubdtype(x_array.dtype, np.number)
 
-    if is_datetime and (freq is not None or year_ruler):
-        if year_ruler:
-            _apply_year_ruler_ticks(ax, x_values, max_ticks=max_ticks)
-        else:
-            _apply_freq_ticks(ax, x_values, freq, max_ticks=max_ticks)
-    elif is_numeric and xtick_step is not None:
-        x_min, x_max = int(np.min(x_values)), int(np.max(x_values))
-        ax.set_xticks(range(x_min, x_max + 1, xtick_step))
+    if is_datetime and year_ruler:
+        _apply_year_ruler_ticks(ax, x_values, max_ticks=max_ticks)
     elif is_numeric:
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
@@ -711,9 +592,7 @@ def plot_series(
     linewidth: float = 3,
     markersize: float = 7,
     marker_edge_width: float = 2.5,
-    xtick_step: int | None = None,
     max_ticks: int = 12,
-    freq: str | None = None,
     year_ruler: bool = False,
     ymin: float | None = None,
     xmin: float | None = None,
@@ -797,22 +676,13 @@ def plot_series(
         Size of the markers. Defaults to 7.
     marker_edge_width : float
         Width of the marker outlines. Defaults to 2.5.
-    xtick_step : int, optional
-        Explicit spacing between x ticks (numeric x only). If None, ticks
-        are chosen automatically (at most ``max_ticks``).
     max_ticks : int
         Upper bound on the number of automatic x ticks. Defaults to 12.
-    freq : str, optional
-        Tick frequency for datetime x-axes. One of ``'day'``, ``'week'``,
-        ``'month'``, ``'quarter'``, or ``'year'``. When set, the appropriate
-        ``matplotlib.dates`` locator and formatter are applied and tick labels
-        are auto-rotated 45°.
     year_ruler : bool
         When ``True``, draw strict month ticks (only months that are multiples
         of three and that occur in the data, labelled as ``3月`` with no
         rotation) plus a year ruler below the x-axis spanning each calendar
         year in the data. The x-limits are padded ten days on both sides.
-        This replaces the ``freq``-based locator for monthly datetime axes.
         Defaults to ``False``.
     ymin : float or None
         Lower limit of the y-axis. Defaults to None (automatic); pass a float to set a fixed minimum.
@@ -968,11 +838,6 @@ def plot_series(
         raise TypeError("y requires a DataFrame input; use x for explicit values")
     x_values, series, default_xlabel = _resolve_input(data, x, y)
     colors = _resolve_colors(colors, len(series))
-    xtick_step = _validate_positive_step(
-        "xtick_step",
-        xtick_step,
-        integer=True,
-    )
     facet = _validate_bool("facet", facet)
     sharex = _validate_bool("sharex", sharex)
     sharey = _validate_bool("sharey", sharey)
@@ -1099,9 +964,7 @@ def plot_series(
             _configure_x_axis(
                 panel_ax,
                 x_values,
-                xtick_step=xtick_step,
                 max_ticks=max_ticks,
-                freq=freq,
                 year_ruler=year_ruler,
             )
             _thin_x_labels(panel_ax, count=xlabel_count)
@@ -1201,9 +1064,7 @@ def plot_series(
     _configure_x_axis(
         ax,
         x_values,
-        xtick_step=xtick_step,
         max_ticks=max_ticks,
-        freq=freq,
         year_ruler=year_ruler,
     )
     _thin_x_labels(ax, count=xlabel_count)

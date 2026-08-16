@@ -243,10 +243,6 @@ class TestPlotSeries:
         fig, _ax = plot_series(data, vlines=15, shade=(10, 20))
         plt.close(fig)
 
-    def test_rejects_nonpositive_tick_step(self):
-        with pytest.raises(ValueError, match="xtick_step must be positive"):
-            plot_series([1, 2, 3], xtick_step=0)
-
     def test_rejects_color_count_mismatch(self):
         data = {"a": [1, 2], "b": [2, 3]}
         with pytest.raises(ValueError, match="colors has 1 entries"):
