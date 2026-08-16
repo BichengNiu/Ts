@@ -548,6 +548,8 @@ def draw_note_and_bottom_title(
     note=None,
     title=None,
     title_position="top",
+    note_loc="left",
+    note_prefix=None,
 ):
     """Place a bottom title and/or a lower-left note in figure coordinates.
 
@@ -565,6 +567,11 @@ def draw_note_and_bottom_title(
         Title text. Only used here when ``title_position == "bottom"``.
     title_position : str
         ``"top"`` (default) or ``"bottom"``. Only ``"bottom"`` draws a title.
+    note_loc : {"left", "center", "right"}
+        Horizontal placement of the note. Defaults to ``"left"``.
+    note_prefix : str, optional
+        Text prepended to the note (e.g. ``"数据来源："``). ``None`` or an
+        empty string disables the prefix.
     """
     bottom_title = title is not None and title_position == "bottom"
     if not (bottom_title or note is not None):
@@ -594,16 +601,26 @@ def draw_note_and_bottom_title(
         )
 
     if note is not None:
+        if note_loc not in ("left", "center", "right"):
+            raise ValueError(
+                f"note_loc={note_loc!r} is not valid. Choose 'left', 'center', or 'right'."
+            )
+        note_x, note_ha = {
+            "left": (0.04, "left"),
+            "center": (0.5, "center"),
+            "right": (0.96, "right"),
+        }[note_loc]
         # When a bottom title is present, the note sits below it.
         # When there is no bottom title, the note appears just below the xlabel.
         y_note = (extra - 0.025 - 0.04) if bottom_title else (extra - 0.025)
+        display_note = f"{note_prefix}{note}" if note_prefix else note
         fig.text(
-            0.04,
+            note_x,
             y_note,
-            note,
+            display_note,
             fontsize=NOTE_FONTSIZE,
             color="#000000",
-            ha="left",
+            ha=note_ha,
             va="top",
             family=_title_font_family(),
         )
@@ -635,7 +652,15 @@ def _facet_grid(count, figsize=None):
     return fig, axes
 
 
-def _finalize_facet_figure(fig, *, title=None, note=None, title_position="top"):
+def _finalize_facet_figure(
+    fig,
+    *,
+    title=None,
+    note=None,
+    title_position="top",
+    note_loc="left",
+    note_prefix=None,
+):
     """Apply the shared facet layout: suptitle, tight layout, and bottom note."""
     if title is not None and title_position == "top":
         fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
@@ -647,6 +672,8 @@ def _finalize_facet_figure(fig, *, title=None, note=None, title_position="top"):
         note=note,
         title=title,
         title_position=title_position,
+        note_loc=note_loc,
+        note_prefix=note_prefix,
     )
 
 
@@ -670,6 +697,8 @@ class _FigureContext:
         title_loc="center",
         title_pad=12,
         note=None,
+        note_loc="left",
+        note_prefix=None,
         grid=False,
         grid_axis="both",
         grid_linewidth=0.6,
@@ -733,4 +762,6 @@ class _FigureContext:
                 note=note,
                 title=title,
                 title_position=title_position,
+                note_loc=note_loc,
+                note_prefix=note_prefix,
             )

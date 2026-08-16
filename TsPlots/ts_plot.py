@@ -651,6 +651,8 @@ def plot_series(
     title_pad: float = 12,
     title_position: str = "top",
     note: str | None = None,
+    note_loc: str = "left",
+    note_prefix: str | None = None,
     grid: bool = False,
     grid_axis: str = "both",
     grid_linewidth: float = 0.6,
@@ -782,6 +784,11 @@ def plot_series(
         ``"top"`` (default) or ``"bottom"``.
     note : str, optional
         Free-text note placed at the lower-left of the figure.
+    note_loc : {"left", "center", "right"}
+        Horizontal placement of the note. Defaults to ``"left"``.
+    note_prefix : str, optional
+        Text prepended to the note (e.g. ``"数据来源："``). ``None`` or an
+        empty string disables the prefix.
     grid : bool
         Whether to show a grid. Defaults to False.
     grid_axis : {"both", "x", "y"}
@@ -1145,6 +1152,8 @@ def plot_series(
                 note=note,
                 title=title,
                 title_position=title_position,
+                note_loc=note_loc,
+                note_prefix=note_prefix,
             )
         return fig, axes
 
@@ -1265,6 +1274,8 @@ def plot_series(
         title_loc=title_loc,
         title_pad=title_pad,
         note=note,
+        note_loc=note_loc,
+        note_prefix=note_prefix,
         grid=grid,
         grid_axis=grid_axis,
         grid_linewidth=grid_linewidth,

@@ -291,6 +291,37 @@ class TestPlotSeries:
         with pytest.raises(ValueError, match="legend_cols must be"):
             plot_series({"a": [1, 2]}, facet=False, legend_cols=0)
 
+    def test_note_loc_and_prefix(self):
+        fig, _ax = plot_series(
+            {"a": [1, 2, 3]},
+            facet=False,
+            note="原始数据",
+            note_loc="center",
+            note_prefix="数据来源：",
+        )
+        texts = [
+            t for t in fig.texts if t.get_text() == "数据来源：原始数据"
+        ]
+        assert texts
+        assert texts[0].get_horizontalalignment() == "center"
+        assert texts[0].get_position()[0] == 0.5
+        plt.close(fig)
+
+        with pytest.raises(ValueError, match="note_loc"):
+            plot_series({"a": [1, 2]}, facet=False, note="x", note_loc="top")
+
+    def test_note_prefix_facet(self):
+        fig, _axes = plot_series(
+            {"a": [1, 2], "b": [2, 3]},
+            facet=True,
+            note="原始数据",
+            note_prefix="数据来源：",
+        )
+        assert any(
+            t.get_text() == "数据来源：原始数据" for t in fig.texts
+        )
+        plt.close(fig)
+
     @pytest.mark.parametrize(
         ("axis_groups", "max_y_axes", "message"),
         [
