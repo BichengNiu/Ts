@@ -368,7 +368,7 @@ class OutlierDetectorResult:
         residuals_ax.set_title(
             "ARIMA residual outlier detection",
             fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
+            fontweight="normal",
         )
 
         if self.l_statistics is not None:

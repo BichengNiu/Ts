@@ -114,7 +114,7 @@ class NormalityTestResult(BaseTestResult):
             f"Jarque-Bera Test: statistic={self.statistic:.3f}, "
             f"p-value={self.pvalue:.4f}",
             fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
+            fontweight="normal",
         )
         style_axes(ax, grid=False)
         fig.tight_layout(pad=TIGHT_PAD)

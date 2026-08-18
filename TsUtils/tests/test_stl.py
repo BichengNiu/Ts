@@ -249,7 +249,8 @@ def test_stl_result_plot_uses_tsplots_style(seasonal_data):
 
     try:
         assert fig._suptitle.get_fontsize() == TITLE_FONTSIZE
-        assert fig._suptitle.get_fontweight() == "bold"
+        # 图标题统一不加粗（常规字重）。
+        assert fig._suptitle.get_fontweight() == "normal"
         assert axes[-1].xaxis.label.get_fontsize() == AXIS_LABEL_FONTSIZE
         assert axes[0].lines[0].get_color() == DEFAULT_PALETTE[0]
         assert not axes[0].spines["top"].get_visible()

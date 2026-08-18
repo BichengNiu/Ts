@@ -85,7 +85,7 @@ def plot_lag_response(
     ytitle="Impulse response",
     color=None,
     line_color=INK,
-    zero_line=True,
+    zero_line=False,
     grid=True,
     max_ticks=15,
     note=None,
@@ -116,8 +116,9 @@ def plot_lag_response(
         Bar color shared by all responses or one color per response.
     line_color : color, default ``INK``
         Color of the optional response line.
-    zero_line : bool, default True
-        Whether to draw the zero-response reference line.
+    zero_line : bool, default False
+        Whether to draw the zero-response reference line (默认关闭：y 轴
+        0 刻度不再自动加横线标识，需要时显式开启）。
     grid : bool, default True
         Whether to draw the shared dashed grid.
     max_ticks : int, default 15
@@ -196,7 +197,7 @@ def plot_lag_response(
             axis.set_title(
                 panel_title,
                 fontsize=TITLE_FONTSIZE,
-                fontweight="bold",
+                fontweight="normal",
                 pad=TITLE_PAD,
             )
         style_axes(axis, grid=grid)

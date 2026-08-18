@@ -620,7 +620,7 @@ class ScenarioForecastResult:
         ax.set_title(
             title or "Forecast Scenarios",
             fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
+            fontweight="normal",
         )
         draw_legend(ax)
         style_axes(ax, grid=False)

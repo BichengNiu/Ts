@@ -1,7 +1,7 @@
 # Ts/TsPlots
 
 适用于时间序列计量经济学学习的 Python 绘图工具包。提供统一的字体、配色和坐标轴风格，
-支持时间序列折线图、散点图、自相关函数图、预计算相关图和相关矩阵热图。
+支持时间序列折线图、分类/分组柱状图、散点图、自相关函数图、预计算相关图和相关矩阵热图。
 
 ## 交互式帮助
 
@@ -16,6 +16,7 @@ TsPlots/
 ├── __init__.py   # 统一导出所有公开接口
 ├── style.py      # 共享样式：字体、调色板、辅助函数
 ├── ts_plot.py    # 时间序列绘图：plot_series
+├── bar_plot.py   # 分类/分组柱状图：plot_bar
 ├── sc_plot.py    # 散点图绘图：plot_scatter
 ├── acf_plot.py   # 相关图：plot_acf, plot_pacf, plot_correlogram
 ├── lag_plot.py   # 滞后柱线响应图：plot_lag_response
@@ -28,7 +29,7 @@ TsPlots/
 
 ```python
 from Ts.TsPlots import (
-    plot_series, plot_scatter, plot_acf, plot_pacf,
+    plot_series, plot_bar, plot_scatter, plot_acf, plot_pacf,
     plot_correlogram, plot_correlation_matrix, plot_lag_response,
 )
 ```
@@ -64,8 +65,8 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `y` | str / list | `None` | 仅绘制指定列（DataFrame） |
 | `title` | str | `None` | 图表标题 |
 | `xtitle` | str | `None` | x 轴标签（默认自动检测） |
-| `ytitle` | str | `"Value"` | y 轴标签 |
-| `unit` | str | `None` | y 轴单位，显示为「（单位：XX）」 |
+| `ytitle` | str | `None` | y 轴标签；**不传时轴标题只显示单位**（`unit` 给出则显示「（单位：XX）」，否则不显示）；显式传入时使用之（有 `unit` 则单位追加在末尾） |
+| `unit` | str | `None` | y 轴单位，显示为「（单位：XX）」；默认作为主 y 轴与所有右侧双轴的轴标题，不再自动拼接变量名 |
 | `ymin` | float / None | `None` | y 轴下限；`None` 为自动 |
 | `year_ruler` | bool | `False` | 月度数据的严格 locator：只标数据中实际出现的 3 的倍数月份（标签为「3月」，不旋转），并在 x 轴下方为每个出现的年份绘制年度标尺；x 轴两端各留 10 天 |
 | `xtick_step` | int | `None` | 数值 x 轴刻度间隔 |
@@ -318,6 +319,100 @@ fig, ax = plot_scatter(
 
 ---
 
+## `plot_bar` — 分类/分组柱状图
+
+```text
+from Ts.TsPlots import plot_bar
+
+fig, ax = plot_bar(data, x=None, y=None, *, group=None, horizontal=False, stacked=False, ...)
+```
+
+针对离散分类的通用柱状图：支持多系列在分类槽内**并列**（分组柱图）、**堆叠**、
+**横向**（分类在 y 轴）三种布局，以及柱顶数值标注、分类刻度抽稀和统一 TsPlots 样式。
+`plot_series` 的 `bar_series` 一次只能在同一 x 位置画一个柱系列，因此分类并列/堆叠
+柱图应使用本函数。
+
+### 接受的输入格式
+
+| 输入类型 | 说明 |
+|----------|------|
+| `pd.Series` | 索引为分类标签，值为一个柱系列（名称为系列标签） |
+| `pd.DataFrame` | 宽表：索引为分类，其余每列为一个系列；`x` 指定分类列名（替代索引）；`y` 限定系列列 |
+| `pd.DataFrame` + `group` | 长表：`x` 为分类列、`y` 为数值列、`group` 为系列列，每个组值一个系列 |
+| `dict` | `{系列名: 值数组}`；分类默认 0..n-1，可用 `x` 数组指定 |
+| 1D array | 单系列，分类 0..n-1 |
+| 2D array | 每列一个系列，分类 0..n-1 |
+
+### 常用参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `horizontal` | bool | `False` | 横向柱图（分类在 y 轴） |
+| `stacked` | bool | `False` | 系列互相堆叠而非并列 |
+| `title` / `xtitle` / `ytitle` | str | `None` | 图标题 / 分类轴标题 / 数值轴标题（未传时自动检测） |
+| `x_unit` / `y_unit` | str | `None` | 轴单位，显示为「（单位：XX）」 |
+| `bar_width` | float | `0.6` | 柱宽（分类槽单位）。单系列柱宽即为该值；n 系列并列时每根柱 `bar_width/n`，整组占 `bar_width` |
+| `bar_edge_color` | str | `None` | 柱边框色；`None` 与柱同色 |
+| `bar_edge_linewidth` | float | `0.6` | 柱边框线宽 |
+| `bar_alpha` | float | `1.0` | 柱透明度 |
+| `colors` / `labels` | list | `None` | 覆盖系列配色 / 系列标签 |
+| `show_legend` | bool | `True` | 是否显示图例 |
+| `legend_loc` | str | `None` | 图例位置；不传时在分类轴下方（绘图区外），传任意位置则回到绘图区内 |
+| `legend_title` / `legend_cols` | str / int | `None` | 图例标题 / 图例列数 |
+| `grid` | bool | `False` | 是否显示网格（默认只画横向网格线 `grid_axis="y"`） |
+| `ymin` | float | `None` | 数值轴下限（横向模式作用于 x 轴） |
+| `show_values` | bool | `False` | 在每根柱顶端标注数值 |
+| `value_decimals` | int | `1` | 数值标注小数位数 |
+| `max_ticks` | int | `12` | 分类刻度标签上限；分类过多时均匀抽稀（柱仍全部绘制） |
+| `tick_rotation` | float | `0` | 分类刻度标签旋转角度 |
+| `hlines` / `vlines` | float / list | `None` | 数值轴 / 分类轴参考线 |
+| `shade` | tuple / list | `None` | 分类区间阴影（仅纵向模式） |
+| `note` / `title_position` | str | `None` / `"top"` | 图注与标题位置（同 `plot_series`） |
+| `ax` | Axes | `None` | 传入已有坐标轴 |
+
+### 示例
+
+```python
+import numpy as np, pandas as pd
+from Ts.TsPlots import plot_bar
+
+# 单系列：Series 索引即分类
+s = pd.Series([120, 150, 90], index=["东部", "中部", "西部"], name="产量")
+fig, ax = plot_bar(s, title="分地区产量", ytitle="产量", y_unit="万吨")
+
+# 分组柱图：宽表 DataFrame，列即系列
+df = pd.DataFrame(
+    {"2023": [120, 90, 150], "2024": [135, 95, 160]},
+    index=["东部", "中部", "西部"],
+)
+fig, ax = plot_bar(df, title="分年份分地区产量", grid=True)
+
+# 长表 + group 列：分类/数值/系列三列
+long = pd.DataFrame({
+    "地区": ["东部", "东部", "中部", "中部"],
+    "年份": ["2023", "2024", "2023", "2024"],
+    "产量": [120, 135, 90, 95],
+})
+fig, ax = plot_bar(long, x="地区", y="产量", group="年份")
+
+# 横向分组柱图 + 数值标注
+fig, ax = plot_bar(df, horizontal=True, show_values=True)
+
+# 堆叠柱图
+fig, ax = plot_bar(df, stacked=True, ytitle="产量", y_unit="万吨")
+
+# 数值标注、阴影、参考线
+fig, ax = plot_bar(
+    s,
+    show_values=True,
+    shade=(0, 1),
+    hlines=100,
+    note="数据来源：模拟数据",
+)
+```
+
+---
+
 ## `plot_acf` 和 `plot_pacf` — 自相关函数图
 
 ```text
@@ -450,7 +545,7 @@ fig, axes = plot_lag_response(
 | `ytitle` | `"Impulse response"` | 纵轴标题 |
 | `color` | TsPlots 色板 | 单色或每响应一种颜色 |
 | `line_color` | `INK` | 可选响应线颜色（黑） |
-| `zero_line` | `True` | 绘制零响应参考线 |
+| `zero_line` | `False` | 绘制零响应参考线（默认关闭，需要时显式开启） |
 | `grid` | `True` | 显示共享虚线网格 |
 | `max_ticks` | `15` | 刻度过密时的最大整数刻度数 |
 
@@ -472,14 +567,14 @@ fig, axes = plot_lag_response(
 | `AXIS_GRAY` / `AXIS_TEXT_GRAY` | 年轴刻度线与年轴文字 |
 | `GRID_GRAY` | 网格 / 零参考线 |
 | `ANNOTATION_EDGE` | 注释框边线 |
-| `ZERO_LINE_COLOR` | 相关图/响应图零基线 |
+| `ZERO_LINE_COLOR` | 响应图可选零基线（`zero_line=True` 时使用；相关图已不再自动画 0 线） |
 | `REFERENCE_LINE_COLOR` | 参考/关键断点线（深红） |
 | `SHADE_COLOR` / `BAND_COLOR` | 阴影区 / 置信带填充（浅灰） |
 | `DEFAULT_LINESTYLES` | 8 种线型（黑白打印可区分） |
 | `DEFAULT_MARKERS` | 8 种标记形状 |
 | `LATIN_FONT` | Latin 字体名（Times New Roman） |
-| `CHINESE_FONT_CANDIDATES` | 中文字体候选列表（仿宋系列） |
-| `HEITI_FONT_CANDIDATES` | 黑体字体候选列表（标题用） |
+| `CHINESE_FONT_CANDIDATES` | 中文字体候选列表（黑体族：微软雅黑 / 黑体，全包统一使用） |
+| `HEITI_FONT_CANDIDATES` | 同一字体族的兼容别名（指向 `CHINESE_FONT_CANDIDATES`） |
 | `SELECTED_CHINESE_FONT` | 运行时选定的中文字体名 |
 | `FIGSIZE` | 默认图形尺寸 `(10, 5.5)` |
 | `TITLE_FONTSIZE` | 标题字号 `14` |
@@ -502,6 +597,7 @@ fig, axes = plot_lag_response(
 | `draw_legend(ax, *, ...)` | 绘制无边框图例 |
 | `draw_unit_label(ax, unit, *, axis)` | 在坐标轴标签后追加单位 |
 | `draw_note_and_bottom_title(fig, *, ...)` | 在图形底部放置标题、注释或底部图例（`BottomLegend`） |
+| `draw_suptitle(fig, title, *, ...)` | 以统一字体族放置图级标题；全仓 `fig.suptitle` 必须经由它 |
 | `BottomLegend(handles, labels, *, ...)` | 描述「时间轴下方、绘图区外」的底部图例：`draw_note_and_bottom_title` 将其锚定在时间轴/年份标签之下，图注紧随其下，并按实际高度精确撑开底部边距 |
 
 ---
@@ -510,6 +606,7 @@ fig, axes = plot_lag_response(
 
 - **默认调色模板**：`DEFAULT_PALETTE` 以 **黑 / 深蓝 / 灰 / 深红** 四主色引导，扩展 4 个同族派生色；主色与装饰色全部通过 `TsPlots.style.py` 中的**具名角色**引用。绘图代码（含 `TsModels` / `TsTests` / `TsSims` 的绘图方法）**禁止出现裸色值**——如需改色，只改 `style.py`。
 - **黑白可区分**：系列同时使用颜色、线型和标记三重编码；偶数索引系列使用实心标记，奇数索引使用空心标记。
-- **中英文混排**：Latin 字符用 Times New Roman，CJK 字符用仿宋（自动回退）。
+- **统一字体**：所有文字——图标题、轴标题、图例、刻度、图注、数值标注——共用同一字体族：Latin 用 Times New Roman，CJK 用**黑体族**（微软雅黑 / 黑体，自动回退，`CHINESE_FONT_CANDIDATES`），仅字号按角色区分；**图标题统一不加粗**（常规字重）。正文与标题不再使用不同字体族（仿宋正文 / 黑体标题的双字体族设计已废弃）。
 - **坐标轴风格**：隐藏上边框和右边框，刻度向外。
 - **底部排布**：图例默认绘制在时间轴（x 轴）下方、绘图区外的底部边距里（`year_ruler=True` 时贴在年份标尺标签之下），图注（`note`）紧跟图例下方、不再悬在图形最底边；分面图整图共享一个底部图例。显式传入 `legend_loc` 时图例回到绘图区内。
+- **轴标题与图例角色标注**：轴标题默认只显示单位（`unit`），不再自动携带变量名（右轴亦然，`second_axis_title` / `third_axis_title` 可覆盖）；双轴（多轴）叠加图的图例文字统一为「变量名（左轴/右轴）」，单轴图不带括号后缀，显式传 `legend_labels` 时按原文不加后缀。

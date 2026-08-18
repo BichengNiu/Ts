@@ -98,7 +98,7 @@ def _render_critical_value_plot(result, test_name, ax=None):
     ax.set_title(
         f"{test_name}: Test Statistic vs Critical Values",
         fontsize=TITLE_FONTSIZE,
-        fontweight="bold",
+        fontweight="normal",
     )
     draw_legend(ax)
 
@@ -170,7 +170,7 @@ def _render_tstat_plot(result, ax=None):
         f"Zivot-Andrews (1992) - Model {result.model}\n"
         f"Sequential t-statistics for all candidate break points",
         fontsize=TITLE_FONTSIZE,
-        fontweight="bold",
+        fontweight="normal",
     )
     draw_legend(ax)
     style_axes(ax)
@@ -224,7 +224,7 @@ def _render_ic_plot(result, ax=None):
         f"{ic_label} for each lag order at optimal break point "
         f"({result.break_year:.0f})",
         fontsize=TITLE_FONTSIZE,
-        fontweight="bold",
+        fontweight="normal",
     )
     draw_legend(ax)
     style_axes(ax)

@@ -121,6 +121,7 @@ class SimCointegratedResult(BaseSimResult):
             TITLE_FONTSIZE,
             TIGHT_PAD,
             FIGSIZE,
+            draw_suptitle,
         )
         import matplotlib.pyplot as plt
 
@@ -144,7 +145,7 @@ class SimCointegratedResult(BaseSimResult):
             )
 
         axes[-1].set_xlabel("Time", fontsize=AXIS_LABEL_FONTSIZE)
-        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        draw_suptitle(fig, title)
         fig.tight_layout(pad=TIGHT_PAD)
         return fig, axes
 

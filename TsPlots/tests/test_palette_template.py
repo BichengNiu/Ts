@@ -41,6 +41,8 @@ from Ts.TsPlots.style import (
     LEGEND_FONTSIZE,
     TICK_LABELSIZE,
     TITLE_FONTSIZE,
+    _body_font_family,
+    _title_font_family,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -179,6 +181,98 @@ class TestTypographyContract:
             assert {t.get_fontsize() for t in ax.get_legend().get_texts()} == {
                 LEGEND_FONTSIZE
             }
+        finally:
+            plt.close(fig)
+
+    def test_figure_suptitles_use_title_font_family(self):
+        """图级标题与轴标题共用同一字体族（全包统一字体，仅字号区分角色）。"""
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import pandas as pd
+
+        from Ts.TsPlots import plot_lag_response, plot_series
+
+        rng = np.random.default_rng(3)
+        frame = pd.DataFrame(
+            {"a": rng.normal(size=12), "b": rng.normal(size=12)},
+            index=pd.date_range("2020-01", periods=12, freq="MS"),
+        )
+        try:
+            # 分面 suptitle（ts_plot 路径，含 x/ha 排布）。
+            fig, _axes = plot_series(frame, facet=True, title="宏观指标")
+            assert fig._suptitle is not None
+            assert fig._suptitle.get_fontfamily() == _title_font_family()
+            assert fig._suptitle.get_fontweight() == "normal"
+            plt.close(fig)
+
+            # 分面 suptitle（style._finalize_facet_figure 路径）。
+            fig2, _ = plot_lag_response(
+                pd.DataFrame(
+                    {"a": [1.0, 0.0, -1.0, 0.5], "b": [0.5, 0.3, 0.1, 0.0]},
+                    index=[0, 1, 2, 3],
+                ),
+                title="Impulse responses",
+            )
+            assert fig2._suptitle is not None
+            assert fig2._suptitle.get_fontfamily() == _title_font_family()
+            plt.close(fig2)
+        finally:
+            plt.close("all")
+
+    def test_suptitle_calls_route_through_draw_suptitle(self):
+        """源码级审计：`fig.suptitle` 直呼必须经 `style.draw_suptitle`。"""
+        pattern = re.compile(r"\bfig\.suptitle\s*\(")
+        offenders = []
+        for package in _PACKAGES:
+            for path in sorted((REPO_ROOT / package).rglob("*.py")):
+                if "tests" in path.parts or path.name == "style.py":
+                    continue
+                if pattern.search(path.read_text(encoding="utf-8")):
+                    offenders.append(str(path.relative_to(REPO_ROOT)))
+        assert not offenders, (
+            "fig.suptitle 必须改用 Ts.TsPlots.style.draw_suptitle（统一字体族）："
+            f"{offenders}"
+        )
+
+    def test_all_text_roles_share_one_font_family(self):
+        """业务方要求：TsPlots 所有文字统一字体——标题/轴标题/图例/刻度/图注/
+        数值标注一律同一字体族，仅字号区分角色。"""
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        from Ts.TsPlots import plot_series
+
+        rng = np.random.default_rng(1)
+        fig, ax = plot_series(
+            {"a": rng.normal(size=12), "b": rng.normal(size=12)},
+            facet=False,
+            title="统一字体测试",
+            note="数据来源：模拟数据",
+            show_values=True,
+        )
+        try:
+            family = _body_font_family()
+            # 正文族与标题族必须为同一字体族。
+            assert _title_font_family() == family
+            # 标题 / 轴标题 / 图例 / 刻度。
+            assert ax.title.get_fontfamily() == family
+            assert ax.xaxis.label.get_fontfamily() == family
+            assert ax.yaxis.label.get_fontfamily() == family
+            legend = ax.get_legend()
+            assert legend is not None
+            assert all(
+                text.get_fontfamily() == family
+                for text in legend.get_texts()
+            )
+            assert all(
+                label.get_fontfamily() == family
+                for label in [*ax.get_xticklabels(), *ax.get_yticklabels()]
+                if label.get_text()
+            )
+            # 图注与数值标注（Annotation 也挂在 ax.texts / fig.texts）。
+            for artist in [*ax.texts, *fig.texts]:
+                if artist.get_text().strip():
+                    assert artist.get_fontfamily() == family
         finally:
             plt.close(fig)
 

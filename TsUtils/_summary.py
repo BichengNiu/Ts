@@ -212,7 +212,7 @@ class TimeSeriesSummary:
     def _mark_unavailable(axes, message) -> None:
         """Mark all correlogram panels unavailable without fabricating values."""
         for axis, title in zip(axes.flat, _PANEL_TITLES, strict=True):
-            axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+            axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
             axis.text(
                 0.5,
                 0.5,
@@ -239,7 +239,7 @@ class TimeSeriesSummary:
     def _plot_panel(values, axis, plotter, *, nlags, alpha, title) -> None:
         """Draw one existing correlogram or mark a constant series."""
         if values.nunique() <= 1:
-            axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+            axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
             axis.text(
                 0.5,
                 0.5,

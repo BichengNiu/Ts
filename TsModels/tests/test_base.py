@@ -217,7 +217,8 @@ class TestBaseModelResult:
         ax_residuals, ax_histogram, _ax_acf, _ax_pacf = axes
 
         assert ax_histogram.title.get_fontsize() == TITLE_FONTSIZE
-        assert ax_histogram.title.get_fontweight() == "bold"
+        # 图标题统一不加粗。
+        assert ax_histogram.title.get_fontweight() == "normal"
         assert ax_histogram.xaxis.label.get_fontsize() == AXIS_LABEL_FONTSIZE
         assert ax_histogram.yaxis.label.get_fontsize() == AXIS_LABEL_FONTSIZE
         assert (

@@ -151,7 +151,7 @@ def plot_correlation_matrix(
     ax.spines["left"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
     if title:
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
 
     colorbar = fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
     colorbar.set_label(

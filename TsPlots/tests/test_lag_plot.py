@@ -15,7 +15,14 @@ def test_series_draws_one_bar_per_lag_and_zero_reference():
         name="price",
     )
 
-    fig, ax = plot_lag_response(weights)
+    # 默认不再自动画 y=0 横线。
+    fig_default, ax_default = plot_lag_response(weights)
+    assert not any(
+        np.allclose(line.get_ydata(), [0.0, 0.0]) for line in ax_default.lines
+    )
+    plt.close(fig_default)
+
+    fig, ax = plot_lag_response(weights, zero_line=True)
 
     assert [bar.get_height() for bar in ax.patches] == [1.0, 0.5, -0.25]
     assert ax.get_xlabel() == "Time lag"

@@ -364,6 +364,111 @@ class TestPlotSeries:
         assert legend_top < bottom_panel.get_position().y0
         plt.close(fig)
 
+    def test_bottom_legend_auto_balances_grid(self):
+        # 4 条记录自动排成 2×2（近方形网格），避免长文字挤成过宽单行。
+        data = {"一": [1, 2, 3], "二": [2, 3, 4], "三": [3, 4, 5], "四": [4, 5, 6]}
+        fig, ax = plot_series(data, facet=False)
+        legend = ax.get_legend()
+        assert legend is not None
+        assert legend._ncols == 2
+        # 4 个条目配 2 列 ⇒ 2 行，即 2×2 网格。
+        assert len(legend.get_texts()) == 4
+        plt.close(fig)
+
+        # 显式 legend_cols 优先于自动排布。
+        fig2, ax2 = plot_series(data, facet=False, legend_cols=4)
+        assert ax2.get_legend()._ncols == 4
+        plt.close(fig2)
+
+    def test_yaxis_title_unit_only_by_default(self):
+        # 轴标题默认只显示单位，不再显示默认 "Value"。
+        fig, ax = plot_series({"a": [1, 2, 3]}, facet=False, unit="亿元")
+        assert ax.get_ylabel() == "（单位：亿元）"
+        plt.close(fig)
+
+        # 双轴：右轴标题同样只显示单位，不携带变量名。
+        fig2, ax2 = plot_series(
+            {"a": [1, 2, 3], "b": [100, 200, 300]},
+            facet=False,
+            unit="亿元",
+        )
+        assert ax2.get_ylabel() == "（单位：亿元）"
+        assert ax2.right_ax.get_ylabel() == "（单位：亿元）"
+        plt.close(fig2)
+
+        # 无 unit 且不传 ytitle：不显示 y 轴标题。
+        fig3, ax3 = plot_series({"a": [1, 2, 3]}, facet=False)
+        assert ax3.get_ylabel() == ""
+        plt.close(fig3)
+
+        # 显式 ytitle：变量名/自定义标题生效，单位追加在末尾。
+        fig4, ax4 = plot_series(
+            {"a": [1, 2, 3]}, facet=False, ytitle="GDP", unit="亿元"
+        )
+        assert ax4.get_ylabel() == "GDP（单位：亿元）"
+        plt.close(fig4)
+
+        # 显式第二轴标题：保留并追加单位。
+        fig5, ax5 = plot_series(
+            {"a": [1, 2, 3], "b": [100, 200, 300]},
+            facet=False,
+            second_axis_vars=["b"],
+            unit="亿元",
+            second_axis_title="右轴标题",
+        )
+        assert ax5.right_ax.get_ylabel() == "右轴标题（单位：亿元）"
+        plt.close(fig5)
+
+    def test_facet_yaxis_unit_only_by_default(self):
+        df = pd.DataFrame({"a": [1, 2, 3], "b": [2, 3, 4]})
+        fig, axes = plot_series(df, unit="%")
+        for panel in axes:
+            assert panel.get_ylabel() == "（单位：%）"
+        plt.close(fig)
+
+    def test_dual_axis_legend_role_suffix(self):
+        # 双轴图：图例文字统一为「变量名（左轴/右轴）」。
+        fig, ax = plot_series(
+            {"a": [1, 2, 3], "b": [100, 200, 300]},
+            facet=False,
+            axis_groups={"a": "left", "b": "right"},
+        )
+        assert [t.get_text() for t in ax.get_legend().get_texts()] == [
+            "a（左轴）",
+            "b（右轴）",
+        ]
+        plt.close(fig)
+
+        # 单轴叠加：不带括号后缀。
+        fig2, ax2 = plot_series(
+            {"a": [1, 2, 3], "b": [2, 3, 4]}, facet=False
+        )
+        assert [t.get_text() for t in ax2.get_legend().get_texts()] == ["a", "b"]
+        plt.close(fig2)
+
+        # 显式 legend_labels：按原文使用，不加后缀。
+        fig3, ax3 = plot_series(
+            {"a": [1, 2, 3], "b": [100, 200, 300]},
+            facet=False,
+            axis_groups={"a": "left", "b": "right"},
+            legend_labels=["甲", "乙"],
+        )
+        assert [t.get_text() for t in ax3.get_legend().get_texts()] == ["甲", "乙"]
+        plt.close(fig3)
+
+        # 显式 legend_loc（图例回绘图区内）同样应用（左轴/右轴）后缀。
+        fig4, ax4 = plot_series(
+            {"a": [1, 2, 3], "b": [100, 200, 300]},
+            facet=False,
+            axis_groups={"a": "left", "b": "right"},
+            legend_loc="upper left",
+        )
+        assert [t.get_text() for t in ax4.get_legend().get_texts()] == [
+            "a（左轴）",
+            "b（右轴）",
+        ]
+        plt.close(fig4)
+
     def test_note_below_legend_in_bottom_margin(self):
         fig, ax = plot_series(
             {"a": [1, 2, 3]},
@@ -583,6 +688,47 @@ class TestPlotSeries:
         )
 
         assert ax.patches[0].get_width() == pytest.approx(0.6 * 30)
+        plt.close(fig)
+
+    def test_bar_face_color_overrides_bars_but_keeps_lines(self):
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+            bar_face_color="#888888",
+        )
+
+        assert len(ax.patches) == 3
+        assert all(
+            tuple(patch.get_facecolor())[:3]
+            == pytest.approx((136 / 255, 136 / 255, 136 / 255))
+            for patch in ax.patches
+        )
+        # 线保持自己的调色板色，不被柱色覆盖。
+        line_color = ax.lines[0].get_color()
+        assert line_color != "#888888"
+        plt.close(fig)
+
+    def test_bar_face_color_applies_in_facet_panels(self):
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, axes = plot_series(
+            data,
+            bar_series=["volume"],
+            bar_face_color="#888888",
+        )
+
+        assert len(axes[0].patches) == 3
+        assert all(
+            tuple(patch.get_facecolor())[:3]
+            == pytest.approx((136 / 255, 136 / 255, 136 / 255))
+            for patch in axes[0].patches
+        )
+        assert len(axes[0].lines) == 0
+        assert len(axes[1].lines) == 1
         plt.close(fig)
 
     def test_bar_series_rejects_unknown_labels(self):

@@ -316,6 +316,7 @@ class PolicyEffectResult:
             TIGHT_PAD,
             _ensure_fonts,
             draw_legend,
+            draw_suptitle,
             style_axes,
         )
 
@@ -334,7 +335,7 @@ class PolicyEffectResult:
         axes[0].set_title(
             "Factual and counterfactual paths",
             fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
+            fontweight="normal",
         )
         draw_legend(axes[0])
 
@@ -350,11 +351,11 @@ class PolicyEffectResult:
         axes[1].set_title(
             "Conditional policy effect",
             fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
+            fontweight="normal",
         )
         draw_legend(axes[1])
         if title is not None:
-            fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+            draw_suptitle(fig, title)
         for axis in axes:
             style_axes(axis, grid=False)
         fig.tight_layout(pad=TIGHT_PAD)

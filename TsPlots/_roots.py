@@ -96,7 +96,7 @@ def _plot_inverse_roots(
         draw_legend(ax)
 
     if title is not None:
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
 
     fig.tight_layout(pad=TIGHT_PAD)
     return fig, ax

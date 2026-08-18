@@ -1175,9 +1175,9 @@ class VARResult(BaseModelResult):
     def plot_irf(self, periods=10, orth=False, alpha=0.05, **kwargs):
         """Plot impulse response functions as a k x k subplot matrix.
 
-        Uses TsPlots global style settings (Okabe-Ito palette,
-        Times New Roman + Fangsong fonts). Confidence bands are drawn
-        at the ``1 - alpha`` level.
+        Uses TsPlots global style settings (unified font family: Times New
+        Roman + 黑体族). Confidence bands are drawn at the ``1 - alpha``
+        level.
 
         Parameters
         ----------
@@ -1217,6 +1217,7 @@ class VARResult(BaseModelResult):
             TITLE_FONTSIZE,
             AXIS_LABEL_FONTSIZE,
             TICK_LABELSIZE,
+            draw_suptitle,
         )
 
         _ensure_fonts()
@@ -1269,10 +1270,9 @@ class VARResult(BaseModelResult):
         irf_type = irf_result.label or ("Orthogonalized IRF" if orth else "IRF")
         ci_label = f"{int((1 - alpha) * 100)}%"
         model_label = self.model_type
-        fig.suptitle(
+        draw_suptitle(
+            fig,
             f"{model_label}({self._lags}): {irf_type} ({periods} periods, {ci_label} CI)",
-            fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
         )
         fig.tight_layout(pad=TIGHT_PAD)
         return fig, axes

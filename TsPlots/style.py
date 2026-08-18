@@ -3,8 +3,9 @@
 This module is the single source of truth for typography, colour palette,
 marker/line-style cycles, and the small cosmetic helpers shared by
 :mod:`TsPlots.ts_plot` and :mod:`TsPlots.sc_plot`. Importing it configures
-matplotlib fonts so Latin text uses Times New Roman and Chinese text uses
-FangSong.
+matplotlib so **all** text — titles, axis labels, legends, tick labels,
+notes, annotations — uses one unified font family: Times New Roman for Latin
+glyphs plus a single CJK family (黑体族：微软雅黑 / 黑体).
 
 Contents
 --------
@@ -34,23 +35,24 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 # --- Fonts -----------------------------------------------------------------
-# Preferred fonts: Times New Roman for Latin glyphs, FangSong (GB2312) for CJK.
-# matplotlib (>=3.6) performs per-glyph fallback through the family list, so
-# Latin characters render in Times New Roman and Chinese falls back to FangSong.
+# 全包统一字体族：Latin 用 Times New Roman，CJK 用黑体族（微软雅黑 / 黑体）。
+# matplotlib (>=3.6) 通过字体列表逐字形回退，Latin 走 Times、中文走黑体族；
+# 图标题、轴标题、图例、刻度、图注、数值标注一律共用此字体族，仅字号按角色
+# 区分。曾经「正文仿宋 / 标题黑体」的双字体族设计已废弃——业务方要求所有
+# 文字字体完全一致。
 LATIN_FONT = "Times New Roman"
-# The genuine "仿宋_GB2312" (FSGB2312) is often not installed; we list it first
-# and fall back to the standard Windows FangSong (simfang.ttf) if absent.
-CHINESE_FONT_CANDIDATES = ["FangSong_GB2312", "FZFangSong-Z02", "FangSong"]
-# For captions and titles, prefer a CJK family with a real bold face.  SimHei
-# is visually bold but is commonly installed only at weight 400, which makes
-# matplotlib emit a font-weight fallback warning whenever a title requests
-# ``fontweight="bold"``.
-HEITI_FONT_CANDIDATES = ["Microsoft YaHei", "SimHei"]
+# 优先微软雅黑（自带粗体字形，图表可读性最好），回退 SimHei。
+CHINESE_FONT_CANDIDATES = ["Microsoft YaHei", "SimHei"]
+# 兼容别名：旧接口名指向同一列表，避免下游按旧语义分别引用两个字体族。
+HEITI_FONT_CANDIDATES = CHINESE_FONT_CANDIDATES
 
 
 def apply_fonts(latin=LATIN_FONT, chinese_candidates=CHINESE_FONT_CANDIDATES):
-    """Configure matplotlib so Latin text uses Times New Roman and Chinese
-    text uses FangSong (GB2312 if available).
+    """Configure matplotlib so all text uses one unified font family.
+
+    Latin glyphs render in *latin* (Times New Roman) and CJK glyphs fall back
+    to the first installed family in *chinese_candidates*（黑体族：微软雅黑 /
+    黑体）。图标题、轴标题、图例、刻度、图注等所有文字共用此字体族。
 
     Parameters
     ----------
@@ -90,8 +92,8 @@ def apply_fonts(latin=LATIN_FONT, chinese_candidates=CHINESE_FONT_CANDIDATES):
 # every public plotting function. This avoids front-loading the font-scan cost
 # (scanning ~1800 TTF files on Windows) when all the user wants is a constant.
 _fonts_initialized = False
-SELECTED_CHINESE_FONT = "FangSong"  # placeholder; replaced after first _ensure_fonts()
-SELECTED_HEITI_FONT = "Microsoft YaHei"
+SELECTED_CHINESE_FONT = "Microsoft YaHei"  # placeholder; replaced after first _ensure_fonts()
+SELECTED_HEITI_FONT = SELECTED_CHINESE_FONT  # 同一字体族的兼容别名
 
 
 def _ensure_fonts():
@@ -103,22 +105,27 @@ def _ensure_fonts():
     global _fonts_initialized, SELECTED_CHINESE_FONT, SELECTED_HEITI_FONT
     if not _fonts_initialized:
         SELECTED_CHINESE_FONT = apply_fonts(LATIN_FONT, CHINESE_FONT_CANDIDATES)
-        available = {font.name for font in font_manager.fontManager.ttflist}
-        SELECTED_HEITI_FONT = next(
-            (name for name in HEITI_FONT_CANDIDATES if name in available),
-            HEITI_FONT_CANDIDATES[-1],
-        )
+        # 单一字体族：正文与标题共用同一 CJK 家族（兼容别名同步）。
+        SELECTED_HEITI_FONT = SELECTED_CHINESE_FONT
         _fonts_initialized = True
 
 
 def _body_font_family():
-    """Return the resolved Latin/CJK font fallback used for body text."""
+    """Return the unified Latin/CJK font fallback used for body text.
+
+    TsPlots 规定所有文字（含标题）共用同一字体族，仅字号区分角色；此函数
+    与 :func:`_title_font_family` 返回相同列表。
+    """
     _ensure_fonts()
     return [LATIN_FONT, SELECTED_CHINESE_FONT]
 
 
 def _title_font_family():
-    """Return the resolved Latin/CJK font fallback used for bold titles."""
+    """Return the unified Latin/CJK font fallback used for titles.
+
+    TsPlots 规定所有文字（含正文、图例、刻度）共用同一字体族，仅字号区分
+    角色；此函数与 :func:`_body_font_family` 返回相同列表。
+    """
     _ensure_fonts()
     return [LATIN_FONT, SELECTED_HEITI_FONT]
 
@@ -227,8 +234,9 @@ class BottomLegend:
     legend_title : str, optional
         Title shown above the legend entries; ``None`` hides it.
     ncol : int, optional
-        Number of columns. ``None`` auto-flows the entries into at most two
-        rows (one row when there are four or fewer).
+        Number of columns. ``None`` auto-balances the entries into a
+        near-square grid (``ceil(sqrt(n))`` columns)：例如 4 条 → 2×2、9 条
+        → 3×3，避免条目文字过长时排成过宽的单行。
     below_offset : float
         Anchor offset (axes fraction, negative) for the legend top edge below
         the x-axis. Defaults to ``LEGEND_BELOW_OFFSET``.
@@ -625,6 +633,50 @@ def place_left_title_right_of_ylabel(ax, *, pad_points=8):
     title.set_position((x, title.get_position()[1]))
 
 
+def draw_suptitle(
+    fig,
+    title,
+    *,
+    x=None,
+    ha=None,
+    fontsize=TITLE_FONTSIZE,
+    fontweight="normal",
+):
+    """Place a figure-level title with the shared unified font family.
+
+    TsPlots 规定所有文字共用同一字体族（Times New Roman + 黑体族，见
+    :func:`_title_font_family`，与正文/图例/刻度完全一致，仅字号区分角色）。
+    统一入口保证图级标题不会意外落到别的字体族。TsPlots 及其消费方
+    （TsModels / TsTests / TsSims / TsUtils）的所有 ``fig.suptitle`` 调用
+    都必须经由本函数。
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+    title : str
+        Suptitle text.
+    x, ha : float / str, optional
+        Horizontal anchor passed through to ``fig.suptitle``.
+    fontsize : float
+        Title font size. Defaults to ``TITLE_FONTSIZE``.
+    fontweight : str
+        Title weight. 图标题统一不加粗，默认 ``"normal"``。
+    """
+    _ensure_fonts()
+    kwargs = {}
+    if x is not None:
+        kwargs["x"] = x
+    if ha is not None:
+        kwargs["ha"] = ha
+    fig.suptitle(
+        title,
+        fontsize=fontsize,
+        fontweight=fontweight,
+        fontfamily=_title_font_family(),
+        **kwargs,
+    )
+
+
 def draw_note_and_bottom_title(
     fig,
     *,
@@ -725,7 +777,8 @@ def draw_note_and_bottom_title(
     ref_ax = min(visible, key=lambda axes: axes.get_position().y0)
 
     count = len(legend.labels)
-    ncol = legend.ncol or (min(count, 4) if count <= 4 else (count + 1) // 2)
+    # 近方形自动排布：ceil(sqrt(n)) 列（4 条 → 2×2），长文字时避免过宽单行。
+    ncol = legend.ncol or (math.ceil(math.sqrt(count)) if count else 1)
     legend_artist = ref_ax.legend(
         legend.handles,
         legend.labels,
@@ -837,7 +890,7 @@ def _finalize_facet_figure(
 ):
     """Apply the shared facet layout: suptitle, tight layout, and bottom note."""
     if title is not None and title_position == "top":
-        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        draw_suptitle(fig, title)
         fig.tight_layout(rect=FACET_RECT, pad=TIGHT_PAD)
     else:
         fig.tight_layout(pad=TIGHT_PAD)
@@ -894,7 +947,7 @@ class _FigureContext:
             self.ax.set_title(
                 title,
                 fontsize=TITLE_FONTSIZE,
-                fontweight="bold",
+                fontweight="normal",
                 loc=title_loc,
                 pad=title_pad,
             )

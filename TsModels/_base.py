@@ -321,7 +321,7 @@ class PredictResult:
 
         if title is None:
             title = "Prediction Results"
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
 
         if xlim is not None:
             ax.set_xlim(xlim)
@@ -658,7 +658,7 @@ class BaseModelResult:
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots import plot_series
-        from Ts.TsPlots.style import TITLE_FONTSIZE, FIGSIZE
+        from Ts.TsPlots.style import TITLE_FONTSIZE, FIGSIZE, draw_suptitle
 
         if title is None:
             title = f"{self.model_type}: Actual vs Fitted"
@@ -698,7 +698,7 @@ class BaseModelResult:
                 ytitle="Value",
             )
 
-        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        draw_suptitle(fig, title)
         fig.tight_layout()
         return fig, axes
 
@@ -744,7 +744,7 @@ class BaseModelResult:
             NOTE_FONTSIZE,
             TITLE_FONTSIZE,
             _ensure_fonts,
-            _title_font_family,
+            draw_suptitle,
             style_axes,
         )
 
@@ -778,7 +778,7 @@ class BaseModelResult:
                     title=f"{label} Standardized Residual PACF",
                 )
 
-            fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+            draw_suptitle(fig, title)
             fig.tight_layout()
             return fig, axes
 
@@ -810,7 +810,7 @@ class BaseModelResult:
         ax_histogram.set_title(
             "Standardized Residual Histogram",
             fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
+            fontweight="normal",
             pad=TITLE_PAD,
         )
         ax_histogram.set_xlabel(
@@ -860,12 +860,7 @@ class BaseModelResult:
             **annotation_kwargs,
         )
 
-        fig.suptitle(
-            title,
-            fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
-            fontfamily=_title_font_family(),
-        )
+        draw_suptitle(fig, title)
         fig.tight_layout()
         return fig, (ax_residuals, ax_histogram, ax_acf, ax_pacf)
 

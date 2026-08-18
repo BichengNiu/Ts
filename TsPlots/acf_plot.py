@@ -2,8 +2,9 @@
 
 The two main entry points are :func:`plot_acf` and :func:`plot_pacf`. Both
 follow the same style conventions as :mod:`TsPlots.ts_plot` and
-:mod:`TsPlots.sc_plot`: the shared default colour template, Times New Roman /
-FangSong typography, hidden top/right spines, and optional dashed grid.
+:mod:`TsPlots.sc_plot`: the shared default colour template, the unified
+font family (Times New Roman + 黑体族), hidden top/right spines, and
+optional dashed grid.
 
 Accepted input
 --------------
@@ -41,7 +42,6 @@ from .style import (
     BAND_ALPHA,
     BAND_COLOR,
     DEFAULT_PALETTE,
-    ZERO_LINE_COLOR,
     TITLE_PAD,
     TIGHT_PAD,
     TITLE_FONTSIZE,
@@ -195,9 +195,6 @@ def _draw_correlogram(
         zorder=0,
     )
 
-    # --- Zero reference line -----------------------------------------------
-    ax.axhline(0, color=ZERO_LINE_COLOR, linewidth=0.8, zorder=1)
-
     # --- Correlation bars --------------------------------------------------
     ax.bar(
         lags,
@@ -225,7 +222,7 @@ def _draw_correlogram(
 
     # --- Optional title ----------------------------------------------------
     if title is not None and title_position == "top":
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold", pad=TITLE_PAD)
+        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal", pad=TITLE_PAD)
 
     style_axes(ax, grid=grid)
 

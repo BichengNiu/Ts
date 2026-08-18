@@ -82,6 +82,7 @@ from .style import (
     place_ylabel_at_top,
     place_left_title_right_of_ylabel,
     draw_note_and_bottom_title,
+    draw_suptitle,
     draw_legend,
     draw_shade,
     draw_vlines,
@@ -501,15 +502,19 @@ def _plot_one_series(
     bar_edge_color=None,
     bar_edge_linewidth=0.6,
     bar_alpha=1.0,
+    bar_face_color=None,
 ):
     """Draw one series, either as a bar chart or as a line."""
     color = _series_color(colors, index)
     if is_bar:
+        face_color = (
+            bar_face_color if bar_face_color is not None else color
+        )
         return ax.bar(
             x_values,
             values,
             width=bar_width,
-            color=color,
+            color=face_color,
             edgecolor=bar_edge_color,
             linewidth=bar_edge_linewidth,
             alpha=bar_alpha,
@@ -642,7 +647,7 @@ def plot_series(
     title: str | None = None,
     xtitle: str | None = None,
     xtitle_loc: str = "center",
-    ytitle: str = "Value",
+    ytitle: str | None = None,
     ytitle_position: str = "top",
     linewidth: float = 3,
     markersize: float = 7,
@@ -702,6 +707,7 @@ def plot_series(
     bar_edge_color: str | None = None,
     bar_edge_linewidth: float = 0.6,
     bar_alpha: float = 1.0,
+    bar_face_color: str | None = None,
 ) -> tuple[plt.Figure, plt.Axes | np.ndarray]:
     """Plot an arbitrary number of time series with cycling styles.
 
@@ -733,7 +739,10 @@ def plot_series(
     xtitle_loc : {"left", "center", "right"}, default "center"
         Horizontal alignment of the x-axis label.
     ytitle : str, optional
-        Label for the y-axis. Defaults to ``"Value"``.
+        Label for the y-axis. **不传（默认）时轴标题只显示单位**：给出
+        ``unit`` 则显示如 ``（单位：％）``，否则不显示 y 轴标题；显式传入
+        自定义标题（如变量名）时使用之，有 ``unit`` 时单位仍会追加在末尾。
+        该规则同样作用于右侧双轴（默认只显示单位，不再自动拼接变量名）。
     ytitle_position : {"top", "side"}, default "top"
         Placement of the y-axis title. ``"top"`` draws the title
         horizontally at the top end of the axis (T-shaped layout, the
@@ -779,7 +788,9 @@ def plot_series(
         Whether to display the legend. Defaults to ``True``.
     legend_labels : sequence of str, optional
         Override the text of the legend entries. Must match the number of
-        series.
+        series. **双轴（多轴）叠加图默认图例文字统一为「变量名（左轴/右轴）」
+        格式**（单轴图不带括号后缀）；显式传入 ``legend_labels`` 时按原文
+        使用、不加后缀。
     legend_loc : str, optional
         图例位置。**不传（默认）时图例绘制在时间轴（x 轴）下方、绘图区外的
         底部边距里**：普通 x 轴时贴在轴标签之下，``year_ruler=True`` 时贴在
@@ -884,11 +895,12 @@ def plot_series(
         ``facet=False``. A series cannot be on both the second and third
         axes. Defaults to None.
     second_axis_title : str, optional
-        Custom title for the second y-axis; None falls back to the joined
-        series labels. Defaults to None.
+        Custom title for the second y-axis. **不传时轴标题只显示单位**
+        （``unit``），不再自动拼接该轴上的变量名；传则使用自定义标题。
+        Defaults to None.
     third_axis_title : str, optional
-        Custom title for the third y-axis; None falls back to the joined
-        series labels. Defaults to None.
+        Custom title for the third y-axis. 语义同 ``second_axis_title``：
+        不传时只显示单位。Defaults to None.
     log_vars : list of str, optional
         Series labels whose axis uses a logarithmic y-scale. The scale is
         applied to whichever axis the series is drawn on (first, second or
@@ -901,8 +913,11 @@ def plot_series(
         Existing axes to draw on. Multi-series faceting requires ``ax=None``;
         pass ``facet=False`` to overlay multiple series on an existing axes.
     unit : str, optional
-        Unit label appended to the y-axis label, formatted as
-        ``（单位：XX）``. Defaults to None.
+        Unit label for the y-axis, formatted as ``（单位：XX）``. **默认
+        轴标题只显示单位**：不传 ``ytitle`` 时，主 y 轴与所有右侧双轴的
+        标题即为 ``（单位：XX）``，不再出现变量名；传了 ``ytitle`` 或
+        ``second_axis_title`` / ``third_axis_title`` 时单位追加在其后。
+        Defaults to None.
     bar_series : str or list of str, optional
         Labels of series to draw as bars instead of lines. Bars inherit their
         face colour from ``colors`` (or the palette) and are drawn on the
@@ -918,6 +933,10 @@ def plot_series(
         Width of the bar edges. Defaults to 0.6.
     bar_alpha : float
         Opacity of the bars (0–1). Defaults to 1.0.
+    bar_face_color : str, optional
+        Fill colour for every bar. When set, bars use this colour instead of
+        their series colour from ``colors`` (or the palette); line series are
+        unaffected. Defaults to None (bars inherit their series colour).
 
     Returns
     -------
@@ -1051,6 +1070,7 @@ def plot_series(
             bar_edge_color=bar_edge_color,
             bar_edge_linewidth=bar_edge_linewidth,
             bar_alpha=bar_alpha,
+            bar_face_color=bar_face_color,
         )
 
     if facet and len(series) >= 2:
@@ -1105,12 +1125,20 @@ def plot_series(
                 loc="center",
                 pad=PANEL_TITLE_PAD,
             )
+            # 轴标题默认只显示单位（分面各面板同理）。
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+                panel_unit = unit
+            else:
+                panel_ax.set_ylabel(
+                    f"（单位：{unit}）" if unit is not None else "",
+                    fontsize=AXIS_LABEL_FONTSIZE,
+                )
+                panel_unit = None
             if ytitle_position == "top":
                 place_ylabel_at_top(panel_ax)
-            if unit is not None:
-                draw_unit_label(panel_ax, unit, axis="y")
+            if panel_unit is not None:
+                draw_unit_label(panel_ax, panel_unit, axis="y")
             if not sharex or index == len(axes) - 1:
                 panel_ax.set_xlabel(
                     x_label,
@@ -1160,13 +1188,7 @@ def plot_series(
             if title_loc not in title_positions:
                 raise ValueError("title_loc must be 'left', 'center', or 'right'")
             title_x, title_alignment = title_positions[title_loc]
-            fig.suptitle(
-                title,
-                fontsize=TITLE_FONTSIZE,
-                fontweight="bold",
-                x=title_x,
-                ha=title_alignment,
-            )
+            draw_suptitle(fig, title, x=title_x, ha=title_alignment)
         tight_rect = (0, 0, 1, 0.97) if title and title_position == "top" else None
         fig.tight_layout(pad=TIGHT_PAD, rect=tight_rect)
         bottom_legend = None
@@ -1249,8 +1271,17 @@ def plot_series(
         fontsize=AXIS_LABEL_FONTSIZE,
         loc=xtitle_loc,
     )
+    # 轴标题默认只显示单位：不传 ytitle 时给出 unit 则标题为「（单位：XX）」，
+    # 否则不显示；显式 ytitle 时保留并让 finalize 追加单位。
     if ytitle is not None:
         ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
+        yunit_applied = unit
+    else:
+        ax.set_ylabel(
+            f"（单位：{unit}）" if unit is not None else "",
+            fontsize=AXIS_LABEL_FONTSIZE,
+        )
+        yunit_applied = None  # 默认标题已含单位，避免 finalize 重复追加
     if ytitle_position == "top":
         place_ylabel_at_top(ax)
 
@@ -1275,21 +1306,37 @@ def plot_series(
         for y_axis in [ax, *right_axes]:
             y_axis.set_ylim(bottom=ymin)
 
-    display_labels = legend_labels or list(series)
-    display_name_by_label = dict(zip(series, display_labels, strict=True))
+    # 双轴（多轴）叠加图：图例文字统一为「变量名（左轴/右轴）」。
+    multi_axis = len(resolved_groups) >= 2
+    axis_role = {0: "左轴", 1: "右轴", 2: "右轴2", 3: "右轴3"}
+    role_by_label = {
+        label: axis_role.get(group_index, f"右轴{group_index}")
+        for group_index, group_labels in enumerate(resolved_groups)
+        for label in group_labels
+    }
+    if legend_labels is not None:
+        display_labels = list(legend_labels)  # 显式覆盖，不加（左轴/右轴）后缀
+    elif multi_axis:
+        display_labels = [f"{name}（{role_by_label[name]}）" for name in series]
+    else:
+        display_labels = list(series)
+
     right_axis_titles = {1: second_axis_title, 2: third_axis_title}
     for group_index, (group_labels, right_axis) in enumerate(
         zip(resolved_groups[1:], right_axes, strict=True),
         start=1,
     ):
-        right_axis.set_ylabel(
-            right_axis_titles.get(group_index)
-            or " / ".join(display_name_by_label[label] for label in group_labels),
-            fontsize=AXIS_LABEL_FONTSIZE,
-        )
+        override = right_axis_titles.get(group_index)
+        if override is not None:
+            right_axis.set_ylabel(override, fontsize=AXIS_LABEL_FONTSIZE)
+        elif unit is not None:
+            # 轴标题只显示单位，不再自动拼接该轴上的变量名。
+            right_axis.set_ylabel(f"（单位：{unit}）", fontsize=AXIS_LABEL_FONTSIZE)
+        else:
+            right_axis.set_ylabel("", fontsize=AXIS_LABEL_FONTSIZE)
         if ytitle_position == "top":
             place_ylabel_at_top(right_axis)
-        if unit is not None:
+        if override is not None and unit is not None:
             draw_unit_label(right_axis, unit, axis="y")
         style_axes(right_axis, grid=False)
         right_axis.spines["right"].set_visible(True)
@@ -1334,7 +1381,7 @@ def plot_series(
         grid_linewidth=grid_linewidth,
         grid_linestyle=grid_linestyle,
         show_legend=False,
-        unit=unit,
+        unit=yunit_applied,
         bottom_legend=bottom_legend,
     )
 

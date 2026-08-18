@@ -166,6 +166,7 @@ class STLResult:
             AXIS_LABEL_FONTSIZE,
             TITLE_FONTSIZE,
             FIGSIZE,
+            draw_suptitle,
         )
 
         fig, axes = plt.subplots(4, 1, figsize=(FIGSIZE[0], 9), sharex=True)
@@ -190,11 +191,7 @@ class STLResult:
                 show_legend=False,
             )
         axes[-1].set_xlabel("Time", fontsize=AXIS_LABEL_FONTSIZE)
-        fig.suptitle(
-            title or "STL Decomposition",
-            fontsize=TITLE_FONTSIZE,
-            fontweight="bold",
-        )
+        draw_suptitle(fig, title or "STL Decomposition")
         fig.tight_layout(rect=(0, 0, 1, 0.97))
         return fig, axes
 
