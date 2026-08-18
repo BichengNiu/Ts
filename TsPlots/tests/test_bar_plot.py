@@ -6,8 +6,15 @@ import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend
 import matplotlib.pyplot as plt
 
-from Ts.TsPlots import plot_bar
-from Ts.TsPlots.style import _body_font_family, _title_font_family
+from Ts.TsPlots import plot_bar, plot_series
+from Ts.TsPlots.style import (
+    BAR_EDGE_COLOR,
+    _body_font_family,
+    _title_font_family,
+)
+from matplotlib.colors import to_rgb
+
+BAR_EDGE_RGB = tuple(to_rgb(BAR_EDGE_COLOR))
 
 
 class TestPlotBar:
@@ -319,6 +326,48 @@ class TestPlotBar:
         assert tuple(rgba)[:3] == pytest.approx((136 / 255, 136 / 255, 136 / 255))
         assert patch.get_linewidth() == pytest.approx(1.5)
         plt.close(fig)
+
+    def test_series_bar_delegates_to_shared_bar_drawing(self):
+        """plot_series(bar_series=...) reuses the plot_bar bar implementation:
+
+        same face colour for the first series and the same default edge colour
+        (light-gray ``BAR_EDGE_COLOR``) on both functions.
+        """
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+        )
+
+        patch = ax.patches[0]
+        face = tuple(patch.get_facecolor())[:3]
+        assert tuple(patch.get_edgecolor())[:3] == pytest.approx(BAR_EDGE_RGB)
+        plt.close(fig)
+
+        # Same face and edge colours as plot_bar's first series.
+        fig2, ax2 = plot_bar(pd.Series([1, 2, 3], index=["a", "b", "c"]))
+        assert tuple(ax2.patches[0].get_facecolor())[:3] == pytest.approx(face)
+        assert tuple(ax2.patches[0].get_edgecolor())[:3] == pytest.approx(
+            BAR_EDGE_RGB
+        )
+        plt.close(fig2)
+
+        # Explicit None keeps the face-coloured edge override (兼容).
+        fig3, ax3 = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+            bar_edge_color=None,
+        )
+        patch3 = ax3.patches[0]
+        assert tuple(patch3.get_edgecolor())[:3] == pytest.approx(
+            tuple(patch3.get_facecolor())[:3]
+        )
+        plt.close(fig3)
 
     def test_unit_labels_appended(self):
         fig, ax = plot_bar(

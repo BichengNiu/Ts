@@ -85,7 +85,7 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `vlines` | float / list | `None` | 垂直参考线位置；落在数据范围之外的位置自动跳过 |
 | `bar_series` | str / list | `None` | 以柱状图绘制的系列标签；其余系列仍为折线。柱色继承 `colors`，所在轴强制从 0 起 |
 | `bar_width` | float | `None` | 柱宽（数据单位；日期轴单位为天）。`None` 时取相邻 x 间距中位数的 60% |
-| `bar_edge_color` | str | `None` | 柱边框色；`None` 时与柱同色 |
+| `bar_edge_color` | str | `BAR_EDGE_COLOR` | 柱边框色；默认浅灰（`BAR_EDGE_COLOR`），显式传 `None` 时与柱同色 |
 | `bar_edge_linewidth` | float | `0.6` | 柱边框线宽 |
 | `bar_alpha` | float | `1.0` | 柱透明度（0–1） |
 | `shade` | tuple / list | `None` | 阴影区间，如 `(2008, 2009)` 或 `[(2008,2009),(2020,2021)]` |
@@ -352,7 +352,7 @@ fig, ax = plot_bar(data, x=None, y=None, *, group=None, horizontal=False, stacke
 | `title` / `xtitle` / `ytitle` | str | `None` | 图标题 / 分类轴标题 / 数值轴标题（未传时自动检测） |
 | `x_unit` / `y_unit` | str | `None` | 轴单位，显示为「（单位：XX）」 |
 | `bar_width` | float | `0.6` | 柱宽（分类槽单位）。单系列柱宽即为该值；n 系列并列时每根柱 `bar_width/n`，整组占 `bar_width` |
-| `bar_edge_color` | str | `None` | 柱边框色；`None` 与柱同色 |
+| `bar_edge_color` | str | `BAR_EDGE_COLOR` | 柱边框色；默认浅灰（`BAR_EDGE_COLOR`），显式传 `None` 时与柱同色 |
 | `bar_edge_linewidth` | float | `0.6` | 柱边框线宽 |
 | `bar_alpha` | float | `1.0` | 柱透明度 |
 | `colors` / `labels` | list | `None` | 覆盖系列配色 / 系列标签 |
@@ -604,6 +604,7 @@ fig, axes = plot_lag_response(
 
 ## 设计说明
 
+- **柱绘制单一实现**：`bar_plot._draw_bars` 是柱绘制的唯一实现，`plot_bar` 与 `plot_series(bar_series=...)` 的柱部分都经由它，柱样式契约（`bar_alpha` / `bar_edge_color` / `bar_edge_linewidth`，默认柱边为浅灰 `BAR_EDGE_COLOR`）保持一致。
 - **默认调色模板**：`DEFAULT_PALETTE` 以 **黑 / 深蓝 / 灰 / 深红** 四主色引导，扩展 4 个同族派生色；主色与装饰色全部通过 `TsPlots.style.py` 中的**具名角色**引用。绘图代码（含 `TsModels` / `TsTests` / `TsSims` 的绘图方法）**禁止出现裸色值**——如需改色，只改 `style.py`。
 - **黑白可区分**：系列同时使用颜色、线型和标记三重编码；偶数索引系列使用实心标记，奇数索引使用空心标记。
 - **统一字体**：所有文字——图标题、轴标题、图例、刻度、图注、数值标注——共用同一字体族：Latin 用 Times New Roman，CJK 用**黑体族**（微软雅黑 / 黑体，自动回退，`CHINESE_FONT_CANDIDATES`），仅字号按角色区分；**图标题统一不加粗**（常规字重）。正文与标题不再使用不同字体族（仿宋正文 / 黑体标题的双字体族设计已废弃）。

@@ -15,7 +15,7 @@ Constants
     ``EXTENDED_PALETTE``, the default cycle ``DEFAULT_PALETTE``, cosmetic
     roles (``INK``, ``WHITE``, ``AXIS_GRAY``, ``AXIS_TEXT_GRAY``,
     ``GRID_GRAY``, ``ANNOTATION_EDGE``, ``REFERENCE_LINE_COLOR``,
-    ``SHADE_COLOR``, ``BAND_COLOR``),
+    ``SHADE_COLOR``, ``BAND_COLOR``, ``BAR_EDGE_COLOR``),
     ``DEFAULT_LINESTYLES``, ``DEFAULT_MARKERS`` plus cosmetic size constants
     (figure size, font sizes, unit colour).
 Functions
@@ -166,6 +166,8 @@ ZERO_LINE_COLOR = INK  # thin zero baseline on correlograms / response plots
 REFERENCE_LINE_COLOR = DARK_RED  # reference/critical lines & key markers
 SHADE_COLOR = "#d0d0d0"  # shaded regions (gray family)
 BAND_COLOR = SHADE_COLOR  # confidence-band fill alias
+# 柱默认边框（浅灰族）：与阴影/置信带同一灰阶，柱边默认不再与柱同色。
+BAR_EDGE_COLOR = SHADE_COLOR  # default bar edge (light gray family)
 
 # Distinct line styles so series remain distinguishable in grayscale / B&W print
 DEFAULT_LINESTYLES = [

@@ -14,6 +14,11 @@ it supports several series side by side within each category slot
 (分组柱状图), stacked bars (堆叠柱状图), horizontal bars (横向柱状图),
 per-bar value labels, and category tick thinning.
 
+The bar cosmetics themselves live in the single implementation
+:func:`_draw_bars` below, which both :func:`plot_bar` and
+:func:`TsPlots.ts_plot.plot_series` (``bar_series``) delegate to, so the bar
+style contract (edge colour, line width, alpha) stays identical everywhere.
+
 Accepted inputs
 ---------------
 - pandas Series    : index becomes the category labels, values become one bar
@@ -82,6 +87,7 @@ from .style import (
     ANNOTATION_FONTSIZE,
     TITLE_PAD,
     AXIS_LABEL_FONTSIZE,
+    BAR_EDGE_COLOR,
     REFERENCE_LINE_COLOR,
     REFERENCE_LINE_STYLE,
     REFERENCE_LINE_WIDTH,
@@ -94,6 +100,95 @@ from .style import (
     LEGEND_BELOW_OFFSET,
 )
 from .ts_plot import _validate_bool
+
+
+def _draw_bars(
+    ax,
+    positions,
+    heights,
+    *,
+    width,
+    color,
+    edge_color=BAR_EDGE_COLOR,
+    edge_linewidth=0.6,
+    alpha=1.0,
+    label=None,
+    horizontal=False,
+    bottom=None,
+    left=None,
+    zorder=1,
+):
+    """Draw one bar series with the single shared TsPlots bar cosmetics.
+
+    柱绘制的唯一实现：:func:`plot_bar` 与
+    :func:`TsPlots.ts_plot.plot_series` 的 ``bar_series`` 选项都经由本函数，
+    保证边框、透明度、线宽等柱样式契约一致。边框默认使用浅灰
+    ``BAR_EDGE_COLOR``；显式传 ``edge_color=None`` 时与柱同色。
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Target axes.
+    positions : array-like
+        Category positions of the bars.
+    heights : array-like
+        Bar lengths (heights when vertical, widths when horizontal).
+    width : float
+        Bar width in data units (bar height for horizontal bars).
+    color : str
+        Bar face colour (a named role from :mod:`TsPlots.style`).
+    edge_color : str, optional
+        Edge colour. Defaults to ``BAR_EDGE_COLOR`` (浅灰)；pass ``None`` to
+        use the face colour instead.
+    edge_linewidth : float
+        Edge line width. Defaults to 0.6.
+    alpha : float
+        Bar opacity (0–1). Defaults to 1.0.
+    label : str, optional
+        Artist label used for legends.
+    horizontal : bool
+        Draw horizontal bars (``ax.barh``). Defaults to False.
+    bottom : array-like, optional
+        Vertical stack baseline (``ax.bar`` bottom).
+    left : array-like, optional
+        Horizontal stack baseline (``ax.barh`` left).
+    zorder : float
+        Artist z-order. Defaults to 1 (matplotlib patch default).
+
+    Returns
+    -------
+    matplotlib.patches.Rectangle
+        The first bar of the series, matching the ``plot_series`` caller
+        contract of one artist per series.
+    """
+    edge = edge_color if edge_color is not None else color
+    if horizontal:
+        container = ax.barh(
+            positions,
+            heights,
+            height=width,
+            left=left,
+            color=color,
+            edgecolor=edge,
+            linewidth=edge_linewidth,
+            alpha=alpha,
+            label=label,
+            zorder=zorder,
+        )
+    else:
+        container = ax.bar(
+            positions,
+            heights,
+            width=width,
+            bottom=bottom,
+            color=color,
+            edgecolor=edge,
+            linewidth=edge_linewidth,
+            alpha=alpha,
+            label=label,
+            zorder=zorder,
+        )
+    return container[0]
 
 
 def _require_columns(frame, names):
@@ -257,7 +352,7 @@ def plot_bar(
     xtitle=None,
     ytitle=None,
     bar_width=0.6,
-    bar_edge_color=None,
+    bar_edge_color=BAR_EDGE_COLOR,
     bar_edge_linewidth=0.6,
     bar_alpha=1.0,
     grid=False,
@@ -335,7 +430,8 @@ def plot_bar(
         category slot). With ``n`` grouped series each bar is
         ``bar_width / n`` wide, so the whole group spans ``bar_width``.
     bar_edge_color : str, optional
-        Bar edge colour. Defaults to None (same as the bar face colour).
+        Bar edge colour. Defaults to ``BAR_EDGE_COLOR`` (浅灰)；pass ``None``
+        to match the bar face colour.
     bar_edge_linewidth : float
         Width of the bar edges. Defaults to 0.6.
     bar_alpha : float
@@ -496,33 +592,36 @@ def plot_bar(
             if colors is not None
             else DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)]
         )
-        edge = bar_edge_color if bar_edge_color is not None else color
         finite = np.nan_to_num(values, nan=0.0)
         anchor = positions + offsets[index]
         if horizontal:
             if stacked:
-                ax.barh(
+                _draw_bars(
+                    ax,
                     anchor,
                     finite,
-                    height=width,
-                    left=bottoms.copy(),
+                    width=width,
                     color=color,
-                    edgecolor=edge,
-                    linewidth=bar_edge_linewidth,
+                    edge_color=bar_edge_color,
+                    edge_linewidth=bar_edge_linewidth,
                     alpha=bar_alpha,
                     label=label,
+                    horizontal=True,
+                    left=bottoms.copy(),
                     zorder=2,
                 )
             else:
-                ax.barh(
+                _draw_bars(
+                    ax,
                     anchor,
                     finite,
-                    height=width,
+                    width=width,
                     color=color,
-                    edgecolor=edge,
-                    linewidth=bar_edge_linewidth,
+                    edge_color=bar_edge_color,
+                    edge_linewidth=bar_edge_linewidth,
                     alpha=bar_alpha,
                     label=label,
+                    horizontal=True,
                     zorder=2,
                 )
             if show_values:
@@ -534,26 +633,28 @@ def plot_bar(
                         )
         else:
             if stacked:
-                ax.bar(
+                _draw_bars(
+                    ax,
                     anchor,
                     finite,
                     width=width,
-                    bottom=bottoms.copy(),
                     color=color,
-                    edgecolor=edge,
-                    linewidth=bar_edge_linewidth,
+                    edge_color=bar_edge_color,
+                    edge_linewidth=bar_edge_linewidth,
                     alpha=bar_alpha,
                     label=label,
+                    bottom=bottoms.copy(),
                     zorder=2,
                 )
             else:
-                ax.bar(
+                _draw_bars(
+                    ax,
                     anchor,
                     finite,
                     width=width,
                     color=color,
-                    edgecolor=edge,
-                    linewidth=bar_edge_linewidth,
+                    edge_color=bar_edge_color,
+                    edge_linewidth=bar_edge_linewidth,
                     alpha=bar_alpha,
                     label=label,
                     zorder=2,

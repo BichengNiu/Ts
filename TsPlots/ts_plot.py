@@ -72,6 +72,7 @@ from .style import (
     FIGSIZE,
     TITLE_FONTSIZE,
     AXIS_LABEL_FONTSIZE,
+    BAR_EDGE_COLOR,
     REFERENCE_LINE_COLOR,
     REFERENCE_LINE_STYLE,
     REFERENCE_LINE_WIDTH,
@@ -504,22 +505,30 @@ def _plot_one_series(
     bar_alpha=1.0,
     bar_face_color=None,
 ):
-    """Draw one series, either as a bar chart or as a line."""
+    """Draw one series, either as a bar chart or as a line.
+
+    Bar series delegate to :func:`TsPlots.bar_plot._draw_bars` — the single
+    shared bar-drawing implementation — so the bar cosmetics (edge colour,
+    line width, alpha) match :func:`TsPlots.bar_plot.plot_bar` exactly.
+    """
     color = _series_color(colors, index)
     if is_bar:
+        from .bar_plot import _draw_bars
+
         face_color = (
             bar_face_color if bar_face_color is not None else color
         )
-        return ax.bar(
+        return _draw_bars(
+            ax,
             x_values,
             values,
             width=bar_width,
             color=face_color,
-            edgecolor=bar_edge_color,
-            linewidth=bar_edge_linewidth,
+            edge_color=bar_edge_color,
+            edge_linewidth=bar_edge_linewidth,
             alpha=bar_alpha,
             label=label,
-        )[0]
+        )
 
     linestyle = DEFAULT_LINESTYLES[index % len(DEFAULT_LINESTYLES)]
     marker = DEFAULT_MARKERS[index % len(DEFAULT_MARKERS)]
@@ -704,7 +713,7 @@ def plot_series(
     unit: str | None = None,
     bar_series: str | list[str] | None = None,
     bar_width: float | None = None,
-    bar_edge_color: str | None = None,
+    bar_edge_color: str | None = BAR_EDGE_COLOR,
     bar_edge_linewidth: float = 0.6,
     bar_alpha: float = 1.0,
     bar_face_color: str | None = None,
@@ -928,7 +937,8 @@ def plot_series(
         None, the width is 60% of the median spacing between consecutive x
         values. Defaults to None.
     bar_edge_color : str, optional
-        Edge colour of the bars. Defaults to None (same as the face colour).
+        Edge colour of the bars. Defaults to ``BAR_EDGE_COLOR`` (浅灰)；
+        pass ``None`` to match the bar face colour instead.
     bar_edge_linewidth : float
         Width of the bar edges. Defaults to 0.6.
     bar_alpha : float
