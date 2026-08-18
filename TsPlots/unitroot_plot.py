@@ -12,9 +12,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .style import (
-    DEFAULT_PALETTE,
+    BLACK,
+    DARK_BLUE,
+    DARK_RED,
+    GRAY,
+    WHITE,
     FIGSIZE,
-    LEGEND_FONTSIZE,
+    TITLE_FONTSIZE,
+    TIGHT_PAD,
+    draw_legend,
     style_axes,
 )
 
@@ -52,7 +58,7 @@ def _render_critical_value_plot(result, test_name, ax=None):
             transform=ax.transAxes,
         )
         style_axes(ax)
-        fig.tight_layout()
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, ax
 
     # Sort sig levels numerically descending: 10%, 5%, 1%
@@ -63,8 +69,9 @@ def _render_critical_value_plot(result, test_name, ax=None):
     crit_vals = [crit[k] for k in sig_levels]
     labels = sig_levels  # Use keys directly as labels
 
-    # Horizontal lines for critical values with colour coding
-    colors = [DEFAULT_PALETTE[2], DEFAULT_PALETTE[0], DEFAULT_PALETTE[3]]
+    # Horizontal lines for critical values with colour coding — significance
+    # grows from gray (10%) through dark blue (5%) to dark red (1%).
+    colors = [GRAY, DARK_BLUE, DARK_RED]
     for i, (lab, cv) in enumerate(zip(labels, crit_vals, strict=False)):
         color = colors[i % len(colors)]
         ax.axhline(
@@ -80,7 +87,7 @@ def _render_critical_value_plot(result, test_name, ax=None):
     ax.scatter(
         0,
         result.statistic,
-        color=DEFAULT_PALETTE[4],
+        color=DARK_RED,
         s=120,
         zorder=5,
         label=f"Test statistic: {result.statistic:.3f}",
@@ -88,11 +95,15 @@ def _render_critical_value_plot(result, test_name, ax=None):
 
     ax.set_xticks([])
     ax.set_ylabel("Statistic")
-    ax.set_title(f"{test_name}: Test Statistic vs Critical Values")
-    ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+    ax.set_title(
+        f"{test_name}: Test Statistic vs Critical Values",
+        fontsize=TITLE_FONTSIZE,
+        fontweight="bold",
+    )
+    draw_legend(ax)
 
     style_axes(ax)
-    fig.tight_layout()
+    fig.tight_layout(pad=TIGHT_PAD)
     return fig, ax
 
 
@@ -114,12 +125,12 @@ def _render_tstat_plot(result, ax=None):
     ax.plot(
         years,
         t_stats_arr,
-        color=DEFAULT_PALETTE[0],
+        color=BLACK,
         linewidth=2,
         marker="o",
         markersize=4,
-        markerfacecolor="white",
-        markeredgecolor=DEFAULT_PALETTE[0],
+        markerfacecolor=WHITE,
+        markeredgecolor=BLACK,
         markeredgewidth=1.5,
         label="t(rho-hat)",
     )
@@ -128,7 +139,7 @@ def _render_tstat_plot(result, ax=None):
     min_idx = np.argmin(t_stats_arr)
     ax.axvline(
         years[min_idx],
-        color=DEFAULT_PALETTE[4],
+        color=DARK_RED,
         linestyle="--",
         linewidth=1.5,
         alpha=0.7,
@@ -138,7 +149,7 @@ def _render_tstat_plot(result, ax=None):
     # Critical value lines
     ax.axhline(
         result.cv_05,
-        color=DEFAULT_PALETTE[2],
+        color=DARK_BLUE,
         linestyle=":",
         linewidth=1.5,
         alpha=0.8,
@@ -146,7 +157,7 @@ def _render_tstat_plot(result, ax=None):
     )
     ax.axhline(
         result.cv_01,
-        color=DEFAULT_PALETTE[3],
+        color=DARK_RED,
         linestyle=":",
         linewidth=1.5,
         alpha=0.8,
@@ -157,12 +168,14 @@ def _render_tstat_plot(result, ax=None):
     ax.set_ylabel("t(rho-hat) = rho-hat / s.e.")
     ax.set_title(
         f"Zivot-Andrews (1992) - Model {result.model}\n"
-        f"Sequential t-statistics for all candidate break points"
+        f"Sequential t-statistics for all candidate break points",
+        fontsize=TITLE_FONTSIZE,
+        fontweight="bold",
     )
-    ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+    draw_legend(ax)
     style_axes(ax)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=TIGHT_PAD)
     return fig, ax
 
 
@@ -185,19 +198,19 @@ def _render_ic_plot(result, ax=None):
     ax.plot(
         valid_ks,
         valid_ic,
-        color=DEFAULT_PALETTE[0],
+        color=BLACK,
         linewidth=2,
         marker="o",
         markersize=6,
-        markerfacecolor="white",
-        markeredgecolor=DEFAULT_PALETTE[0],
+        markerfacecolor=WHITE,
+        markeredgecolor=BLACK,
         markeredgewidth=1.5,
     )
 
     # Highlight minimum
     ax.axvline(
         best_k,
-        color=DEFAULT_PALETTE[4],
+        color=DARK_RED,
         linestyle="--",
         linewidth=1.5,
         alpha=0.7,
@@ -209,13 +222,15 @@ def _render_ic_plot(result, ax=None):
     ax.set_title(
         f"Zivot-Andrews (1992) - Model {result.model}\n"
         f"{ic_label} for each lag order at optimal break point "
-        f"({result.break_year:.0f})"
+        f"({result.break_year:.0f})",
+        fontsize=TITLE_FONTSIZE,
+        fontweight="bold",
     )
-    ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+    draw_legend(ax)
     style_axes(ax)
 
     # Ensure integer ticks on x-axis
     ax.set_xticks(valid_ks)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=TIGHT_PAD)
     return fig, ax

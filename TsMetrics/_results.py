@@ -653,7 +653,6 @@ class ForecastComparisonResult:
         title=None,
         xtitle=None,
         ytitle=None,
-        freq=None,
         note=None,
         grid=False,
         ax=None,
@@ -669,7 +668,7 @@ class ForecastComparisonResult:
             One model name from ``results``. By default all models are included.
         x : {"split", "train_end", "forecast_start"}
             Horizontal axis identifying each estimation sample.
-        title, xtitle, ytitle, freq, note, grid, ax : optional
+        title, xtitle, ytitle, note, grid, ax : optional
             Plot options forwarded to :func:`TsPlots.plot_series`.
 
         Returns
@@ -718,7 +717,6 @@ class ForecastComparisonResult:
             title=title,
             xtitle=x_labels[x] if xtitle is None else xtitle,
             ytitle="Estimate" if ytitle is None else ytitle,
-            freq=freq,
             note=note,
             grid=grid,
             ax=ax,
@@ -804,7 +802,6 @@ class ForecastComparisonResult:
         title,
         xtitle,
         ytitle,
-        freq,
         note,
         grid,
         ax,
@@ -820,7 +817,6 @@ class ForecastComparisonResult:
             title=title,
             xtitle=xtitle,
             ytitle=ytitle,
-            freq=freq,
             note=note,
             grid=grid,
             show_legend=show_legend,
@@ -835,7 +831,6 @@ class ForecastComparisonResult:
         title=None,
         xtitle=None,
         ytitle=None,
-        freq=None,
         note=None,
         grid=False,
         show_intervals=True,
@@ -856,8 +851,6 @@ class ForecastComparisonResult:
             Horizontal-axis title.
         ytitle : str, optional
             Vertical-axis title.
-        freq : str, optional
-            Date-axis display frequency passed to ``plot_series``.
         note : str, optional
             Figure note.
         grid : bool, default False
@@ -918,7 +911,6 @@ class ForecastComparisonResult:
             title=title,
             xtitle=xtitle,
             ytitle=ytitle,
-            freq=freq,
             note=note,
             grid=grid,
             show_legend=False,
@@ -939,7 +931,9 @@ class ForecastComparisonResult:
                     alpha=interval_alpha,
                     label=f"{name}{confidence} interval",
                 )
-        ax.legend(frameon=False, ncol=2)
+        from Ts.TsPlots.style import draw_legend
+
+        draw_legend(ax, legend_cols=2)
         return fig, ax
 
     def plot_metric(
@@ -950,7 +944,6 @@ class ForecastComparisonResult:
         title=None,
         xtitle=None,
         ytitle=None,
-        freq=None,
         note=None,
         grid=False,
         ax=None,
@@ -969,8 +962,6 @@ class ForecastComparisonResult:
             Horizontal-axis title.
         ytitle : str, optional
             Vertical-axis title.
-        freq : str, optional
-            Date-axis display frequency passed to ``plot_series``.
         note : str, optional
             Figure note.
         grid : bool, default False
@@ -1000,7 +991,6 @@ class ForecastComparisonResult:
             title=title,
             xtitle=xtitle,
             ytitle=metric.upper() if ytitle is None else ytitle,
-            freq=freq,
             note=note,
             grid=grid,
             ax=ax,

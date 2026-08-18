@@ -3,7 +3,9 @@
 The main entry point is :func:`plot_series`, which draws an arbitrary number
 of series. Styling cycles per series: even-indexed series are drawn as solid
 lines with filled circles, odd-indexed series as dashed lines with hollow
-circles, with colors from a colorblind-friendly palette.
+circles, with colors from the shared default colour template. The template is
+a single source of truth in :mod:`TsPlots.style`; its main colours are
+black / dark blue / gray / dark red.
 
 Accepted inputs
 ---------------
@@ -58,6 +60,15 @@ from .style import (
     DEFAULT_PALETTE,
     DEFAULT_LINESTYLES,
     DEFAULT_MARKERS,
+    AXIS_GRAY,
+    AXIS_TEXT_GRAY,
+    WHITE,
+    ANNOTATION_FONTSIZE,
+    YEAR_RULER_FONTSIZE,
+    YEAR_RULER_TICK_PAD,
+    PANEL_TITLE_PAD,
+    TITLE_PAD,
+    TIGHT_PAD,
     FIGSIZE,
     TITLE_FONTSIZE,
     AXIS_LABEL_FONTSIZE,
@@ -113,9 +124,9 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
         [f"{period.month}月" for period in tick_periods],
         rotation=0,
         ha="center",
-        fontsize=9,
+        fontsize=YEAR_RULER_FONTSIZE,
     )
-    ax.tick_params(axis="x", pad=5)
+    ax.tick_params(axis="x", pad=YEAR_RULER_TICK_PAD)
 
     year_line_y = -0.18
     cap_height = 0.018
@@ -129,7 +140,7 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
             year_line_y,
             start_date,
             end_date,
-            color="#555555",
+            color=AXIS_GRAY,
             linewidth=0.8,
             transform=xaxis_transform,
             clip_on=False,
@@ -138,7 +149,7 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
             [start_date, end_date],
             year_line_y - cap_height,
             year_line_y + cap_height,
-            color="#555555",
+            color=AXIS_GRAY,
             linewidth=0.8,
             transform=xaxis_transform,
             clip_on=False,
@@ -149,9 +160,9 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
             f" {year}年 ",
             ha="center",
             va="center",
-            fontsize=9,
-            color="#333333",
-            backgroundcolor="white",
+            fontsize=YEAR_RULER_FONTSIZE,
+            color=AXIS_TEXT_GRAY,
+            backgroundcolor=WHITE,
             transform=xaxis_transform,
             clip_on=False,
         )
@@ -513,7 +524,7 @@ def _plot_one_series(
         marker=marker,
         markersize=markersize,
         color=color,
-        markerfacecolor=color if is_even else "white",
+        markerfacecolor=color if is_even else WHITE,
         markeredgecolor=color,
         markeredgewidth=marker_edge_width,
         label=label,
@@ -539,7 +550,7 @@ def _plot_one_series(
             textcoords="offset points",
             ha="center",
             va=vertical_alignment,
-            fontsize=11,
+            fontsize=ANNOTATION_FONTSIZE,
             color=color,
         )
     return line
@@ -809,7 +820,7 @@ def plot_series(
     vlines : float or list of float, optional
         X-axis position(s) for vertical reference lines.
     vline_color : str
-        Color of vertical lines. Defaults to ``"#d9534f"``.
+        Color of vertical lines. Defaults to ``REFERENCE_LINE_COLOR`` (dark red).
     vline_linestyle : str
         Line style of vertical lines. Defaults to ``"--"``.
     vline_linewidth : float
@@ -817,7 +828,7 @@ def plot_series(
     shade : tuple or list of tuple, optional
         ``(xmin, xmax)`` interval(s) to shade, e.g. ``[(2008, 2009)]``.
     shade_color : str
-        Fill color for shaded regions. Defaults to ``"#d0d0d0"``.
+        Fill color for shaded regions. Defaults to ``SHADE_COLOR`` (light gray).
     shade_alpha : float
         Opacity of shaded regions (0–1). Defaults to 0.3.
     facet : bool
@@ -1080,7 +1091,7 @@ def plot_series(
                 display_labels[index],
                 fontsize=AXIS_LABEL_FONTSIZE,
                 loc="center",
-                pad=6,
+                pad=PANEL_TITLE_PAD,
             )
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
@@ -1145,7 +1156,7 @@ def plot_series(
                 ha=title_alignment,
             )
         tight_rect = (0, 0, 1, 0.97) if title and title_position == "top" else None
-        fig.tight_layout(pad=1.5, rect=tight_rect)
+        fig.tight_layout(pad=TIGHT_PAD, rect=tight_rect)
         if note or (title and title_position == "bottom"):
             draw_note_and_bottom_title(
                 fig,

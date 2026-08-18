@@ -88,7 +88,12 @@ class CUSUMTestResult(BaseTestResult):
         if alpha not in (0.01, 0.05, 0.10):
             raise ValueError("alpha must be one of 0.01, 0.05, or 0.10")
         level = f"{int(alpha * 100)}%"
-        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+        from Ts.TsPlots.style import (
+            BLACK,
+            DARK_RED,
+            ZERO_LINE_COLOR,
+            _FigureContext,
+        )
 
         context = _FigureContext(ax=ax)
         ax = context.ax
@@ -97,16 +102,16 @@ class CUSUMTestResult(BaseTestResult):
             self.time_index,
             self.cusum,
             label="Scaled cumulative residuals",
-            color=DEFAULT_PALETTE[0],
+            color=BLACK,
         )
         ax.axhline(
             limit,
-            color=DEFAULT_PALETTE[4],
+            color=DARK_RED,
             linestyle="--",
             label=f"{level} limits",
         )
-        ax.axhline(-limit, color=DEFAULT_PALETTE[4], linestyle="--")
-        ax.axhline(0.0, color="black", linewidth=0.8)
+        ax.axhline(-limit, color=DARK_RED, linestyle="--")
+        ax.axhline(0.0, color=ZERO_LINE_COLOR, linewidth=0.8)
         context.finalize(
             title="OLS Residual CUSUM Stability Test",
             xtitle="Time",

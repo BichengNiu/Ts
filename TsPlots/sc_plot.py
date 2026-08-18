@@ -2,8 +2,8 @@
 
 The main entry point is :func:`plot_scatter`, which draws an arbitrary number
 of point series. Styling cycles per series: even-indexed series use filled
-markers, odd-indexed series use hollow markers, with colors from a
-colorblind-friendly palette. Typography, palette, and axes styling are shared
+markers, odd-indexed series use hollow markers, with colors from the shared
+default colour template. Typography, palette, and axes styling are shared
 with :mod:`TsPlots.ts_plot` through :mod:`TsPlots.style`.
 
 Unlike a time series, each scatter series has its own ``x`` *and* ``y`` values,
@@ -47,6 +47,9 @@ from .style import (
     _validate_positive_step,
     DEFAULT_PALETTE,
     DEFAULT_MARKERS,
+    WHITE,
+    ANNOTATION_FONTSIZE,
+    TITLE_PAD,
     AXIS_LABEL_FONTSIZE,
     REFERENCE_LINE_COLOR,
     REFERENCE_LINE_STYLE,
@@ -128,7 +131,7 @@ def plot_scatter(
     legend_loc="best",
     legend_bbox=None,
     title_loc="center",
-    title_pad=12,
+    title_pad=TITLE_PAD,
     title_position="top",
     note=None,
     grid=False,
@@ -222,7 +225,7 @@ def plot_scatter(
     vlines : float or list of float, optional
         X-axis position(s) for vertical reference lines.
     vline_color : str
-        Color of vertical lines. Defaults to ``"#d9534f"``.
+        Color of vertical lines. Defaults to ``REFERENCE_LINE_COLOR`` (dark red).
     vline_linestyle : str
         Line style of vertical lines. Defaults to ``"--"``.
     vline_linewidth : float
@@ -230,7 +233,7 @@ def plot_scatter(
     hlines : float or list of float, optional
         Y-axis position(s) for horizontal reference lines.
     hline_color : str
-        Color of horizontal lines. Defaults to ``"#d9534f"``.
+        Color of horizontal lines. Defaults to ``REFERENCE_LINE_COLOR`` (dark red).
     hline_linestyle : str
         Line style of horizontal lines. Defaults to ``"--"``.
     hline_linewidth : float
@@ -238,7 +241,7 @@ def plot_scatter(
     shade : tuple or list of tuple, optional
         ``(xmin, xmax)`` interval(s) to shade.
     shade_color : str
-        Fill color for shaded regions. Defaults to ``"#d0d0d0"``.
+        Fill color for shaded regions. Defaults to ``SHADE_COLOR`` (light gray).
     shade_alpha : float
         Opacity of shaded regions (0–1). Defaults to 0.3.
     alpha : float
@@ -327,7 +330,7 @@ def plot_scatter(
             y_vals,
             s=markersize**2,
             marker=marker,
-            facecolors=color if is_even else "white",
+            facecolors=color if is_even else WHITE,
             edgecolors=color,
             linewidths=marker_edge_width,
             alpha=alpha,
@@ -396,7 +399,7 @@ def plot_scatter(
                     textcoords="offset points",
                     ha=ha,
                     va=va,
-                    fontsize=11,
+                    fontsize=ANNOTATION_FONTSIZE,
                     color=color,
                 )
 

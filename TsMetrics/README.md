@@ -187,7 +187,6 @@ fig, ax = report.plot_parameters(
 fig, ax = report.plot_forecasts(
     horizon=1,
     title="Rolling-origin forecasts",
-    freq="month",
     grid=True,
 )
 

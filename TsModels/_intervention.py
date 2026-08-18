@@ -309,7 +309,18 @@ class PolicyEffectResult:
         """
         import matplotlib.pyplot as plt
 
-        fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        from Ts.TsPlots.style import (
+            ZERO_LINE_COLOR,
+            FIGSIZE,
+            TITLE_FONTSIZE,
+            TIGHT_PAD,
+            _ensure_fonts,
+            draw_legend,
+            style_axes,
+        )
+
+        _ensure_fonts()
+        fig, axes = plt.subplots(2, 1, figsize=(FIGSIZE[0], 8), sharex=True)
         axes[0].plot(
             self.factual_mean.index,
             self.factual_mean,
@@ -320,8 +331,12 @@ class PolicyEffectResult:
             self.counterfactual_mean,
             label="Counterfactual",
         )
-        axes[0].set_title("Factual and counterfactual paths")
-        axes[0].legend(frameon=False)
+        axes[0].set_title(
+            "Factual and counterfactual paths",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
+        )
+        draw_legend(axes[0])
 
         axes[1].plot(self.effect.index, self.effect, label="Effect")
         axes[1].fill_between(
@@ -331,12 +346,18 @@ class PolicyEffectResult:
             alpha=0.2,
             label="Confidence interval",
         )
-        axes[1].axhline(0.0, color="black", linewidth=0.8)
-        axes[1].set_title("Conditional policy effect")
-        axes[1].legend(frameon=False)
+        axes[1].axhline(0.0, color=ZERO_LINE_COLOR, linewidth=0.8)
+        axes[1].set_title(
+            "Conditional policy effect",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
+        )
+        draw_legend(axes[1])
         if title is not None:
-            fig.suptitle(title)
-        fig.tight_layout()
+            fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        for axis in axes:
+            style_axes(axis, grid=False)
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, axes
 
 

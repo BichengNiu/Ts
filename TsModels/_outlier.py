@@ -324,19 +324,31 @@ class OutlierDetectorResult:
         """
         import matplotlib.pyplot as plt
 
-        from Ts.TsPlots.style import DEFAULT_PALETTE, FIGSIZE, style_axes
+        from Ts.TsPlots.style import (
+            BLACK,
+            DARK_BLUE,
+            DARK_RED,
+            GRAY,
+            ZERO_LINE_COLOR,
+            AXIS_LABEL_FONTSIZE,
+            TITLE_FONTSIZE,
+            TIGHT_PAD,
+            FIGSIZE,
+            draw_legend,
+            style_axes,
+        )
 
         marker = {"AO": "o", "LS": "^", "IO": "s"}
         positions = np.arange(len(self.residuals))
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=FIGSIZE, sharex=True)
 
         residuals_ax = axes[0]
-        residuals_ax.plot(positions, self.residuals, color=DEFAULT_PALETTE[0])
+        residuals_ax.plot(positions, self.residuals, color=BLACK)
         if self.l_statistics is not None and len(self.events):
             index = self.l_statistics.index
             event_positions = index.get_indexer(self.events["time"])
             for event_type, color in zip(
-                ("AO", "LS", "IO"), DEFAULT_PALETTE[1:4], strict=True
+                ("AO", "LS", "IO"), (GRAY, DARK_BLUE, DARK_RED), strict=True
             ):
                 selected = event_positions[
                     (self.events["type"] == event_type).to_numpy()
@@ -350,15 +362,19 @@ class OutlierDetectorResult:
                         s=60,
                         label=event_type,
                     )
-        residuals_ax.axhline(0.0, color="black", linewidth=0.8)
-        residuals_ax.set_ylabel("residuals")
-        residuals_ax.legend(frameon=False, ncols=3)
-        residuals_ax.set_title("ARIMA residual outlier detection")
+        residuals_ax.axhline(0.0, color=ZERO_LINE_COLOR, linewidth=0.8)
+        residuals_ax.set_ylabel("residuals", fontsize=AXIS_LABEL_FONTSIZE)
+        draw_legend(residuals_ax, legend_cols=3)
+        residuals_ax.set_title(
+            "ARIMA residual outlier detection",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
+        )
 
         if self.l_statistics is not None:
             statistics_ax = axes[1]
             for event_type, color in zip(
-                ("AO", "LS", "IO"), DEFAULT_PALETTE[1:4], strict=True
+                ("AO", "LS", "IO"), (GRAY, DARK_BLUE, DARK_RED), strict=True
             ):
                 statistics_ax.plot(
                     positions,
@@ -368,18 +384,18 @@ class OutlierDetectorResult:
                 )
             threshold = self.critical_value or 3.5
             statistics_ax.axhline(
-                threshold, color="black", linestyle="--", linewidth=0.8
+                threshold, color=ZERO_LINE_COLOR, linestyle="--", linewidth=0.8
             )
             statistics_ax.axhline(
-                -threshold, color="black", linestyle="--", linewidth=0.8
+                -threshold, color=ZERO_LINE_COLOR, linestyle="--", linewidth=0.8
             )
-            statistics_ax.set_xlabel("time")
-            statistics_ax.set_ylabel("L statistic")
-            statistics_ax.legend(frameon=False, ncols=3)
+            statistics_ax.set_xlabel("time", fontsize=AXIS_LABEL_FONTSIZE)
+            statistics_ax.set_ylabel("L statistic", fontsize=AXIS_LABEL_FONTSIZE)
+            draw_legend(statistics_ax, legend_cols=3)
 
         for ax in axes:
             style_axes(ax, grid=False)
-        fig.tight_layout(pad=1.5)
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, axes
 
 

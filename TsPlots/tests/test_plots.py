@@ -14,6 +14,10 @@ from Ts.TsPlots import (
     plot_series,
 )
 from Ts.TsPlots.style import (
+    BLACK,
+    DARK_BLUE,
+    DARK_RED,
+    GRAY,
     DEFAULT_LINESTYLES,
     DEFAULT_MARKERS,
     DEFAULT_PALETTE,
@@ -701,6 +705,10 @@ class TestCorrelogramMissingPolicy:
 class TestStyleConstants:
     def test_palette_has_eight_colors(self):
         assert len(DEFAULT_PALETTE) == 8
+
+    def test_palette_cycle_led_by_requested_main_colors(self):
+        # 调色模板主色：黑 / 深蓝 / 灰 / 深红，必须引导默认 8 色循环。
+        assert DEFAULT_PALETTE[:4] == [BLACK, DARK_BLUE, GRAY, DARK_RED]
 
     def test_linestyles_has_eight(self):
         assert len(DEFAULT_LINESTYLES) == 8

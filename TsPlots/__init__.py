@@ -2,8 +2,8 @@
 
 This package unifies time-series plotting (:mod:`TsPlots.ts_plot`), scatter
 plotting (:mod:`TsPlots.sc_plot`), and autocorrelation plotting
-(:mod:`TsPlots.acf_plot`) under a common interface, sharing fonts, colour
-palette, and axis styling via :mod:`TsPlots.style`.
+(:mod:`TsPlots.acf_plot`) under a common interface, sharing fonts, the default
+colour template, and axis styling via :mod:`TsPlots.style`.
 
 Main interfaces
 ---------------
@@ -31,7 +31,15 @@ Quick start
 
 Advanced usage — style constants and helpers
 --------------------------------------------
->>> from Ts.TsPlots.style import DEFAULT_PALETTE, style_axes, apply_fonts
+The default colour template leads with 黑 / 深蓝 / 灰 / 深红 (``BLACK``,
+``DARK_BLUE``, ``GRAY``, ``DARK_RED``) and every other colour — text, reference
+lines, shading, grid, annotation boxes — is a named role defined in
+:mod:`TsPlots.style`:
+
+>>> from Ts.TsPlots.style import (
+...     DEFAULT_PALETTE, BLACK, DARK_BLUE, GRAY, DARK_RED,
+...     style_axes, apply_fonts,
+... )
 """
 
 from .ts_plot import plot_series

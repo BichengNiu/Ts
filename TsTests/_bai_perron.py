@@ -392,33 +392,38 @@ class BaiPerronTestResult(BaseTestResult):
         >>> result = BaiPerronTest(data, breaks=1, max_breaks=1, n_bootstrap=19).fit()
         >>> fig, ax = result.plot_test()
         """
-        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+        from Ts.TsPlots.style import (
+            BLACK,
+            DARK_RED,
+            GRAY,
+            _FigureContext,
+        )
 
         context = _FigureContext(ax=ax)
         ax = context.ax
         ax.plot(
             self.time_index,
             self.observed,
-            color=DEFAULT_PALETTE[0],
+            color=BLACK,
             label="Observed",
         )
         ax.plot(
             self.time_index,
             self.fitted,
             label="Piecewise regression fit",
-            color=DEFAULT_PALETTE[1],
+            color=GRAY,
         )
         for position, break_year in enumerate(self.break_years):
             label = "Estimated breaks" if position == 0 else None
             ax.axvline(
                 break_year,
-                color=DEFAULT_PALETTE[4],
+                color=DARK_RED,
                 linestyle="--",
                 label=label,
             )
             if position < len(self.break_confidence_years):
                 lower, upper = self.break_confidence_years[position]
-                ax.axvspan(lower, upper, color=DEFAULT_PALETTE[4], alpha=0.10)
+                ax.axvspan(lower, upper, color=DARK_RED, alpha=0.10)
         context.finalize(
             title="Bai-Perron Global Multiple-Break Partition",
             xtitle="Time",

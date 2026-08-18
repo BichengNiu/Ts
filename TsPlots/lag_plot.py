@@ -9,6 +9,10 @@ import pandas as pd
 from .style import (
     AXIS_LABEL_FONTSIZE,
     TITLE_FONTSIZE,
+    TITLE_PAD,
+    TIGHT_PAD,
+    INK,
+    ZERO_LINE_COLOR,
     _ensure_fonts,
     _facet_grid,
     _fig_axes,
@@ -17,6 +21,7 @@ from .style import (
     _set_lag_ticks,
     _validate_max_ticks,
     draw_note_and_bottom_title,
+    draw_legend,
     style_axes,
 )
 
@@ -79,7 +84,7 @@ def plot_lag_response(
     xtitle="Time lag",
     ytitle="Impulse response",
     color=None,
-    line_color="black",
+    line_color=INK,
     zero_line=True,
     grid=True,
     max_ticks=15,
@@ -109,7 +114,7 @@ def plot_lag_response(
         Axis labels.
     color : color or sequence of colors, optional
         Bar color shared by all responses or one color per response.
-    line_color : color, default ``"black"``
+    line_color : color, default ``INK``
         Color of the optional response line.
     zero_line : bool, default True
         Whether to draw the zero-response reference line.
@@ -164,7 +169,7 @@ def plot_lag_response(
     lags = frame.index.to_numpy(dtype=int)
     for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
         if zero_line:
-            axis.axhline(0.0, color="black", linewidth=0.8, zorder=1)
+            axis.axhline(0.0, color=ZERO_LINE_COLOR, linewidth=0.8, zorder=1)
         bars = axis.bar(
             lags,
             frame[name].to_numpy(),
@@ -182,7 +187,7 @@ def plot_lag_response(
                 label="Transfer-function weights",
                 zorder=3,
             )[0]
-            axis.legend(handles=[bars, transfer_line], frameon=False)
+            draw_legend(axis, handles=[bars, transfer_line])
         axis.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)
         axis.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
         _set_lag_ticks(axis, lags, max_ticks)
@@ -192,14 +197,14 @@ def plot_lag_response(
                 panel_title,
                 fontsize=TITLE_FONTSIZE,
                 fontweight="bold",
-                pad=12,
+                pad=TITLE_PAD,
             )
         style_axes(axis, grid=grid)
 
     if count > 1:
         _finalize_facet_figure(fig, title=title, note=note)
     else:
-        fig.tight_layout(pad=1.5)
+        fig.tight_layout(pad=TIGHT_PAD)
         if note is not None:
             draw_note_and_bottom_title(fig, note=note)
 

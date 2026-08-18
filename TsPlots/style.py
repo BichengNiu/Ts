@@ -10,7 +10,11 @@ Contents
 --------
 Constants
     ``LATIN_FONT``, ``CHINESE_FONT_CANDIDATES``, ``HEITI_FONT_CANDIDATES``,
-    ``DEFAULT_PALETTE``,
+    palette template colours ``BLACK``, ``DARK_BLUE``, ``GRAY``, ``DARK_RED``,
+    ``EXTENDED_PALETTE``, the default cycle ``DEFAULT_PALETTE``, cosmetic
+    roles (``INK``, ``WHITE``, ``AXIS_GRAY``, ``AXIS_TEXT_GRAY``,
+    ``GRID_GRAY``, ``ANNOTATION_EDGE``, ``REFERENCE_LINE_COLOR``,
+    ``SHADE_COLOR``, ``BAND_COLOR``),
     ``DEFAULT_LINESTYLES``, ``DEFAULT_MARKERS`` plus cosmetic size constants
     (figure size, font sizes, unit colour).
 Functions
@@ -119,18 +123,42 @@ def _title_font_family():
     return [LATIN_FONT, SELECTED_HEITI_FONT]
 
 
-# --- Palette and cycles ----------------------------------------------------
-# Colorblind-friendly palette (Okabe-Ito inspired)
-DEFAULT_PALETTE = [
-    "#1f4e79",  # deep blue
-    "#888888",  # medium gray
-    "#2e7d32",  # green
-    "#8e44ad",  # purple
-    "#c0392b",  # red
-    "#16a085",  # teal
-    "#d4ac0d",  # gold
-    "#566573",  # slate gray
+# --- Default colour template (single source of truth) ----------------------
+# All colours used anywhere in TsPlots — and by the TsModels / TsTests /
+# TsSims plot methods that reuse this style contract — must be referenced
+# through the named roles below.  No bare colour literal (hex or named) is
+# allowed in plotting code outside this module.
+#
+# Four main colours lead the default cycle: 黑 / 深蓝 / 灰 / 深红.
+BLACK = "#141414"  # 黑（主色 1）
+DARK_BLUE = "#1f4e79"  # 深蓝（主色 2）
+GRAY = "#888888"  # 灰（主色 3）
+DARK_RED = "#8b1a1a"  # 深红（主色 4）
+
+# Derived extension colours keep the cycle at 8 entries (matching the 8-line
+# / 8-marker cycles) so that five or more series stay distinguishable.  They
+# were chosen to maximise the minimum pairwise colour distance against the
+# four main colours.
+EXTENDED_PALETTE = [
+    "#4a76a8",  # steel blue / 中钢蓝
+    "#b9b9b9",  # silver gray / 银灰
+    "#8b5a2b",  # copper brown / 铜棕
+    "#b08c44",  # golden brown / 琥珀棕
 ]
+
+DEFAULT_PALETTE = [BLACK, DARK_BLUE, GRAY, DARK_RED, *EXTENDED_PALETTE]
+
+# Cosmetic (non-series) colour roles, all derived from the template.
+INK = "#000000"  # text: titles, notes, annotation labels, heatmap low-contrast text
+WHITE = "#ffffff"  # hollow marker faces, annotation backgrounds, heatmap high-contrast text
+AXIS_GRAY = "#555555"  # year-ruler tick lines
+AXIS_TEXT_GRAY = "#333333"  # year-ruler labels
+GRID_GRAY = "#999999"  # grid / zero reference lines
+ANNOTATION_EDGE = "#cccccc"  # annotation-box borders
+ZERO_LINE_COLOR = INK  # thin zero baseline on correlograms / response plots
+REFERENCE_LINE_COLOR = DARK_RED  # reference/critical lines & key markers
+SHADE_COLOR = "#d0d0d0"  # shaded regions (gray family)
+BAND_COLOR = SHADE_COLOR  # confidence-band fill alias
 
 # Distinct line styles so series remain distinguishable in grayscale / B&W print
 DEFAULT_LINESTYLES = [
@@ -148,12 +176,9 @@ DEFAULT_LINESTYLES = [
 DEFAULT_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*"]
 
 # Shared reference-line and shading cosmetics (single source of truth).
-REFERENCE_LINE_COLOR = "#d9534f"
 REFERENCE_LINE_STYLE = "--"
 REFERENCE_LINE_WIDTH = 1.5
-SHADE_COLOR = "#d0d0d0"
 SHADE_ALPHA = 0.3
-BAND_COLOR = "#d0d0d0"
 BAND_ALPHA = 0.4
 
 # --- Cosmetic size constants ----------------------------------------------
@@ -165,6 +190,16 @@ LEGEND_FONTSIZE = 15
 # 图注与刻度/标题同字号，避免与图内其他文字比例失调。
 NOTE_FONTSIZE = TICK_LABELSIZE
 TIGHT_PAD = 1.5
+# 标题距坐标区顶部的留白（points）。
+TITLE_PAD = 12
+# 分面（facet）面板标题的留白：网格内紧凑排版，故意小于整图标题留白。
+PANEL_TITLE_PAD = 6
+# 图内数值/点标注字号（show_values 等）。
+ANNOTATION_FONTSIZE = 11
+# 年度标尺（year_ruler）的刻度与年份标签字号；紧凑排版故意小于正文。
+YEAR_RULER_FONTSIZE = 9
+# 年度标尺月份刻度与 x 轴的间距。
+YEAR_RULER_TICK_PAD = 5
 #: Figure rectangle reserved for facet grids with a figure-level suptitle.
 FACET_RECT = (0.0, 0.0, 1.0, 0.96)
 
@@ -446,7 +481,9 @@ def draw_legend(
         handles, auto_labels = ax.get_legend_handles_labels()
     else:
         handles = list(handles)
-        auto_labels = []
+        # Derive labels from the artists' own ``label`` (matching matplotlib's
+        # default for explicit handles) when no override is supplied.
+        auto_labels = [handle.get_label() for handle in handles]
     final_labels = (
         _validate_label_count("legend_labels", legend_labels, len(handles))
         if legend_labels is not None
@@ -594,7 +631,7 @@ def draw_note_and_bottom_title(
             y_title,
             title,
             fontsize=TITLE_FONTSIZE,
-            color="#000000",
+            color=INK,
             ha="center",
             va="top",
             family=_title_font_family(),
@@ -619,7 +656,7 @@ def draw_note_and_bottom_title(
             y_note,
             display_note,
             fontsize=NOTE_FONTSIZE,
-            color="#000000",
+            color=INK,
             ha=note_ha,
             va="top",
             family=_title_font_family(),
@@ -695,7 +732,7 @@ class _FigureContext:
         ytitle=None,
         title_position="top",
         title_loc="center",
-        title_pad=12,
+        title_pad=TITLE_PAD,
         note=None,
         note_loc="left",
         note_prefix=None,

@@ -1211,6 +1211,8 @@ class VARResult(BaseModelResult):
         from Ts.TsPlots.style import (
             _ensure_fonts,
             DEFAULT_PALETTE,
+            GRID_GRAY,
+            TIGHT_PAD,
             style_axes,
             TITLE_FONTSIZE,
             AXIS_LABEL_FONTSIZE,
@@ -1237,7 +1239,7 @@ class VARResult(BaseModelResult):
                     color=color,
                     linewidth=1.2,
                 )
-                ax.axhline(0, color="#999999", linewidth=0.5, linestyle="--")
+                ax.axhline(0, color=GRID_GRAY, linewidth=0.5, linestyle="--")
 
                 if irf_result.lower is not None:
                     ax.fill_between(
@@ -1272,7 +1274,7 @@ class VARResult(BaseModelResult):
             fontsize=TITLE_FONTSIZE,
             fontweight="bold",
         )
-        fig.tight_layout(pad=1.5)
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, axes
 
     def granger_causality(self, caused=None, causing=None, kind="f"):

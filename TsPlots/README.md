@@ -67,8 +67,7 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `ytitle` | str | `"Value"` | y 轴标签 |
 | `unit` | str | `None` | y 轴单位，显示为「（单位：XX）」 |
 | `ymin` | float / None | `None` | y 轴下限；`None` 为自动 |
-| `freq` | str | `None` | datetime 轴频率：`'day'` / `'week'` / `'month'` / `'quarter'` / `'year'` |
-| `year_ruler` | bool | `False` | 月度数据的严格刻度：只标数据中实际出现的 3 的倍数月份（标签为「3月」，不旋转），并在 x 轴下方为每个出现的年份绘制年度标尺；x 轴两端各留 10 天。与 `freq` 互斥使用，替代其 locator |
+| `year_ruler` | bool | `False` | 月度数据的严格 locator：只标数据中实际出现的 3 的倍数月份（标签为「3月」，不旋转），并在 x 轴下方为每个出现的年份绘制年度标尺；x 轴两端各留 10 天 |
 | `xtick_step` | int | `None` | 数值 x 轴刻度间隔 |
 | `max_ticks` | int | `12` | 自动刻度上限 |
 | `linewidth` | float | `3` | 线宽 |
@@ -176,7 +175,6 @@ dates = pd.date_range("2020-01", periods=36, freq="MS")
 s = pd.Series(np.cumsum(np.random.normal(0, 1, 36)), index=dates, name="指数")
 fig, ax = plot_series(
     s,
-    freq="month",
     title="月度指数",
     shade=[(pd.Timestamp("2020-06"), pd.Timestamp("2020-09"))],
     vlines=pd.Timestamp("2021-01"),
@@ -342,8 +340,8 @@ fig, ax = plot_pacf(data, nlags=None, *, alpha=0.05, missing="drop", ...)
 | `bartlett_confint` | bool | `True` | ACF: 使用 Bartlett 滞后变化公式（`True`）或均匀 ±z/√n 公式（`False`） |
 | `zero_lag` | bool | `True` | ACF: 是否包含滞后 0（ACF ≡ 1） |
 | `method` | str | `"ywm"` | PACF: 估计方法，可选 `"ywm"`、`"ols"`、`"ld"` |
-| `bar_color` | str | `None` | 柱状颜色，默认 `DEFAULT_PALETTE[0]`（深蓝） |
-| `band_color` | str | `"#d0d0d0"` | 置信带填充色 |
+| `bar_color` | str | `None` | 柱状颜色，默认 `DEFAULT_PALETTE[0]`（黑） |
+| `band_color` | str | `BAND_COLOR` | 置信带填充色（浅灰） |
 | `band_alpha` | float | `0.4` | 置信带透明度 |
 | `max_ticks` | int | `12` | x 轴最大刻度数 |
 | `grid` | bool | `False` | 是否显示网格 |
@@ -450,7 +448,7 @@ fig, axes = plot_lag_response(
 | `xtitle` | `"Time lag"` | 横轴标题 |
 | `ytitle` | `"Impulse response"` | 纵轴标题 |
 | `color` | TsPlots 色板 | 单色或每响应一种颜色 |
-| `line_color` | `"black"` | 可选响应线颜色 |
+| `line_color` | `INK` | 可选响应线颜色（黑） |
 | `zero_line` | `True` | 绘制零响应参考线 |
 | `grid` | `True` | 显示共享虚线网格 |
 | `max_ticks` | `15` | 刻度过密时的最大整数刻度数 |
@@ -465,7 +463,17 @@ fig, axes = plot_lag_response(
 
 | 名称 | 说明 |
 |------|------|
-| `DEFAULT_PALETTE` | 8 色防色盲调色板 |
+| `BLACK` / `DARK_BLUE` / `GRAY` / `DARK_RED` | 调色模板主色：黑、深蓝、灰、深红 |
+| `EXTENDED_PALETTE` | 4 个派生扩展色（≥5 系列时循环） |
+| `DEFAULT_PALETTE` | 默认 8 色循环：`[黑, 深蓝, 灰, 深红, *扩展]` |
+| `INK` | 文字色（黑）：标题、图注、热力图低对比文字 |
+| `WHITE` | 空心标记填充、注释底、热力图高对比文字 |
+| `AXIS_GRAY` / `AXIS_TEXT_GRAY` | 年轴刻度线与年轴文字 |
+| `GRID_GRAY` | 网格 / 零参考线 |
+| `ANNOTATION_EDGE` | 注释框边线 |
+| `ZERO_LINE_COLOR` | 相关图/响应图零基线 |
+| `REFERENCE_LINE_COLOR` | 参考/关键断点线（深红） |
+| `SHADE_COLOR` / `BAND_COLOR` | 阴影区 / 置信带填充（浅灰） |
 | `DEFAULT_LINESTYLES` | 8 种线型（黑白打印可区分） |
 | `DEFAULT_MARKERS` | 8 种标记形状 |
 | `LATIN_FONT` | Latin 字体名（Times New Roman） |
@@ -496,7 +504,7 @@ fig, axes = plot_lag_response(
 
 ## 设计说明
 
-- **防色盲配色**：`DEFAULT_PALETTE` 基于 Okabe-Ito 方案，8 种颜色。
+- **默认调色模板**：`DEFAULT_PALETTE` 以 **黑 / 深蓝 / 灰 / 深红** 四主色引导，扩展 4 个同族派生色；主色与装饰色全部通过 `TsPlots.style.py` 中的**具名角色**引用。绘图代码（含 `TsModels` / `TsTests` / `TsSims` 的绘图方法）**禁止出现裸色值**——如需改色，只改 `style.py`。
 - **黑白可区分**：系列同时使用颜色、线型和标记三重编码；偶数索引系列使用实心标记，奇数索引使用空心标记。
 - **中英文混排**：Latin 字符用 Times New Roman，CJK 字符用仿宋（自动回退）。
 - **坐标轴风格**：隐藏上边框和右边框，刻度向外。

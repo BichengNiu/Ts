@@ -116,7 +116,12 @@ class SimCointegratedResult(BaseSimResult):
         2
         """
         from Ts.TsPlots import plot_series
-        from Ts.TsPlots.style import FIGSIZE
+        from Ts.TsPlots.style import (
+            AXIS_LABEL_FONTSIZE,
+            TITLE_FONTSIZE,
+            TIGHT_PAD,
+            FIGSIZE,
+        )
         import matplotlib.pyplot as plt
 
         k = self.data.shape[1]
@@ -138,9 +143,9 @@ class SimCointegratedResult(BaseSimResult):
                 **kwargs,
             )
 
-        axes[-1].set_xlabel("Time")
-        fig.suptitle(title, fontweight="bold")
-        fig.tight_layout()
+        axes[-1].set_xlabel("Time", fontsize=AXIS_LABEL_FONTSIZE)
+        fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, axes
 
 

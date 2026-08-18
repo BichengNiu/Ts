@@ -162,9 +162,13 @@ class STLResult:
         import matplotlib.pyplot as plt
 
         from ..TsPlots import plot_series
-        from ..TsPlots.style import AXIS_LABEL_FONTSIZE, TITLE_FONTSIZE
+        from ..TsPlots.style import (
+            AXIS_LABEL_FONTSIZE,
+            TITLE_FONTSIZE,
+            FIGSIZE,
+        )
 
-        fig, axes = plt.subplots(4, 1, figsize=(10, 9), sharex=True)
+        fig, axes = plt.subplots(4, 1, figsize=(FIGSIZE[0], 9), sharex=True)
         panels = [
             (self.observed, "Observed", "Value"),
             (self.trend, "Trend", "Trend"),

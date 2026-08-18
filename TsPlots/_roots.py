@@ -38,12 +38,16 @@ def _plot_inverse_roots(
     """
     from Ts.TsPlots.style import (
         AXIS_LABEL_FONTSIZE,
-        DEFAULT_PALETTE,
-        LEGEND_FONTSIZE,
+        ANNOTATION_EDGE,
+        BLACK,
+        DARK_RED,
+        GRID_GRAY,
+        TIGHT_PAD,
         TICK_LABELSIZE,
         TITLE_FONTSIZE,
         _ensure_fonts,
         _fig_axes,
+        draw_legend,
         style_axes,
     )
 
@@ -55,21 +59,21 @@ def _plot_inverse_roots(
     ax.plot(
         np.cos(theta),
         np.sin(theta),
-        color=DEFAULT_PALETTE[1],
+        color=GRID_GRAY,
         linewidth=1.0,
         linestyle="--",
     )
-    ax.axhline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
-    ax.axvline(0, color=DEFAULT_PALETTE[1], linewidth=0.5, alpha=0.5)
+    ax.axhline(0, color=GRID_GRAY, linewidth=0.5, alpha=0.5)
+    ax.axvline(0, color=GRID_GRAY, linewidth=0.5, alpha=0.5)
 
     for index, (label, roots) in enumerate(groups.items()):
         ax.scatter(
             roots.real,
             roots.imag,
-            color=DEFAULT_PALETTE[0] if index == 0 else DEFAULT_PALETTE[4],
+            color=BLACK if index == 0 else DARK_RED,
             marker="o" if index == 0 else "^",
             s=50,
-            edgecolors=DEFAULT_PALETTE[7],
+            edgecolors=ANNOTATION_EDGE,
             linewidth=0.5,
             zorder=5,
             label=label,
@@ -89,10 +93,10 @@ def _plot_inverse_roots(
     ax.tick_params(labelsize=TICK_LABELSIZE)
 
     if len(groups) > 1:
-        ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+        draw_legend(ax)
 
     if title is not None:
         ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
 
-    fig.tight_layout(pad=1.5)
+    fig.tight_layout(pad=TIGHT_PAD)
     return fig, ax

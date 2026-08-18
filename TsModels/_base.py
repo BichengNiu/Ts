@@ -165,10 +165,14 @@ class PredictResult:
 
         from Ts.TsPlots.style import (
             AXIS_LABEL_FONTSIZE,
-            DEFAULT_PALETTE,
+            BLACK,
+            DARK_RED,
+            GRAY,
+            GRID_GRAY,
             FIGSIZE,
             LEGEND_FONTSIZE,
             TITLE_FONTSIZE,
+            TIGHT_PAD,
             _ensure_fonts,
             style_axes,
         )
@@ -183,7 +187,7 @@ class PredictResult:
             ax.plot(
                 np.arange(len(self._full_data)),
                 self._full_data,
-                color=DEFAULT_PALETTE[0],
+                color=BLACK,
                 linestyle="-",
                 linewidth=1.5,
                 label="Actual",
@@ -196,7 +200,7 @@ class PredictResult:
             ax.plot(
                 fitted_x,
                 self._full_fitted,
-                color=DEFAULT_PALETTE[3],
+                color=GRAY,
                 linestyle="--",
                 linewidth=1.5,
                 label="Fitted",
@@ -208,7 +212,7 @@ class PredictResult:
                     fitted_x,
                     self._full_lower,
                     self._full_upper,
-                    color=DEFAULT_PALETTE[3],
+                    color=GRAY,
                     alpha=0.10,
                     linewidth=0,
                     label="Fitted 95% CI",
@@ -246,7 +250,7 @@ class PredictResult:
             ax.plot(
                 bridge_x,
                 bridge_y,
-                color=DEFAULT_PALETTE[4],
+                color=DARK_RED,
                 linestyle="-",
                 linewidth=1.5,
                 label="Forecast",
@@ -285,7 +289,7 @@ class PredictResult:
                     ci_x,
                     ci_lower,
                     ci_upper,
-                    color=DEFAULT_PALETTE[4],
+                    color=DARK_RED,
                     alpha=0.15,
                     linewidth=0,
                     label="Forecast 95% CI",
@@ -294,7 +298,7 @@ class PredictResult:
             # Layer 5: forecast start divider
             ax.axvline(
                 x=forecast_start,
-                color=DEFAULT_PALETTE[1],
+                color=GRID_GRAY,
                 linestyle="--",
                 linewidth=1.0,
                 alpha=0.7,
@@ -303,7 +307,7 @@ class PredictResult:
             ax.plot(
                 np.arange(len(self.mean)),
                 np.asarray(self.mean),
-                color=DEFAULT_PALETTE[0],
+                color=BLACK,
                 linestyle="-",
                 linewidth=1.5,
                 label="Predicted",
@@ -325,7 +329,7 @@ class PredictResult:
         if has_any:
             ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
 
-        fig.tight_layout(pad=1.5)
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, ax
 
 
@@ -654,7 +658,7 @@ class BaseModelResult:
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots import plot_series
-        from Ts.TsPlots.style import TITLE_FONTSIZE
+        from Ts.TsPlots.style import TITLE_FONTSIZE, FIGSIZE
 
         if title is None:
             title = f"{self.model_type}: Actual vs Fitted"
@@ -674,7 +678,7 @@ class BaseModelResult:
 
         names = self._variable_names()
         k = len(names)
-        fig, axes = plt.subplots(k, 1, figsize=(10, 3 * k), squeeze=False)
+        fig, axes = plt.subplots(k, 1, figsize=(FIGSIZE[0], 3 * k), squeeze=False)
         axes = axes[:, 0]
 
         fitted = self._fitted_values_for_plot()
@@ -733,7 +737,10 @@ class BaseModelResult:
         from Ts.TsPlots import plot_acf, plot_pacf, plot_series
         from Ts.TsPlots.style import (
             AXIS_LABEL_FONTSIZE,
-            DEFAULT_PALETTE,
+            ANNOTATION_EDGE,
+            BLACK,
+            WHITE,
+            TITLE_PAD,
             NOTE_FONTSIZE,
             TITLE_FONTSIZE,
             _ensure_fonts,
@@ -796,15 +803,15 @@ class BaseModelResult:
         ax_histogram.hist(
             diagnostic_residuals,
             bins="auto",
-            color=DEFAULT_PALETTE[0],
-            edgecolor="white",
+            color=BLACK,
+            edgecolor=WHITE,
             alpha=0.85,
         )
         ax_histogram.set_title(
             "Standardized Residual Histogram",
             fontsize=TITLE_FONTSIZE,
             fontweight="bold",
-            pad=12,
+            pad=TITLE_PAD,
         )
         ax_histogram.set_xlabel(
             "Standardized Residual", fontsize=AXIS_LABEL_FONTSIZE
@@ -827,9 +834,9 @@ class BaseModelResult:
 
         annotation_bbox = {
             "boxstyle": "round,pad=0.3",
-            "facecolor": "white",
+            "facecolor": WHITE,
             "alpha": 0.85,
-            "edgecolor": "#cccccc",
+            "edgecolor": ANNOTATION_EDGE,
         }
         annotation_kwargs = {
             "fontsize": NOTE_FONTSIZE,

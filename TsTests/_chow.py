@@ -105,7 +105,13 @@ class ChowTestResult(BaseTestResult):
         >>> result = ChowTest(data, 2040, time_index=years).fit()
         >>> fig, ax = result.plot_test()
         """
-        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+        from Ts.TsPlots.style import (
+            BLACK,
+            DARK_BLUE,
+            DARK_RED,
+            GRAY,
+            _FigureContext,
+        )
 
         context = _FigureContext(ax=ax)
         ax = context.ax
@@ -113,24 +119,24 @@ class ChowTestResult(BaseTestResult):
             self.time_index,
             self.observed,
             label="Observed",
-            color=DEFAULT_PALETTE[0],
+            color=BLACK,
         )
         ax.plot(
             self.time_index,
             self.fitted_pooled,
             label="Pooled fit",
             linestyle="--",
-            color=DEFAULT_PALETTE[1],
+            color=GRAY,
         )
         ax.plot(
             self.time_index,
             self.fitted_split,
             label="Split fit",
-            color=DEFAULT_PALETTE[2],
+            color=DARK_BLUE,
         )
         ax.axvline(
             self.break_year,
-            color=DEFAULT_PALETTE[4],
+            color=DARK_RED,
             linestyle=":",
             label="Known break",
         )

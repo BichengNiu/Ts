@@ -2,8 +2,8 @@
 
 The two main entry points are :func:`plot_acf` and :func:`plot_pacf`. Both
 follow the same style conventions as :mod:`TsPlots.ts_plot` and
-:mod:`TsPlots.sc_plot`: colorblind-friendly palette, Times New Roman / FangSong
-typography, hidden top/right spines, and optional dashed grid.
+:mod:`TsPlots.sc_plot`: the shared default colour template, Times New Roman /
+FangSong typography, hidden top/right spines, and optional dashed grid.
 
 Accepted input
 --------------
@@ -41,6 +41,9 @@ from .style import (
     BAND_ALPHA,
     BAND_COLOR,
     DEFAULT_PALETTE,
+    ZERO_LINE_COLOR,
+    TITLE_PAD,
+    TIGHT_PAD,
     TITLE_FONTSIZE,
     _ensure_fonts,
     _facet_grid,
@@ -193,7 +196,7 @@ def _draw_correlogram(
     )
 
     # --- Zero reference line -----------------------------------------------
-    ax.axhline(0, color="black", linewidth=0.8, zorder=1)
+    ax.axhline(0, color=ZERO_LINE_COLOR, linewidth=0.8, zorder=1)
 
     # --- Correlation bars --------------------------------------------------
     ax.bar(
@@ -222,13 +225,13 @@ def _draw_correlogram(
 
     # --- Optional title ----------------------------------------------------
     if title is not None and title_position == "top":
-        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold", pad=12)
+        ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold", pad=TITLE_PAD)
 
     style_axes(ax, grid=grid)
 
     if not manage_layout:
         return
-    fig.tight_layout()
+    fig.tight_layout(pad=TIGHT_PAD)
     draw_note_and_bottom_title(
         fig,
         note=note,
@@ -308,7 +311,7 @@ def plot_correlogram(
         ``"side"`` keeps the traditional vertical title beside the axis.
     bar_color : color or sequence of colors, optional
         One shared bar color or one color per response.
-    band_color : color, default "#d0d0d0"
+    band_color : color, default ``BAND_COLOR``
         Confidence-region color.
     band_alpha : float, default 0.4
         Confidence-region opacity.
@@ -461,9 +464,9 @@ def plot_acf(
         horizontally at the top end of the axis (T-shaped layout);
         ``"side"`` keeps the traditional vertical title beside the axis.
     bar_color : str, optional
-        Bar colour. Defaults to ``DEFAULT_PALETTE[0]`` (deep blue).
+        Bar colour. Defaults to ``DEFAULT_PALETTE[0]`` (black).
     band_color : str
-        Confidence-band fill colour. Defaults to ``"#d0d0d0"`` (light gray).
+        Confidence-band fill colour. Defaults to ``BAND_COLOR`` (light gray).
     band_alpha : float
         Confidence-band opacity (0–1). Defaults to 0.4.
     max_ticks : int
@@ -604,9 +607,9 @@ def plot_pacf(
         horizontally at the top end of the axis (T-shaped layout);
         ``"side"`` keeps the traditional vertical title beside the axis.
     bar_color : str, optional
-        Bar colour. Defaults to ``DEFAULT_PALETTE[0]`` (deep blue).
+        Bar colour. Defaults to ``DEFAULT_PALETTE[0]`` (black).
     band_color : str
-        Confidence-band fill colour. Defaults to ``"#d0d0d0"`` (light gray).
+        Confidence-band fill colour. Defaults to ``BAND_COLOR`` (light gray).
     band_alpha : float
         Confidence-band opacity (0–1). Defaults to 0.4.
     max_ticks : int

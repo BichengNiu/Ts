@@ -329,21 +329,21 @@ class LeeStrazicichTwoBreakTestResult(BaseTestResult):
         >>> result = LeeStrazicichTwoBreakTest(data, model="A", lags=0).fit()
         >>> fig, ax = result.plot_test()
         """
-        from Ts.TsPlots.style import DEFAULT_PALETTE, _FigureContext
+        from Ts.TsPlots.style import BLACK, DARK_RED, _FigureContext
 
         context = _FigureContext(ax=ax)
         ax = context.ax
         ax.plot(
             self.time_index,
             self.observed,
-            color=DEFAULT_PALETTE[0],
+            color=BLACK,
             label="Observed",
         )
         for position, break_year in enumerate(self.break_years):
             label = "Estimated breaks" if position == 0 else None
             ax.axvline(
                 break_year,
-                color=DEFAULT_PALETTE[4],
+                color=DARK_RED,
                 linestyle="--",
                 label=label,
             )

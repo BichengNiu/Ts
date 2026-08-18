@@ -13,10 +13,11 @@ import pandas as pd
 
 from Ts.TsPlots import plot_series
 from Ts.TsPlots.style import (
-    DEFAULT_PALETTE,
-    FIGSIZE,
-    LEGEND_FONTSIZE,
+    GRAY,
+    AXIS_LABEL_FONTSIZE,
     TITLE_FONTSIZE,
+    FIGSIZE,
+    draw_legend,
     style_axes,
 )
 from ._base import BaseSimResult
@@ -167,14 +168,16 @@ class SimGARCHResult(BaseSimResult):
         # Panel 2: Conditional volatility
         ax2.plot(
             self.conditional_volatility,
-            color=DEFAULT_PALETTE[1],
+            color=GRAY,
             linewidth=2,
             label="Conditional Volatility ($\\sigma_t$)",
         )
-        ax2.set_xlabel("Time")
-        ax2.set_ylabel("Volatility ($\\sigma_t$)")
-        ax2.set_title("Conditional Volatility")
-        ax2.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+        ax2.set_xlabel("Time", fontsize=AXIS_LABEL_FONTSIZE)
+        ax2.set_ylabel("Volatility ($\\sigma_t$)", fontsize=AXIS_LABEL_FONTSIZE)
+        ax2.set_title(
+            "Conditional Volatility", fontsize=TITLE_FONTSIZE, fontweight="bold"
+        )
+        draw_legend(ax2)
         style_axes(ax2)
 
         fig.suptitle(title, fontsize=TITLE_FONTSIZE, fontweight="bold")

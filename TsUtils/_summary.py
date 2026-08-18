@@ -7,7 +7,12 @@ import numpy as np
 import pandas as pd
 
 from ..TsPlots import plot_acf, plot_pacf
-from ..TsPlots.style import FIGSIZE
+from ..TsPlots.style import (
+    FIGSIZE,
+    TITLE_FONTSIZE,
+    TIGHT_PAD,
+    _ensure_fonts,
+)
 from ._validation import validate_alpha, validate_positive_int
 
 _TEMPORAL_INDEXES = (
@@ -207,7 +212,7 @@ class TimeSeriesSummary:
     def _mark_unavailable(axes, message) -> None:
         """Mark all correlogram panels unavailable without fabricating values."""
         for axis, title in zip(axes.flat, _PANEL_TITLES, strict=True):
-            axis.set_title(title)
+            axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
             axis.text(
                 0.5,
                 0.5,
@@ -234,7 +239,7 @@ class TimeSeriesSummary:
     def _plot_panel(values, axis, plotter, *, nlags, alpha, title) -> None:
         """Draw one existing correlogram or mark a constant series."""
         if values.nunique() <= 1:
-            axis.set_title(title)
+            axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
             axis.text(
                 0.5,
                 0.5,
@@ -271,6 +276,7 @@ class TimeSeriesSummary:
         >>> axes.shape
         (2, 2)
         """
+        _ensure_fonts()
         figure, axes = plt.subplots(2, 2, figsize=FIGSIZE)
         self.figure_ = figure
         self.axes_ = axes
@@ -281,7 +287,7 @@ class TimeSeriesSummary:
                 "ACF/PACF not computed because the series contains "
                 f"{self.n_missing} missing value(s).",
             )
-            figure.tight_layout()
+            figure.tight_layout(pad=TIGHT_PAD)
             return figure, axes
 
         difference = self.series.diff().dropna()
@@ -291,7 +297,7 @@ class TimeSeriesSummary:
                 axes,
                 "ACF/PACF require at least five observations.",
             )
-            figure.tight_layout()
+            figure.tight_layout(pad=TIGHT_PAD)
             return figure, axes
 
         panel_specs = (
@@ -314,7 +320,7 @@ class TimeSeriesSummary:
                 title=title,
             )
 
-        figure.tight_layout()
+        figure.tight_layout(pad=TIGHT_PAD)
         return figure, axes
 
     def summary(self, *, plot=True) -> str:

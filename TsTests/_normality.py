@@ -81,7 +81,14 @@ class NormalityTestResult(BaseTestResult):
         >>> fig, ax = result.plot_test()
         """
         import matplotlib.pyplot as plt
-        from Ts.TsPlots.style import DEFAULT_PALETTE, style_axes, FIGSIZE
+        from Ts.TsPlots.style import (
+            BLACK,
+            DARK_RED,
+            TITLE_FONTSIZE,
+            TIGHT_PAD,
+            style_axes,
+            FIGSIZE,
+        )
 
         fig, ax = plt.subplots(figsize=FIGSIZE)
         if self.residuals is not None and len(self.residuals) > 0:
@@ -90,7 +97,7 @@ class NormalityTestResult(BaseTestResult):
                 bins="auto",
                 density=True,
                 alpha=0.7,
-                color=DEFAULT_PALETTE[0],
+                color=BLACK,
             )
             from scipy import stats as scipy_stats
 
@@ -100,15 +107,17 @@ class NormalityTestResult(BaseTestResult):
                 scipy_stats.norm.pdf(
                     x, np.mean(self.residuals), np.std(self.residuals)
                 ),
-                color=DEFAULT_PALETTE[3],
+                color=DARK_RED,
                 linewidth=2,
             )
         ax.set_title(
             f"Jarque-Bera Test: statistic={self.statistic:.3f}, "
-            f"p-value={self.pvalue:.4f}"
+            f"p-value={self.pvalue:.4f}",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
         )
         style_axes(ax, grid=False)
-        fig.tight_layout(pad=1.5)
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, ax
 
 

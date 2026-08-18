@@ -602,14 +602,29 @@ class ScenarioForecastResult:
         """
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots(figsize=(10, 5))
+        from Ts.TsPlots.style import (
+            FIGSIZE,
+            TITLE_FONTSIZE,
+            TIGHT_PAD,
+            _ensure_fonts,
+            draw_legend,
+            style_axes,
+        )
+
+        _ensure_fonts()
+        fig, ax = plt.subplots(figsize=FIGSIZE)
         first = next(iter(self.scenarios.values()))
         x = self.dates if self.dates is not None else np.arange(len(first.mean))
         for name, prediction in self.scenarios.items():
             ax.plot(x, prediction.mean, label=name)
-        ax.set_title(title or "Forecast Scenarios")
-        ax.legend(frameon=False)
-        fig.tight_layout()
+        ax.set_title(
+            title or "Forecast Scenarios",
+            fontsize=TITLE_FONTSIZE,
+            fontweight="bold",
+        )
+        draw_legend(ax)
+        style_axes(ax, grid=False)
+        fig.tight_layout(pad=TIGHT_PAD)
         return fig, ax
 
 

@@ -9,6 +9,10 @@ from .style import (
     NOTE_FONTSIZE,
     TICK_LABELSIZE,
     TITLE_FONTSIZE,
+    TIGHT_PAD,
+    AXIS_LABEL_FONTSIZE,
+    INK,
+    WHITE,
     _body_font_family,
     _ensure_fonts,
     _fig_axes,
@@ -131,7 +135,7 @@ def plot_correlation_matrix(
         for row in range(values.shape[0]):
             for column in range(values.shape[1]):
                 value = values[row, column]
-                color = "white" if abs(value) >= 0.55 else "black"
+                color = WHITE if abs(value) >= 0.55 else INK
                 ax.text(
                     column,
                     row,
@@ -150,9 +154,13 @@ def plot_correlation_matrix(
         ax.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="bold")
 
     colorbar = fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
-    colorbar.set_label("Correlation", fontfamily=_body_font_family())
+    colorbar.set_label(
+        "Correlation",
+        fontsize=AXIS_LABEL_FONTSIZE,
+        fontfamily=_body_font_family(),
+    )
     colorbar.ax.tick_params(labelsize=TICK_LABELSIZE)
     for label in colorbar.ax.get_yticklabels():
         label.set_fontfamily(_body_font_family())
-    fig.tight_layout(pad=1.5)
+    fig.tight_layout(pad=TIGHT_PAD)
     return fig, ax
