@@ -88,6 +88,7 @@ from .style import (
     TITLE_PAD,
     AXIS_LABEL_FONTSIZE,
     BAR_EDGE_COLOR,
+    ZORDER_BAR,
     REFERENCE_LINE_COLOR,
     REFERENCE_LINE_STYLE,
     REFERENCE_LINE_WIDTH,
@@ -116,7 +117,7 @@ def _draw_bars(
     horizontal=False,
     bottom=None,
     left=None,
-    zorder=1,
+    zorder=ZORDER_BAR,
 ):
     """Draw one bar series with the single shared TsPlots bar cosmetics.
 
@@ -153,7 +154,8 @@ def _draw_bars(
     left : array-like, optional
         Horizontal stack baseline (``ax.barh`` left).
     zorder : float
-        Artist z-order. Defaults to 1 (matplotlib patch default).
+        Artist z-order. Defaults to ``ZORDER_BAR`` so that lines drawn with
+        ``ZORDER_LINE`` render in front of bars in bar-line mixed charts.
 
     Returns
     -------

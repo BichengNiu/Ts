@@ -73,6 +73,7 @@ from .style import (
     TITLE_FONTSIZE,
     AXIS_LABEL_FONTSIZE,
     BAR_EDGE_COLOR,
+    ZORDER_LINE,
     REFERENCE_LINE_COLOR,
     REFERENCE_LINE_STYLE,
     REFERENCE_LINE_WIDTH,
@@ -545,6 +546,8 @@ def _plot_one_series(
         markeredgecolor=color,
         markeredgewidth=marker_edge_width,
         label=label,
+        # 模板契约：柱线混合图默认线在柱的前面（ZORDER_LINE > ZORDER_BAR）。
+        zorder=ZORDER_LINE,
     )[0]
 
     if not show_values:

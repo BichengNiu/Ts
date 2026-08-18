@@ -17,7 +17,8 @@ Constants
     ``GRID_GRAY``, ``ANNOTATION_EDGE``, ``REFERENCE_LINE_COLOR``,
     ``SHADE_COLOR``, ``BAND_COLOR``, ``BAR_EDGE_COLOR``),
     ``DEFAULT_LINESTYLES``, ``DEFAULT_MARKERS`` plus cosmetic size constants
-    (figure size, font sizes, unit colour).
+    (figure size, font sizes, unit colour) and the data-stacking z-order
+    contract (``ZORDER_BAR`` / ``ZORDER_LINE``).
 Functions
     ``apply_fonts``, ``style_axes``, ``draw_shade``, ``draw_vlines``,
     ``draw_hlines``, ``draw_legend``, ``draw_unit_label``,
@@ -168,6 +169,12 @@ SHADE_COLOR = "#d0d0d0"  # shaded regions (gray family)
 BAND_COLOR = SHADE_COLOR  # confidence-band fill alias
 # 柱默认边框（浅灰族）：与阴影/置信带同一灰阶，柱边默认不再与柱同色。
 BAR_EDGE_COLOR = SHADE_COLOR  # default bar edge (light gray family)
+
+# --- Z-order contract (data stacking) --------------------------------------
+# 柱线混合图（plot_series 的 bar_series / plot_bar 叠加场景）模板默认保证
+# 线渲染在柱的前面：柱 ZORDER_BAR=1 < 网格线（默认 2）< 线 ZORDER_LINE=3。
+ZORDER_BAR = 1
+ZORDER_LINE = 3
 
 # Distinct line styles so series remain distinguishable in grayscale / B&W print
 DEFAULT_LINESTYLES = [

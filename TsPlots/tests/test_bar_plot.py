@@ -369,6 +369,33 @@ class TestPlotBar:
         )
         plt.close(fig3)
 
+    def test_bar_line_mix_lines_are_in_front_of_bars(self):
+        """模板契约：柱线混合图默认线在柱的前面（ZORDER_LINE > ZORDER_BAR）。"""
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+        )
+
+        min_bar = min(patch.get_zorder() for patch in ax.patches)
+        assert all(line.get_zorder() > min_bar for line in ax.lines)
+        plt.close(fig)
+
+        # 双轴柱线混合同样成立（柱在左轴、线在右轴）。
+        fig2, ax2 = plot_series(
+            {"volume": [1, 2, 3], "price": [100, 200, 300]},
+            facet=False,
+            axis_groups={"volume": "left", "price": "right"},
+            bar_series=["volume"],
+        )
+        min_bar2 = min(patch.get_zorder() for patch in ax2.patches)
+        all_lines = list(ax2.lines) + list(ax2.right_ax.lines)
+        assert all(line.get_zorder() > min_bar2 for line in all_lines)
+        plt.close(fig2)
+
     def test_unit_labels_appended(self):
         fig, ax = plot_bar(
             pd.Series([1, 2], index=["a", "b"], name="产量"),
