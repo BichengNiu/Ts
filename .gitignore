@@ -26,3 +26,6 @@ Thumbs.db
 .claude/test-audit.json
 .claude/test-audit.json.log
 .claude/.feature-dev-backup/
+
+# Generated layout test figures
+_figures_check/

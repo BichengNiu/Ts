@@ -85,6 +85,9 @@ from .style import (
     draw_legend,
     draw_shade,
     draw_vlines,
+    BottomLegend,
+    LEGEND_BELOW_OFFSET,
+    LEGEND_BELOW_YEAR_RULER_OFFSET,
 )
 
 
@@ -654,7 +657,7 @@ def plot_series(
     xlabel_count: int | None = None,
     show_legend: bool = True,
     legend_labels=None,
-    legend_loc: str = "best",
+    legend_loc: str | None = None,
     legend_bbox=None,
     legend_title: str | None = None,
     legend_cols: int | None = None,
@@ -777,11 +780,16 @@ def plot_series(
     legend_labels : sequence of str, optional
         Override the text of the legend entries. Must match the number of
         series.
-    legend_loc : str
-        Legend location (e.g. ``"upper left"``, ``"best"``). Defaults to
-        ``"best"``.
+    legend_loc : str, optional
+        图例位置。**不传（默认）时图例绘制在时间轴（x 轴）下方、绘图区外的
+        底部边距里**：普通 x 轴时贴在轴标签之下，``year_ruler=True`` 时贴在
+        年份标尺标签之下，图注（``note``）再紧跟其下；显式传入任意位置
+        （如 ``"upper left"``、``"best"``、``"lower center"``）则图例回到
+        绘图区内该位置（旧默认行为）。与 ``legend_bbox`` 同时传入时同样
+        按绘图区内处理。
     legend_bbox : tuple, optional
-        ``bbox_to_anchor`` for the legend, e.g. ``(1.02, 1)``.
+        ``bbox_to_anchor`` for the legend, e.g. ``(1.02, 1)``. Only used when
+        ``legend_loc`` is given explicitly.
     legend_title : str, optional
         Title shown above the legend entries; ``None`` hides it.
     legend_cols : int, optional
@@ -1080,11 +1088,15 @@ def plot_series(
             unused.set_visible(False)
         x_label = xtitle if xtitle is not None else default_xlabel
         display_labels = legend_labels or list(series)
+        # 默认（未显式传 legend_loc/legend_bbox）时图例统一放到整图底部的
+        # 时间轴下方；显式传位置时保留各面板内的图例。
+        explicit_legend = legend_loc is not None or legend_bbox is not None
+        facet_lines = []
 
         for index, ((label, values), panel_ax) in enumerate(
             zip(series.items(), axes, strict=True)
         ):
-            _draw_one(panel_ax, label, values, index)
+            facet_lines.append(_draw_one(panel_ax, label, values, index))
             if label in bar_series:
                 panel_ax.set_ylim(bottom=0)
             panel_ax.set_title(
@@ -1129,11 +1141,11 @@ def plot_series(
                 grid_linewidth=grid_linewidth,
                 grid_linestyle=grid_linestyle,
             )
-            if show_legend:
+            if show_legend and explicit_legend:
                 draw_legend(
                     panel_ax,
                     legend_labels=[display_labels[index]],
-                    legend_loc=legend_loc,
+                    legend_loc=legend_loc or "best",
                     legend_bbox=legend_bbox,
                     legend_title=legend_title,
                     legend_cols=legend_cols,
@@ -1157,7 +1169,22 @@ def plot_series(
             )
         tight_rect = (0, 0, 1, 0.97) if title and title_position == "top" else None
         fig.tight_layout(pad=TIGHT_PAD, rect=tight_rect)
-        if note or (title and title_position == "bottom"):
+        bottom_legend = None
+        if show_legend and not explicit_legend and facet_lines:
+            bottom_legend = BottomLegend(
+                facet_lines,
+                display_labels,
+                legend_title=legend_title,
+                ncol=legend_cols,
+                below_offset=(
+                    LEGEND_BELOW_YEAR_RULER_OFFSET if year_ruler else LEGEND_BELOW_OFFSET
+                ),
+            )
+        if (
+            bottom_legend is not None
+            or note
+            or (title and title_position == "bottom")
+        ):
             draw_note_and_bottom_title(
                 fig,
                 note=note,
@@ -1165,6 +1192,7 @@ def plot_series(
                 title_position=title_position,
                 note_loc=note_loc,
                 note_prefix=note_prefix,
+                legend=bottom_legend,
             )
         return fig, axes
 
@@ -1268,16 +1296,30 @@ def plot_series(
         right_axis.yaxis.set_label_position("right")
         right_axis.yaxis.tick_right()
 
+    bottom_legend = None
     if show_legend and lines:
-        draw_legend(
-            ax,
-            handles=lines,
-            legend_labels=display_labels,
-            legend_loc=legend_loc,
-            legend_bbox=legend_bbox,
-            legend_title=legend_title,
-            legend_cols=legend_cols,
-        )
+        if legend_loc is None and legend_bbox is None:
+            # 默认：图例放在时间轴/年份标签下方（绘图区外），由
+            # draw_note_and_bottom_title 在图注上方统一排版。
+            bottom_legend = BottomLegend(
+                lines,
+                display_labels,
+                legend_title=legend_title,
+                ncol=legend_cols,
+                below_offset=(
+                    LEGEND_BELOW_YEAR_RULER_OFFSET if year_ruler else LEGEND_BELOW_OFFSET
+                ),
+            )
+        else:
+            draw_legend(
+                ax,
+                handles=lines,
+                legend_labels=display_labels,
+                legend_loc=legend_loc or "best",
+                legend_bbox=legend_bbox,
+                legend_title=legend_title,
+                legend_cols=legend_cols,
+            )
 
     ctx.finalize(
         title=title,
@@ -1293,6 +1335,7 @@ def plot_series(
         grid_linestyle=grid_linestyle,
         show_legend=False,
         unit=unit,
+        bottom_legend=bottom_legend,
     )
 
     if (

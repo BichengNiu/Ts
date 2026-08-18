@@ -295,6 +295,93 @@ class TestPlotSeries:
         with pytest.raises(ValueError, match="legend_cols must be"):
             plot_series({"a": [1, 2]}, facet=False, legend_cols=0)
 
+    def _legend_window(self, fig, legend):
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        inv = fig.transFigure.inverted()
+        x0, y0 = inv.transform(legend.get_window_extent(renderer).p0)
+        x1, y1 = inv.transform(legend.get_window_extent(renderer).p1)
+        return x0, y0, x1, y1
+
+    def test_legend_default_below_time_axis(self):
+        fig, ax = plot_series(
+            {"a": [1, 2, 3], "b": [2, 2.5, 3]},
+            facet=False,
+        )
+        legend = ax.get_legend()
+        assert legend is not None
+        # 默认图例在时间轴（x 轴）下方、绘图区外：图例顶部低于轴底线。
+        _, _, _, legend_top = self._legend_window(fig, legend)
+        assert legend_top < ax.get_position().y0
+        # 底部排布自动把 2 条记录排成一行（2 列），保持高度紧凑。
+        assert legend._ncols == 2
+        plt.close(fig)
+
+        # 显式传入位置时回到绘图区内（旧默认行为）。
+        fig2, ax2 = plot_series(
+            {"a": [1, 2, 3], "b": [2, 2.5, 3]},
+            facet=False,
+            legend_loc="upper left",
+        )
+        legend2 = ax2.get_legend()
+        _, legend2_bottom, _, _ = self._legend_window(fig2, legend2)
+        assert legend2_bottom > ax2.get_position().y0
+        plt.close(fig2)
+
+    def test_legend_below_year_ruler(self):
+        idx = pd.date_range("2020-01", periods=24, freq="MS")
+        fig, ax = plot_series(
+            pd.Series(
+                np.random.default_rng(1).normal(size=24), index=idx, name="s"
+            ),
+            year_ruler=True,
+        )
+        legend = ax.get_legend()
+        assert legend is not None
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        inv_ax = ax.transAxes.inverted()
+        # year_ruler：图例顶部必须低于年份标尺标签（轴下方最靠下的元素）。
+        legend_top_axes = inv_ax.transform(legend.get_window_extent(renderer).p1)[1]
+        year_label_bottom = min(
+            inv_ax.transform(text.get_window_extent(renderer).p0)[1]
+            for text in ax.texts
+        )
+        assert legend_top_axes < year_label_bottom
+        plt.close(fig)
+
+    def test_facet_shares_single_bottom_legend(self):
+        fig, axes = plot_series(
+            {"a": [1, 2, 3], "b": [2, 3, 4]}, facet=True
+        )
+        bottom_panel = min(axes, key=lambda a: a.get_position().y0)
+        top_panel = max(axes, key=lambda a: a.get_position().y0)
+        legend = bottom_panel.get_legend()
+        assert legend is not None
+        # 分面时整图共享一个底部图例，面板内不再有图例。
+        assert top_panel.get_legend() is None
+        _, _, _, legend_top = self._legend_window(fig, legend)
+        assert legend_top < bottom_panel.get_position().y0
+        plt.close(fig)
+
+    def test_note_below_legend_in_bottom_margin(self):
+        fig, ax = plot_series(
+            {"a": [1, 2, 3]},
+            facet=False,
+            note="数据来源：原始数据",
+        )
+        legend = ax.get_legend()
+        assert legend is not None
+        _, legend_bottom, _, _ = self._legend_window(fig, legend)
+        texts = [t for t in fig.texts if t.get_text() == "数据来源：原始数据"]
+        assert texts
+        y = texts[0].get_position()[1]
+        # 图注紧跟图例下方，且仍在图形内（图例→图注 自下而上堆叠）。
+        assert y < legend_bottom
+        assert y > 0
+        assert texts[0].get_va() == "top"
+        plt.close(fig)
+
     def test_note_loc_and_prefix(self):
         fig, _ax = plot_series(
             {"a": [1, 2, 3]},
@@ -564,6 +651,25 @@ class TestPlotScatter:
         fig, _ax = plot_scatter(
             x=np.random.randn(30), y=np.random.randn(30), fit_line=True
         )
+        plt.close(fig)
+
+    def test_legend_default_below_axis(self):
+        df = pd.DataFrame(
+            {
+                "x": [1, 2, 3, 4, 5, 6],
+                "y": [1, 1, 2, 2, 3, 3],
+                "g": ["a"] * 3 + ["b"] * 3,
+            }
+        )
+        fig, ax = plot_scatter(df, x="x", y="y", group="g")
+        legend = ax.get_legend()
+        assert legend is not None
+        # 默认图例在 x 轴下方、绘图区外，与 plot_series 一致。
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        inv = fig.transFigure.inverted()
+        legend_top = inv.transform(legend.get_window_extent(renderer).p1)[1]
+        assert legend_top < ax.get_position().y0
         plt.close(fig)
 
     def test_title(self):

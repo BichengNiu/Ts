@@ -59,6 +59,8 @@ from .style import (
     draw_shade,
     draw_vlines,
     draw_hlines,
+    BottomLegend,
+    LEGEND_BELOW_OFFSET,
 )
 
 
@@ -128,7 +130,7 @@ def plot_scatter(
     ymin=None,
     show_legend=True,
     legend_labels=None,
-    legend_loc="best",
+    legend_loc=None,
     legend_bbox=None,
     title_loc="center",
     title_pad=TITLE_PAD,
@@ -207,11 +209,14 @@ def plot_scatter(
     legend_labels : sequence of str, optional
         Override the text of the legend entries. Must match the number of
         series.
-    legend_loc : str
-        Legend location (e.g. ``"upper left"``, ``"best"``). Defaults to
-        ``"best"``.
+    legend_loc : str, optional
+        图例位置。**不传（默认）时图例绘制在 x 轴下方、绘图区外的底部
+        边距里**（与 ``plot_series`` 默认一致），图注（``note``）紧跟其下；
+        显式传入任意位置（如 ``"best"``、``"upper left"``）则图例回到绘图区
+        内该位置。
     legend_bbox : tuple, optional
-        ``bbox_to_anchor`` for the legend, e.g. ``(1.02, 1)``.
+        ``bbox_to_anchor`` for the legend, e.g. ``(1.02, 1)``. Only used when
+        ``legend_loc`` is given explicitly.
     title_loc : str
         Title horizontal alignment: ``"center"``, ``"left"``, or ``"right"``.
     title_pad : float
@@ -446,6 +451,21 @@ def plot_scatter(
     if equal_aspect:
         ax.set_aspect("equal")
 
+    bottom_legend = None
+    if show_legend and legend_loc is None and legend_bbox is None:
+        handles, auto_labels = ax.get_legend_handles_labels()
+        if handles:
+            labels = (
+                _validate_label_count("legend_labels", legend_labels, len(handles))
+                if legend_labels is not None
+                else auto_labels
+            )
+            bottom_legend = BottomLegend(
+                handles,
+                labels,
+                below_offset=LEGEND_BELOW_OFFSET,
+            )
+
     ctx.finalize(
         title=title,
         title_position=title_position,
@@ -455,10 +475,11 @@ def plot_scatter(
         grid=grid,
         show_legend=show_legend,
         legend_labels=legend_labels,
-        legend_loc=legend_loc,
+        legend_loc=legend_loc or "best",
         legend_bbox=legend_bbox,
         unit=y_unit,
         x_unit=x_unit,
+        bottom_legend=bottom_legend,
     )
 
     return fig, ax

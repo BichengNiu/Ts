@@ -76,7 +76,7 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `labels` | list | `None` | 覆盖系列标签 |
 | `show_legend` | bool | `True` | 是否显示图例 |
 | `legend_labels` | list | `None` | 覆盖图例文字（渲染时替换） |
-| `legend_loc` | str | `"best"` | 图例位置 |
+| `legend_loc` | str | `None` | 图例位置；**不传时图例绘制在时间轴下方、绘图区外的底部边距**（`year_ruler=True` 时贴在年份标签之下），图注紧随其下；传任意位置（如 `"best"`、`"upper left"`）则图例回到绘图区内 |
 | `legend_bbox` | tuple | `None` | 图例 `bbox_to_anchor`，如 `(1.02, 1)` |
 | `grid` | bool | `False` | 是否显示网格 |
 | `show_values` | bool | `False` | 是否在每个数据点标注数值；标注自动放在局部极小值上方、局部极大值下方，避免与相邻线段重叠 |
@@ -88,7 +88,7 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `bar_edge_linewidth` | float | `0.6` | 柱边框线宽 |
 | `bar_alpha` | float | `1.0` | 柱透明度（0–1） |
 | `shade` | tuple / list | `None` | 阴影区间，如 `(2008, 2009)` 或 `[(2008,2009),(2020,2021)]` |
-| `note` | str | `None` | 图表左下角注释文字；当 `title_position="bottom"` 时，note 显示在 bottom title **上方** |
+| `note` | str | `None` | 图表左下角注释文字；当 `title_position="bottom"` 时，note 显示在 bottom title **下方** |
 | `title_position` | str | `"top"` | `"top"` 或 `"bottom"` |
 | `facet` | bool | `True` | 两条及以上序列是否按序列纵向分面；单序列不受影响 |
 | `sharex` | bool | `True` | 分面子图是否统一 X 轴标度 |
@@ -256,6 +256,7 @@ fig, ax = plot_scatter(data=None, x=None, y=None, *, ...)
 | `labels` | list | `None` | 覆盖系列标签 |
 | `show_legend` | bool | `True` | 是否显示图例 |
 | `legend_labels` | list | `None` | 覆盖图例文字 |
+| `legend_loc` | str | `None` | 图例位置；不传时在 x 轴下方（绘图区外），传任意位置则回到绘图区内 |
 | `legend_bbox` | tuple | `None` | 图例 `bbox_to_anchor` |
 | `hlines` | float / list | `None` | 水平参考线位置 |
 | `vlines` | float / list | `None` | 垂直参考线位置 |
@@ -266,7 +267,7 @@ fig, ax = plot_scatter(data=None, x=None, y=None, *, ...)
 | `equal_aspect` | bool | `False` | 是否等比例坐标轴 |
 | `show_values` | bool | `False` | 是否标注每点坐标 `(x, y)`；标注方向自动偏向离最近邻居最远的方向，减少相互遮盖 |
 | `grid` | bool | `False` | 是否显示网格 |
-| `note` | str | `None` | 图表左下角注释文字；当 `title_position="bottom"` 时，note 显示在 bottom title **上方** |
+| `note` | str | `None` | 图表左下角注释文字；当 `title_position="bottom"` 时，note 显示在 bottom title **下方** |
 | `title_position` | str | `"top"` | `"top"` 或 `"bottom"` |
 | `ax` | Axes | `None` | 传入已有坐标轴 |
 
@@ -485,7 +486,9 @@ fig, axes = plot_lag_response(
 | `AXIS_LABEL_FONTSIZE` | 坐标轴标签字号 `15` |
 | `TICK_LABELSIZE` | 刻度标签字号 `14` |
 | `LEGEND_FONTSIZE` | 图例字号 `14` |
-| `NOTE_FONTSIZE` | 注释字号 `9` |
+| `NOTE_FONTSIZE` | 注释字号（与刻度一致） `14` |
+| `LEGEND_BELOW_OFFSET` | 底部图例顶部相对 x 轴的锚点偏移（普通轴，`-0.17`） |
+| `LEGEND_BELOW_YEAR_RULER_OFFSET` | 底部图例锚点偏移（`year_ruler=True`，避开年份标尺，`-0.24`） |
 
 ### 辅助函数
 
@@ -498,7 +501,8 @@ fig, axes = plot_lag_response(
 | `draw_hlines(ax, hlines, color, linestyle, linewidth)` | 绘制水平参考线 |
 | `draw_legend(ax, *, ...)` | 绘制无边框图例 |
 | `draw_unit_label(ax, unit, *, axis)` | 在坐标轴标签后追加单位 |
-| `draw_note_and_bottom_title(fig, *, ...)` | 在图形底部放置标题或注释 |
+| `draw_note_and_bottom_title(fig, *, ...)` | 在图形底部放置标题、注释或底部图例（`BottomLegend`） |
+| `BottomLegend(handles, labels, *, ...)` | 描述「时间轴下方、绘图区外」的底部图例：`draw_note_and_bottom_title` 将其锚定在时间轴/年份标签之下，图注紧随其下，并按实际高度精确撑开底部边距 |
 
 ---
 
@@ -508,3 +512,4 @@ fig, axes = plot_lag_response(
 - **黑白可区分**：系列同时使用颜色、线型和标记三重编码；偶数索引系列使用实心标记，奇数索引使用空心标记。
 - **中英文混排**：Latin 字符用 Times New Roman，CJK 字符用仿宋（自动回退）。
 - **坐标轴风格**：隐藏上边框和右边框，刻度向外。
+- **底部排布**：图例默认绘制在时间轴（x 轴）下方、绘图区外的底部边距里（`year_ruler=True` 时贴在年份标尺标签之下），图注（`note`）紧跟图例下方、不再悬在图形最底边；分面图整图共享一个底部图例。显式传入 `legend_loc` 时图例回到绘图区内。

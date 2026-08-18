@@ -203,6 +203,52 @@ YEAR_RULER_TICK_PAD = 5
 #: Figure rectangle reserved for facet grids with a figure-level suptitle.
 FACET_RECT = (0.0, 0.0, 1.0, 0.96)
 
+# --- Bottom-margin legend placement -----------------------------------------
+# 图例默认绘制在时间轴（x 轴）下方、绘图区外的底部边距里。锚点为图例顶部
+# 相对轴坐标系原点（x 轴在 y=0）的偏移：普通 x 轴需避开刻度与轴标签（下缘
+# 约 -0.13），year_ruler 还需避开年份标尺标签（下缘约 -0.195）。
+LEGEND_BELOW_OFFSET = -0.17
+LEGEND_BELOW_YEAR_RULER_OFFSET = -0.24
+
+
+class BottomLegend:
+    """Describes a legend drawn in the bottom figure margin under the time axis.
+
+    ``draw_note_and_bottom_title`` anchors the legend just below the x-axis /
+    year-ruler labels, then stacks any bottom title and the note beneath it,
+    reserving exactly enough bottom margin so nothing is clipped.
+
+    Parameters
+    ----------
+    handles : sequence of Artist
+        Legend handles.
+    labels : sequence of str
+        Legend entry texts (one per handle).
+    legend_title : str, optional
+        Title shown above the legend entries; ``None`` hides it.
+    ncol : int, optional
+        Number of columns. ``None`` auto-flows the entries into at most two
+        rows (one row when there are four or fewer).
+    below_offset : float
+        Anchor offset (axes fraction, negative) for the legend top edge below
+        the x-axis. Defaults to ``LEGEND_BELOW_OFFSET``.
+    """
+
+    def __init__(
+        self,
+        handles,
+        labels,
+        *,
+        legend_title=None,
+        ncol=None,
+        below_offset=LEGEND_BELOW_OFFSET,
+    ):
+        self.handles = list(handles)
+        self.labels = list(labels)
+        self.legend_title = legend_title
+        self.ncol = ncol
+        self.below_offset = below_offset
+
 
 def _resolve_colors(colors, series_count):
     """Return one color per series or reject an ambiguous override."""
@@ -587,6 +633,7 @@ def draw_note_and_bottom_title(
     title_position="top",
     note_loc="left",
     note_prefix=None,
+    legend=None,
 ):
     """Place a bottom title and/or a lower-left note in figure coordinates.
 
@@ -609,23 +656,113 @@ def draw_note_and_bottom_title(
     note_prefix : str, optional
         Text prepended to the note (e.g. ``"数据来源："``). ``None`` or an
         empty string disables the prefix.
+    legend : BottomLegend or None
+        When given, a frameless legend is drawn in the bottom margin, just
+        below the time axis / year-ruler labels, and any bottom title / note
+        stack beneath it (图例在时间轴下方、图注紧跟其下). ``None`` keeps the
+        legendless layout.
     """
     bottom_title = title is not None and title_position == "bottom"
-    if not (bottom_title or note is not None):
+    if not (bottom_title or note is not None or legend is not None):
         return
 
-    # Reserve just enough extra space below the subplot for the caption/note.
-    # The free band from 0 → extra (figure coordinates) sits below the x-axis
-    # label area; we position text near the *top* of that band so it appears
-    # close to the axis rather than at the very bottom of the figure.
-    has_both = bottom_title and note is not None
-    extra = 0.06 + (0.05 if has_both else 0.0)
-    fig.subplots_adjust(bottom=fig.subplotpars.bottom + extra)
+    if legend is None:
+        # Reserve just enough extra space below the subplot for the note.
+        # The free band from 0 → extra (figure coordinates) sits below the
+        # x-axis label area; the note is anchored near the *top* of that band
+        # so it appears close to the axis rather than at the very bottom.
+        has_both = bottom_title and note is not None
+        extra = 0.06 + (0.05 if has_both else 0.0)
+        fig.subplots_adjust(bottom=fig.subplotpars.bottom + extra)
+
+        if bottom_title:
+            # Place directly below the x-axis label (centered), just above
+            # the note; positioned closer to the x-axis than the note.
+            y_title = extra + 0.012
+            fig.text(
+                0.5,
+                y_title,
+                title,
+                fontsize=TITLE_FONTSIZE,
+                color=INK,
+                ha="center",
+                va="top",
+                family=_title_font_family(),
+            )
+
+        if note is not None:
+            if note_loc not in ("left", "center", "right"):
+                raise ValueError(
+                    f"note_loc={note_loc!r} is not valid. Choose 'left', 'center', or 'right'."
+                )
+            note_x, note_ha = {
+                "left": (0.04, "left"),
+                "center": (0.5, "center"),
+                "right": (0.96, "right"),
+            }[note_loc]
+            # When a bottom title is present, the note sits below it.
+            # Otherwise the note appears just below the xlabel, near the top
+            # of the reserved band.
+            y_note = (extra - 0.045) if bottom_title else (extra - 0.005)
+            display_note = f"{note_prefix}{note}" if note_prefix else note
+            fig.text(
+                note_x,
+                y_note,
+                display_note,
+                fontsize=NOTE_FONTSIZE,
+                color=INK,
+                ha=note_ha,
+                va="top",
+                family=_title_font_family(),
+            )
+        return
+
+    # --- Legend (and optional bottom title / note) in the bottom margin -----
+    # 版面自下而上：note → [bottom title] → legend；图例下缘贴着时间轴下方。
+    visible = [axes for axes in fig.axes if axes.get_visible()]
+    if not visible:
+        return
+    ref_ax = min(visible, key=lambda axes: axes.get_position().y0)
+
+    count = len(legend.labels)
+    ncol = legend.ncol or (min(count, 4) if count <= 4 else (count + 1) // 2)
+    legend_artist = ref_ax.legend(
+        legend.handles,
+        legend.labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, legend.below_offset),
+        frameon=False,
+        fontsize=LEGEND_FONTSIZE,
+        markerscale=1.6,
+        handlelength=2.6,
+        title=legend.legend_title or None,
+        title_fontsize=LEGEND_FONTSIZE,
+        ncol=ncol,
+    )
+
+    # 测量图例实际高度，再把底部边距撑到刚好容纳 图例→(标题)→图注 的堆叠。
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    extent = legend_artist.get_window_extent(renderer)
+    inv = fig.transFigure.inverted()
+    legend_bottom_frac = inv.transform((extent.x0, extent.y0))[1]
+    text_h = NOTE_FONTSIZE * 1.3 / 72 / fig.get_size_inches()[1]
+    gap = 0.012
+    # 图例底部之下所需内容高度：note（有底部标题时再加一段标题与间隔）+
+    # 底部余量。
+    required_bottom = gap + text_h + 0.006
+    if bottom_title:
+        required_bottom = gap + text_h + gap + text_h + 0.006
+    offset_abs = -legend.below_offset
+    # 抬高轴底边距 m 时，图例（锚在轴坐标系）随轴同步上移 (1+offset_abs)·m，
+    # 因此一次性算出所需抬高量即可精确落在目标位置。
+    raise_by = max(0.0, (required_bottom - legend_bottom_frac) / (1 + offset_abs))
+    if raise_by > 0:
+        fig.subplots_adjust(bottom=fig.subplotpars.bottom + raise_by)
+    legend_bottom_frac += raise_by * (1 + offset_abs)
 
     if bottom_title:
-        # Place directly below the x-axis label (centered)
-        # Positioned closer to the x-axis than the note
-        y_title = extra - 0.008
+        y_title = legend_bottom_frac - gap
         fig.text(
             0.5,
             y_title,
@@ -636,6 +773,9 @@ def draw_note_and_bottom_title(
             va="top",
             family=_title_font_family(),
         )
+        note_y = y_title - text_h - gap
+    else:
+        note_y = legend_bottom_frac - gap
 
     if note is not None:
         if note_loc not in ("left", "center", "right"):
@@ -647,13 +787,10 @@ def draw_note_and_bottom_title(
             "center": (0.5, "center"),
             "right": (0.96, "right"),
         }[note_loc]
-        # When a bottom title is present, the note sits below it.
-        # When there is no bottom title, the note appears just below the xlabel.
-        y_note = (extra - 0.025 - 0.04) if bottom_title else (extra - 0.025)
         display_note = f"{note_prefix}{note}" if note_prefix else note
         fig.text(
             note_x,
-            y_note,
+            note_y,
             display_note,
             fontsize=NOTE_FONTSIZE,
             color=INK,
@@ -748,6 +885,7 @@ class _FigureContext:
         legend_cols=None,
         unit=None,
         x_unit=None,
+        bottom_legend=None,
     ):
         """Apply common post-plot styling."""
         _ensure_fonts()
@@ -775,7 +913,7 @@ class _FigureContext:
             tick_labelsize=TICK_LABELSIZE,
         )
 
-        if show_legend:
+        if show_legend and bottom_legend is None:
             draw_legend(
                 self.ax,
                 show_legend=show_legend,
@@ -793,7 +931,11 @@ class _FigureContext:
 
         self.fig.tight_layout(pad=TIGHT_PAD)
 
-        if note or (title and title_position == "bottom"):
+        if (
+            bottom_legend is not None
+            or note
+            or (title and title_position == "bottom")
+        ):
             draw_note_and_bottom_title(
                 self.fig,
                 note=note,
@@ -801,4 +943,5 @@ class _FigureContext:
                 title_position=title_position,
                 note_loc=note_loc,
                 note_prefix=note_prefix,
+                legend=bottom_legend,
             )
