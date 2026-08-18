@@ -1,7 +1,8 @@
 """TsPlots — Shared plotting toolkit.
 
 This package unifies time-series plotting (:mod:`TsPlots.ts_plot`), scatter
-plotting (:mod:`TsPlots.sc_plot`), and autocorrelation plotting
+plotting (:mod:`TsPlots.sc_plot`), categorical bar plotting
+(:mod:`TsPlots.bar_plot`), and autocorrelation plotting
 (:mod:`TsPlots.acf_plot`) under a common interface, sharing fonts, the default
 colour template, and axis styling via :mod:`TsPlots.style`.
 
@@ -9,6 +10,9 @@ Main interfaces
 ---------------
 plot_series
     Time-series line chart; accepts DataFrame / Series / dict / array-like.
+plot_bar
+    Categorical bar chart; grouped, stacked or horizontal bars with the
+    shared style contract.
 plot_scatter
     Scatter chart; accepts DataFrame / dict / arrays; supports grouping and
     trend lines.
@@ -25,8 +29,9 @@ plot_correlation_matrix
 
 Quick start
 -----------
->>> from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
+>>> from Ts.TsPlots import plot_series, plot_bar, plot_scatter, plot_acf, plot_pacf
 >>> fig, axes = plot_series(df, title="GDP Growth Rate")  # multi-column DataFrame
+>>> fig, ax = plot_bar(df, title="Regional Output")  # categorical bars
 >>> fig, ax = plot_scatter(df, x="Income", y="Consumption", fit_line=True)
 
 Advanced usage — style constants and helpers
@@ -43,6 +48,7 @@ lines, shading, grid, annotation boxes — is a named role defined in
 """
 
 from .ts_plot import plot_series
+from .bar_plot import plot_bar
 from .sc_plot import plot_scatter
 from .acf_plot import plot_acf, plot_correlogram, plot_pacf
 from .lag_plot import plot_lag_response
@@ -50,6 +56,7 @@ from .matrix_plot import plot_correlation_matrix
 
 __all__ = [
     "plot_acf",
+    "plot_bar",
     "plot_correlation_matrix",
     "plot_correlogram",
     "plot_lag_response",
