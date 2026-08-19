@@ -604,7 +604,7 @@ fig, axes = plot_lag_response(
 
 ## 设计说明
 
-- **柱线混合层级**：柱线混合图默认**线在柱的前面**（z-order 契约：柱 `ZORDER_BAR=1` < 网格线（默认 2）< 线 `ZORDER_LINE=3`），由 `style.py` 的角色常量保证，不依赖 matplotlib 默认值。
+- **统一分层角色**：所有图表的堆叠层级由 `style.py` 的**角色常量**统一配置，绘图模块**禁止出现裸数字 zorder**。自底向上：背景填充 `ZORDER_BACKGROUND=0`（阴影/置信带）< 网格 `ZORDER_GRID=0.5` < 柱 `ZORDER_BAR=1` < 拟合线 `ZORDER_FIT=2` < 数据线/散点 `ZORDER_LINE=3` < 标注线 `ZORDER_REFERENCE=4`（`vlines` / `hlines` / 临界线 / 零值基准线）< 关键点高亮 `ZORDER_HIGHLIGHT=5`（检验统计量、特征根）。柱线混合图因此默认**网格在柱后、线在柱前、标注线在最前**，不依赖 matplotlib 默认值。
 - **柱绘制单一实现**：`bar_plot._draw_bars` 是柱绘制的唯一实现，`plot_bar` 与 `plot_series(bar_series=...)` 的柱部分都经由它，柱样式契约（`bar_alpha` / `bar_edge_color` / `bar_edge_linewidth`，默认柱边为浅灰 `BAR_EDGE_COLOR`）保持一致。
 - **默认调色模板**：`DEFAULT_PALETTE` 以 **黑 / 深蓝 / 灰 / 深红** 四主色引导，扩展 4 个同族派生色；主色与装饰色全部通过 `TsPlots.style.py` 中的**具名角色**引用。绘图代码（含 `TsModels` / `TsTests` / `TsSims` 的绘图方法）**禁止出现裸色值**——如需改色，只改 `style.py`。
 - **黑白可区分**：系列同时使用颜色、线型和标记三重编码；偶数索引系列使用实心标记，奇数索引使用空心标记。

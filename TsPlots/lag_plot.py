@@ -13,6 +13,9 @@ from .style import (
     TIGHT_PAD,
     INK,
     ZERO_LINE_COLOR,
+    ZORDER_BAR,
+    ZORDER_LINE,
+    ZORDER_REFERENCE,
     _ensure_fonts,
     _facet_grid,
     _fig_axes,
@@ -170,14 +173,20 @@ def plot_lag_response(
     lags = frame.index.to_numpy(dtype=int)
     for position, (name, axis) in enumerate(zip(frame.columns, axes, strict=True)):
         if zero_line:
-            axis.axhline(0.0, color=ZERO_LINE_COLOR, linewidth=0.8, zorder=1)
+            # 标注线契约：零值基准线与其他标注线一样渲染在最前。
+            axis.axhline(
+                0.0,
+                color=ZERO_LINE_COLOR,
+                linewidth=0.8,
+                zorder=ZORDER_REFERENCE,
+            )
         bars = axis.bar(
             lags,
             frame[name].to_numpy(),
             width=0.65,
             color=colors[position],
             label=("Sample impulse response" if line_frame is not None else None),
-            zorder=2,
+            zorder=ZORDER_BAR,
         )
         if line_frame is not None:
             transfer_line = axis.plot(
@@ -186,7 +195,7 @@ def plot_lag_response(
                 color=line_color,
                 linewidth=2.0,
                 label="Transfer-function weights",
-                zorder=3,
+                zorder=ZORDER_LINE,
             )[0]
             draw_legend(axis, handles=[bars, transfer_line])
         axis.set_xlabel(xtitle, fontsize=AXIS_LABEL_FONTSIZE)

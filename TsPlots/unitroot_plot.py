@@ -20,6 +20,9 @@ from .style import (
     FIGSIZE,
     TITLE_FONTSIZE,
     TIGHT_PAD,
+    ZORDER_HIGHLIGHT,
+    ZORDER_LINE,
+    ZORDER_REFERENCE,
     draw_legend,
     style_axes,
 )
@@ -81,6 +84,7 @@ def _render_critical_value_plot(result, test_name, ax=None):
             linewidth=1.5 if i == 1 else 1.0,
             alpha=0.8,
             label=f"{lab} critical value: {cv:.3f}",
+            zorder=ZORDER_REFERENCE,
         )
 
     # Test statistic as a scatter point
@@ -89,7 +93,7 @@ def _render_critical_value_plot(result, test_name, ax=None):
         result.statistic,
         color=DARK_RED,
         s=120,
-        zorder=5,
+        zorder=ZORDER_HIGHLIGHT,
         label=f"Test statistic: {result.statistic:.3f}",
     )
 
@@ -133,6 +137,7 @@ def _render_tstat_plot(result, ax=None):
         markeredgecolor=BLACK,
         markeredgewidth=1.5,
         label="t(rho-hat)",
+        zorder=ZORDER_LINE,
     )
 
     # Highlight the minimum
@@ -144,6 +149,7 @@ def _render_tstat_plot(result, ax=None):
         linewidth=1.5,
         alpha=0.7,
         label=f"Optimal break: {years[min_idx]:.0f}",
+        zorder=ZORDER_REFERENCE,
     )
 
     # Critical value lines
@@ -154,6 +160,7 @@ def _render_tstat_plot(result, ax=None):
         linewidth=1.5,
         alpha=0.8,
         label=f"5% critical value ({result.cv_05:.2f})",
+        zorder=ZORDER_REFERENCE,
     )
     ax.axhline(
         result.cv_01,
@@ -162,6 +169,7 @@ def _render_tstat_plot(result, ax=None):
         linewidth=1.5,
         alpha=0.8,
         label=f"1% critical value ({result.cv_01:.2f})",
+        zorder=ZORDER_REFERENCE,
     )
 
     ax.set_xlabel("Break year")
@@ -205,6 +213,7 @@ def _render_ic_plot(result, ax=None):
         markerfacecolor=WHITE,
         markeredgecolor=BLACK,
         markeredgewidth=1.5,
+        zorder=ZORDER_LINE,
     )
 
     # Highlight minimum
@@ -215,6 +224,7 @@ def _render_ic_plot(result, ax=None):
         linewidth=1.5,
         alpha=0.7,
         label=f"Optimal k = {best_k}",
+        zorder=ZORDER_REFERENCE,
     )
 
     ax.set_xlabel("Number of lags (k)")

@@ -45,6 +45,8 @@ def _plot_inverse_roots(
         TIGHT_PAD,
         TICK_LABELSIZE,
         TITLE_FONTSIZE,
+        ZORDER_GRID,
+        ZORDER_HIGHLIGHT,
         _ensure_fonts,
         _fig_axes,
         draw_legend,
@@ -62,9 +64,10 @@ def _plot_inverse_roots(
         color=GRID_GRAY,
         linewidth=1.0,
         linestyle="--",
+        zorder=ZORDER_GRID,
     )
-    ax.axhline(0, color=GRID_GRAY, linewidth=0.5, alpha=0.5)
-    ax.axvline(0, color=GRID_GRAY, linewidth=0.5, alpha=0.5)
+    ax.axhline(0, color=GRID_GRAY, linewidth=0.5, alpha=0.5, zorder=ZORDER_GRID)
+    ax.axvline(0, color=GRID_GRAY, linewidth=0.5, alpha=0.5, zorder=ZORDER_GRID)
 
     for index, (label, roots) in enumerate(groups.items()):
         ax.scatter(
@@ -75,7 +78,7 @@ def _plot_inverse_roots(
             s=50,
             edgecolors=ANNOTATION_EDGE,
             linewidth=0.5,
-            zorder=5,
+            zorder=ZORDER_HIGHLIGHT,
             label=label,
         )
 

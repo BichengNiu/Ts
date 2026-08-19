@@ -52,6 +52,8 @@ from .style import (
     _resolve_bar_colors,
     _set_lag_ticks,
     _validate_max_ticks,
+    ZORDER_BACKGROUND,
+    ZORDER_BAR,
     draw_note_and_bottom_title,
     place_ylabel_at_top,
     style_axes,
@@ -192,7 +194,7 @@ def _draw_correlogram(
         color=band_color,
         alpha=band_alpha,
         linewidth=0,
-        zorder=0,
+        zorder=ZORDER_BACKGROUND,
     )
 
     # --- Correlation bars --------------------------------------------------
@@ -201,7 +203,7 @@ def _draw_correlogram(
         values,
         width=0.3,
         color=bar_color,
-        zorder=2,
+        zorder=ZORDER_BAR,
     )
 
     # --- Axis labels -------------------------------------------------------

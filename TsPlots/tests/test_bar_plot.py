@@ -9,6 +9,13 @@ import matplotlib.pyplot as plt
 from Ts.TsPlots import plot_bar, plot_series
 from Ts.TsPlots.style import (
     BAR_EDGE_COLOR,
+    ZORDER_BACKGROUND,
+    ZORDER_BAR,
+    ZORDER_FIT,
+    ZORDER_GRID,
+    ZORDER_HIGHLIGHT,
+    ZORDER_LINE,
+    ZORDER_REFERENCE,
     _body_font_family,
     _title_font_family,
 )
@@ -395,6 +402,94 @@ class TestPlotBar:
         all_lines = list(ax2.lines) + list(ax2.right_ax.lines)
         assert all(line.get_zorder() > min_bar2 for line in all_lines)
         plt.close(fig2)
+
+    def test_reference_lines_render_in_front(self):
+        """模板契约：标注线（vlines / hlines）渲染在最前，高于线与柱。"""
+        data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
+
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+            vlines=[1],
+            grid=True,
+        )
+        line_zorders = {line.get_zorder() for line in ax.lines}
+        # 数据线在 ZORDER_LINE，标注线在 ZORDER_REFERENCE（最高层）。
+        assert ZORDER_LINE in line_zorders
+        assert ZORDER_REFERENCE in line_zorders
+        assert max(line_zorders) == ZORDER_REFERENCE
+        assert max(patch.get_zorder() for patch in ax.patches) < ZORDER_LINE
+        plt.close(fig)
+
+        # plot_bar 的 hlines / vlines 同样最前（纯柱图无数据线）。
+        fig2, ax2 = plot_bar(
+            pd.DataFrame({"a": [1, 2], "b": [3, 4]}),
+            hlines=[2],
+            vlines=[0.5],
+            grid=True,
+        )
+        line_zorders2 = {line.get_zorder() for line in ax2.lines}
+        assert ZORDER_REFERENCE in line_zorders2
+        assert max(line_zorders2) == ZORDER_REFERENCE
+        assert max(patch.get_zorder() for patch in ax2.patches) < ZORDER_REFERENCE
+        plt.close(fig2)
+
+    def test_grid_is_behind_bars(self):
+        """模板契约：网格永远在柱的后面（ZORDER_GRID < 柱 < 线 < 标注线）。"""
+        fig, ax = plot_bar(
+            pd.DataFrame({"a": [1, 2], "b": [3, 4]}),
+            grid=True,
+            hlines=[2],
+            vlines=[0.5],
+        )
+        grid_zorders = {
+            line.get_zorder()
+            for line in [*ax.get_xgridlines(), *ax.get_ygridlines()]
+            if line.get_visible()
+        }
+        assert grid_zorders, "grid lines must be visible"
+        assert max(grid_zorders) < ZORDER_BAR
+        assert max(grid_zorders) < min(
+            patch.get_zorder() for patch in ax.patches
+        )
+        plt.close(fig)
+
+        # plot_series 柱线混合图：网格同样沉在柱与线之下。
+        fig2, ax2 = plot_series(
+            {"volume": [1, 2, 3], "price": [10, 20, 30]},
+            facet=False,
+            auto_dual_y=False,
+            bar_series=["volume"],
+            grid=True,
+        )
+        grid_zorders2 = {
+            line.get_zorder()
+            for line in [*ax2.get_xgridlines(), *ax2.get_ygridlines()]
+            if line.get_visible()
+        }
+        assert max(grid_zorders2) < min(
+            patch.get_zorder() for patch in ax2.patches
+        )
+        assert max(grid_zorders2) < min(
+            line.get_zorder()
+            for line in ax2.lines
+            if line.get_zorder() >= ZORDER_LINE
+        )
+        plt.close(fig2)
+
+    def test_zorder_contract_constants_ordered(self):
+        """统一角色阶梯：背景0 < 网格0.5 < 柱1 < 拟合2 < 线3 < 标注4 < 高亮5。"""
+        assert (
+            ZORDER_BACKGROUND
+            < ZORDER_GRID
+            < ZORDER_BAR
+            < ZORDER_FIT
+            < ZORDER_LINE
+            < ZORDER_REFERENCE
+            < ZORDER_HIGHLIGHT
+        )
 
     def test_unit_labels_appended(self):
         fig, ax = plot_bar(

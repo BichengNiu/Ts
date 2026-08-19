@@ -51,6 +51,8 @@ from .style import (
     ANNOTATION_FONTSIZE,
     TITLE_PAD,
     AXIS_LABEL_FONTSIZE,
+    ZORDER_FIT,
+    ZORDER_LINE,
     REFERENCE_LINE_COLOR,
     REFERENCE_LINE_STYLE,
     REFERENCE_LINE_WIDTH,
@@ -340,7 +342,7 @@ def plot_scatter(
             linewidths=marker_edge_width,
             alpha=alpha,
             label=label,
-            zorder=3,
+            zorder=ZORDER_LINE,
         )
 
         if fit_line:
@@ -356,7 +358,7 @@ def plot_scatter(
                     color=color,
                     linestyle=fit_linestyle,
                     linewidth=fit_linewidth,
-                    zorder=2,
+                    zorder=ZORDER_FIT,
                 )
 
         if show_values:

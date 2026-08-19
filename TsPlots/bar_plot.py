@@ -610,7 +610,7 @@ def plot_bar(
                     label=label,
                     horizontal=True,
                     left=bottoms.copy(),
-                    zorder=2,
+                    zorder=ZORDER_BAR,
                 )
             else:
                 _draw_bars(
@@ -624,7 +624,7 @@ def plot_bar(
                     alpha=bar_alpha,
                     label=label,
                     horizontal=True,
-                    zorder=2,
+                    zorder=ZORDER_BAR,
                 )
             if show_values:
                 ends = bottoms + finite
@@ -646,7 +646,7 @@ def plot_bar(
                     alpha=bar_alpha,
                     label=label,
                     bottom=bottoms.copy(),
-                    zorder=2,
+                    zorder=ZORDER_BAR,
                 )
             else:
                 _draw_bars(
@@ -659,7 +659,7 @@ def plot_bar(
                     edge_linewidth=bar_edge_linewidth,
                     alpha=bar_alpha,
                     label=label,
-                    zorder=2,
+                    zorder=ZORDER_BAR,
                 )
             if show_values:
                 tops = bottoms + finite

@@ -18,7 +18,9 @@ Constants
     ``SHADE_COLOR``, ``BAND_COLOR``, ``BAR_EDGE_COLOR``),
     ``DEFAULT_LINESTYLES``, ``DEFAULT_MARKERS`` plus cosmetic size constants
     (figure size, font sizes, unit colour) and the data-stacking z-order
-    contract (``ZORDER_BAR`` / ``ZORDER_LINE``).
+    contract (``ZORDER_BACKGROUND`` / ``ZORDER_GRID`` / ``ZORDER_BAR`` /
+    ``ZORDER_FIT`` / ``ZORDER_LINE`` / ``ZORDER_REFERENCE`` /
+    ``ZORDER_HIGHLIGHT``).
 Functions
     ``apply_fonts``, ``style_axes``, ``draw_shade``, ``draw_vlines``,
     ``draw_hlines``, ``draw_legend``, ``draw_unit_label``,
@@ -171,10 +173,21 @@ BAND_COLOR = SHADE_COLOR  # confidence-band fill alias
 BAR_EDGE_COLOR = SHADE_COLOR  # default bar edge (light gray family)
 
 # --- Z-order contract (data stacking) --------------------------------------
-# 柱线混合图（plot_series 的 bar_series / plot_bar 叠加场景）模板默认保证
-# 线渲染在柱的前面：柱 ZORDER_BAR=1 < 网格线（默认 2）< 线 ZORDER_LINE=3。
+# 全包统一的分层角色常量：绘图模块**禁止出现裸数字 zorder**，一律引用本组
+# 常量，保证任一图表（柱线混合、ACF、脉冲响应、散点、单位根、根分布）的
+# 堆叠层级一致。阶梯自底向上：
+#   ZORDER_BACKGROUND=0  <  ZORDER_GRID=0.5  <  ZORDER_BAR=1
+#   <  ZORDER_FIT=2  <  ZORDER_LINE=3  <  ZORDER_REFERENCE=4
+#   <  ZORDER_HIGHLIGHT=5
+# 语义：背景填充（阴影/置信带）→ 网格线 → 柱 → 拟合/次级数据线 → 数据线/
+# 散点 → 标注/临界参考线 → 最显眼的关键点高亮（如检验统计量、特征根）。
+ZORDER_BACKGROUND = 0  # 阴影 / 置信带等背景填充
+ZORDER_GRID = 0.5  # 网格线永远在数据（柱/线）之后
 ZORDER_BAR = 1
-ZORDER_LINE = 3
+ZORDER_FIT = 2  # 拟合线 / 次级数据线（在数据标记之下）
+ZORDER_LINE = 3  # 数据线与数据散点
+ZORDER_REFERENCE = 4  # 参考/标注线（vlines / hlines / 临界线 / 零值基准线）
+ZORDER_HIGHLIGHT = 5  # 关键点高亮（检验统计量、特征根位置等）
 
 # Distinct line styles so series remain distinguishable in grayscale / B&W print
 DEFAULT_LINESTYLES = [
@@ -413,6 +426,8 @@ def style_axes(
             alpha=0.4,
             linestyle=grid_linestyle,
             linewidth=grid_linewidth,
+            # 模板契约：网格永远在数据（柱/线）之后（ZORDER_GRID < ZORDER_BAR）。
+            zorder=ZORDER_GRID,
         )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -442,7 +457,7 @@ def draw_shade(ax, shade, color, alpha):
             color=color,
             alpha=alpha,
             linewidth=0,
-            zorder=0,
+            zorder=ZORDER_BACKGROUND,
         )
 
 
@@ -470,7 +485,7 @@ def draw_vlines(ax, vlines, color, linestyle, linewidth):
             color=color,
             linestyle=linestyle,
             linewidth=linewidth,
-            zorder=1,
+            zorder=ZORDER_REFERENCE,
         )
 
 
@@ -498,7 +513,7 @@ def draw_hlines(ax, hlines, color, linestyle, linewidth):
             color=color,
             linestyle=linestyle,
             linewidth=linewidth,
-            zorder=1,
+            zorder=ZORDER_REFERENCE,
         )
 
 
