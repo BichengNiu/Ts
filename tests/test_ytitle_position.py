@@ -22,28 +22,35 @@ def _ylabel_state(ax) -> tuple[str, float, tuple[float, float]]:
 
 
 def test_plot_series_default_is_top_end_horizontal() -> None:
-    fig, ax = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]}, facet=False)
+    fig, ax = plot_series(
+        {"a": [1, 2, 3], "b": [3, 2, 1]}, facet=False, ytitle="产出"
+    )
     text, rotation, (x, y) = _ylabel_state(ax)
-    assert text == "Value"
+    assert text == "产出"
     assert rotation == 0
     assert x == 0  # 正对 y 轴轴心
     assert y > 1
 
+    # 设计契约：不传 ytitle / unit 时默认不显示 y 轴标题。
+    fig2, ax2 = plot_series({"a": [1, 2, 3]}, facet=False)
+    assert _ylabel_state(ax2)[0] == ""
+
 
 def test_plot_series_side_keeps_traditional_layout() -> None:
     fig, ax = plot_series(
-        {"a": [1, 2, 3]}, facet=False, ytitle_position="side"
+        {"a": [1, 2, 3]}, facet=False, ytitle_position="side", ytitle="产出"
     )
     text, rotation, (x, y) = _ylabel_state(ax)
-    assert text == "Value"
+    assert text == "产出"
     assert rotation == 90
     assert y == 0.5
 
 
 def test_plot_series_facet_panels_use_top_layout() -> None:
-    fig, axes = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]})
+    fig, axes = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]}, ytitle="产出")
     for panel in np.asarray(axes).ravel():
-        _, rotation, (x, y) = _ylabel_state(panel)
+        text, rotation, (x, y) = _ylabel_state(panel)
+        assert text == "产出"
         assert rotation == 0
         assert y > 1
 
@@ -60,11 +67,12 @@ def test_plot_series_left_title_moves_right_of_top_ylabel() -> None:
         title="左侧标题",
         title_loc="left",
         ytitle_position="top",
+        ytitle="产出",
         facet=False,
     )
     label = ax.yaxis.get_label()
     text, rotation, (x, y) = _ylabel_state(ax)
-    assert text == "Value"
+    assert text == "产出"
     assert rotation == 0
     assert label.get_ha() == "center"
     assert x == 0  # y 轴标题仍正对轴心，位置不变
@@ -80,7 +88,7 @@ def test_plot_series_left_title_moves_right_of_top_ylabel() -> None:
 
 def test_plot_series_facet_panel_titles_centered() -> None:
     """分面面板标题默认上居中，y 标题置顶时互不重叠。"""
-    fig, axes = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]})
+    fig, axes = plot_series({"a": [1, 2, 3], "b": [3, 2, 1]}, ytitle="产出")
     for panel in np.asarray(axes).ravel():
         label = panel.yaxis.get_label()
         assert label.get_rotation() == 0
