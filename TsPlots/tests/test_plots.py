@@ -330,10 +330,16 @@ class TestPlotSeries:
 
     def test_legend_below_year_ruler(self):
         idx = pd.date_range("2020-01", periods=24, freq="MS")
+        rng = np.random.default_rng(1)
         fig, ax = plot_series(
-            pd.Series(
-                np.random.default_rng(1).normal(size=24), index=idx, name="s"
+            pd.DataFrame(
+                {
+                    "a": rng.normal(size=24),
+                    "b": rng.normal(size=24),
+                },
+                index=idx,
             ),
+            facet=False,
             year_ruler=True,
         )
         legend = ax.get_legend()
@@ -469,9 +475,30 @@ class TestPlotSeries:
         ]
         plt.close(fig4)
 
+    def test_single_series_has_no_legend_by_default(self):
+        """模板契约：单序列图默认不显示图例（一条线/柱无需图例）。"""
+        # 单序列默认无图例。
+        fig, ax = plot_series({"a": [1, 2, 3]}, facet=False)
+        assert ax.get_legend() is None
+        plt.close(fig)
+
+        # 单序列 + 显式 legend_labels：仍显示（允许用户自定义单序列图例文字）。
+        fig2, ax2 = plot_series(
+            {"a": [1, 2, 3]}, facet=False, legend_labels=["自定义甲"]
+        )
+        legend2 = ax2.get_legend()
+        assert legend2 is not None
+        assert [t.get_text() for t in legend2.get_texts()] == ["自定义甲"]
+        plt.close(fig2)
+
+        # 多序列不受影响，仍显示图例。
+        fig3, ax3 = plot_series({"a": [1, 2], "b": [2, 3]}, facet=False)
+        assert ax3.get_legend() is not None
+        plt.close(fig3)
+
     def test_note_below_legend_in_bottom_margin(self):
         fig, ax = plot_series(
-            {"a": [1, 2, 3]},
+            {"a": [1, 2, 3], "b": [2, 3, 4]},
             facet=False,
             note="数据来源：原始数据",
         )

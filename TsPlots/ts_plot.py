@@ -1393,7 +1393,10 @@ def plot_series(
         right_axis.yaxis.tick_right()
 
     bottom_legend = None
-    if show_legend and lines:
+    # 单序列且未显式自定义图例（legend_labels）时，默认不显示图例——
+    # 只有一条数据线/柱时图例冗余。多序列或显式给出图例文字则照常显示。
+    single_series_plain = len(series) == 1 and legend_labels is None
+    if show_legend and lines and not single_series_plain:
         if legend_loc is None and legend_bbox is None:
             # 默认：图例放在时间轴/年份标签下方（绘图区外），由
             # draw_note_and_bottom_title 在图注上方统一排版。
