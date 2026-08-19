@@ -118,6 +118,7 @@ def _draw_bars(
     bottom=None,
     left=None,
     zorder=ZORDER_BAR,
+    x_offset=0.0,
 ):
     """Draw one bar series with the single shared TsPlots bar cosmetics.
 
@@ -156,6 +157,10 @@ def _draw_bars(
     zorder : float
         Artist z-order. Defaults to ``ZORDER_BAR`` so that lines drawn with
         ``ZORDER_LINE`` render in front of bars in bar-line mixed charts.
+    x_offset : float
+        Shift every bar along x by this amount (data units). ``plot_series``
+        uses it to side-by-side several bar series at the same timestamp;
+        category :func:`plot_bar` passes its own grouping and leaves it 0.
 
     Returns
     -------
@@ -164,9 +169,10 @@ def _draw_bars(
         contract of one artist per series.
     """
     edge = edge_color if edge_color is not None else color
+    shifted = np.asarray(positions, dtype=float) + x_offset
     if horizontal:
         container = ax.barh(
-            positions,
+            shifted,
             heights,
             height=width,
             left=left,
@@ -179,7 +185,7 @@ def _draw_bars(
         )
     else:
         container = ax.bar(
-            positions,
+            shifted,
             heights,
             width=width,
             bottom=bottom,

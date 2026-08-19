@@ -496,6 +496,38 @@ class TestPlotSeries:
         assert ax3.get_legend() is not None
         plt.close(fig3)
 
+    def test_multiple_bar_series_are_side_by_side(self):
+        """模板契约：同一时间点存在多根柱（多个 bar_series）时并排错开。"""
+        # 双 bar 系列分居左右轴：同一时间点上两根柱 x 起点不同（并排而非重叠），
+        # 且显式 bar_width 被对半分给两根柱（2 根并排、组宽保持不变）。
+        width = 10.0
+        fig, ax = plot_series(
+            {"a": [1, 2, 3], "b": [100, 200, 300]},
+            facet=False,
+            axis_groups={"a": "left", "b": "right"},
+            bar_series=["a", "b"],
+            bar_width=width,
+        )
+        left_x = [p.get_x() for p in ax.patches]
+        right_x = [p.get_x() for p in ax.right_ax.patches]
+        assert left_x and right_x
+        assert all(l != r for l, r in zip(left_x, right_x))
+        assert ax.patches[0].get_width() == pytest.approx(width / 2)
+        assert ax.right_ax.patches[0].get_width() == pytest.approx(width / 2)
+        plt.close(fig)
+
+        # 单 bar 系列：柱宽不变、不偏移（柱仍居中于数据点）。
+        fig2, ax2 = plot_series(
+            {"a": [1, 2, 3]},
+            facet=False,
+            bar_series=["a"],
+            bar_width=width,
+        )
+        assert ax2.patches[0].get_width() == pytest.approx(width)
+        # 数据点 2 → 柱中心 2（x 起点 = 2 - width/2）。
+        assert ax2.patches[2].get_x() + ax2.patches[2].get_width() / 2 == 2
+        plt.close(fig2)
+
     def test_note_below_legend_in_bottom_margin(self):
         fig, ax = plot_series(
             {"a": [1, 2, 3], "b": [2, 3, 4]},

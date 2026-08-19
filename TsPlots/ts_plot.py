@@ -505,6 +505,7 @@ def _plot_one_series(
     bar_edge_linewidth=0.6,
     bar_alpha=1.0,
     bar_face_color=None,
+    bar_x_offset=0.0,
 ):
     """Draw one series, either as a bar chart or as a line.
 
@@ -529,6 +530,7 @@ def _plot_one_series(
             edge_linewidth=bar_edge_linewidth,
             alpha=bar_alpha,
             label=label,
+            x_offset=bar_x_offset,
         )
 
     linestyle = DEFAULT_LINESTYLES[index % len(DEFAULT_LINESTYLES)]
@@ -1092,6 +1094,16 @@ def plot_series(
     vlines = _clip_vlines_to_data(vlines, x_values)
     resolved_bar_width = _resolve_bar_width(x_values, bar_width)
 
+    # 时间序列叠加（非分面）场景：同一时间点上有多根柱（多个 bar_series）
+    # 时，把各系列的柱按系列顺序并排错开，整组宽度仍约为一个柱位宽。
+    # 单柱或柱线混合（仅一根柱）时完全不偏移，保持原行为。
+    _n_bars = len(bar_series) if (not facet) else 0
+    _bar_offsets = {}
+    if _n_bars > 1:
+        _bar_step = resolved_bar_width / _n_bars
+        for _i, _lbl in enumerate(bar_series):
+            _bar_offsets[_lbl] = (_i - (_n_bars - 1) / 2) * _bar_step
+
     def _draw_one(target_ax, label, values, index):
         """Draw reference regions and one series on *target_ax*."""
         draw_shade(target_ax, shade, shade_color, shade_alpha)
@@ -1102,6 +1114,7 @@ def plot_series(
             vline_linestyle,
             vline_linewidth,
         )
+        is_bar = label in bar_series
         return _plot_one_series(
             target_ax,
             x_values,
@@ -1114,12 +1127,16 @@ def plot_series(
             marker_edge_width=marker_edge_width,
             show_values=show_values,
             value_decimals=value_decimals,
-            is_bar=label in bar_series,
-            bar_width=resolved_bar_width,
+            is_bar=is_bar,
+            bar_width=(
+                resolved_bar_width / _n_bars if is_bar and _n_bars > 1
+                else resolved_bar_width
+            ),
             bar_edge_color=bar_edge_color,
             bar_edge_linewidth=bar_edge_linewidth,
             bar_alpha=bar_alpha,
             bar_face_color=bar_face_color,
+            bar_x_offset=_bar_offsets.get(label, 0.0),
         )
 
     if facet and len(series) >= 2:
