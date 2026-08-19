@@ -752,6 +752,7 @@ def plot_series(
     max_y_axes: int = 3,
     ax=None,
     unit: str | None = None,
+    units: Mapping[str, str | None] | None = None,
     bar_series: str | list[str] | None = None,
     bar_width: float | None = None,
     bar_edge_color: str | None = BAR_EDGE_COLOR,
@@ -968,6 +969,12 @@ def plot_series(
         标题即为 ``（单位：XX）``，不再出现变量名；传了 ``ytitle`` 或
         ``second_axis_title`` / ``third_axis_title`` 时单位追加在其后。
         Defaults to None.
+    units : mapping of str to str, optional
+        Per-series unit labels read from source metadata. When ``ytitle`` or
+        an extra-axis title is omitted, the corresponding axis displays the
+        unit of its series as a plain label. Series sharing one axis must have
+        the same non-empty unit; omitted values leave that axis title blank.
+        Explicit axis-title arguments take precedence. Defaults to None.
     bar_series : str or list of str, optional
         Labels of series to draw as bars instead of lines. Bars inherit their
         face colour from ``colors`` (or the palette) and are drawn on the
@@ -1074,6 +1081,16 @@ def plot_series(
         labels = _validate_label_count("labels", labels, len(series))
         series = {labels[i]: v for i, v in enumerate(series.values())}
 
+    if units is not None:
+        if not isinstance(units, Mapping):
+            raise TypeError("units must be a mapping from series labels to units")
+        unknown_units = sorted(set(units) - set(series))
+        if unknown_units:
+            raise ValueError(
+                "units contains unknown series labels: "
+                f"{unknown_units}; available: {list(series)}"
+            )
+
     legend_labels = _validate_label_count("legend_labels", legend_labels, len(series))
 
     if ytitle_position not in ("top", "side"):
@@ -1093,6 +1110,25 @@ def plot_series(
 
     vlines = _clip_vlines_to_data(vlines, x_values)
     resolved_bar_width = _resolve_bar_width(x_values, bar_width)
+
+    def _axis_unit(axis_labels):
+        """Return the single unit shared by an axis, if one is supplied."""
+
+        if units is None:
+            return None
+        axis_units = {
+            str(units[label]).strip()
+            for label in axis_labels
+            if label in units
+            and units[label] is not None
+            and str(units[label]).strip()
+        }
+        if len(axis_units) > 1:
+            raise ValueError(
+                "series sharing one y-axis must use the same unit; "
+                f"labels={list(axis_labels)}, units={sorted(axis_units)}"
+            )
+        return next(iter(axis_units), None)
 
     # 时间序列叠加（非分面）场景：同一时间点上有多根柱（多个 bar_series）
     # 时，把各系列的柱按系列顺序并排错开，整组宽度仍约为一个柱位宽。
@@ -1192,12 +1228,15 @@ def plot_series(
                 pad=PANEL_TITLE_PAD,
             )
             # 轴标题默认只显示单位（分面各面板同理）。
+            panel_unit = _axis_unit((label,))
             if ytitle is not None:
                 panel_ax.set_ylabel(ytitle, fontsize=AXIS_LABEL_FONTSIZE)
                 panel_unit = unit
             else:
                 panel_ax.set_ylabel(
-                    f"（单位：{unit}）" if unit is not None else "",
+                    panel_unit
+                    if panel_unit is not None
+                    else f"（单位：{unit}）" if unit is not None else "",
                     fontsize=AXIS_LABEL_FONTSIZE,
                 )
                 panel_unit = None
@@ -1337,6 +1376,7 @@ def plot_series(
         fontsize=AXIS_LABEL_FONTSIZE,
         loc=xtitle_loc,
     )
+    axis_units = [_axis_unit(group_labels) for group_labels in resolved_groups]
     # 轴标题默认只显示单位：不传 ytitle 时给出 unit 则标题为「（单位：XX）」，
     # 否则不显示；显式 ytitle 时保留并让 finalize 追加单位。
     if ytitle is not None:
@@ -1344,7 +1384,9 @@ def plot_series(
         yunit_applied = unit
     else:
         ax.set_ylabel(
-            f"（单位：{unit}）" if unit is not None else "",
+            axis_units[0]
+            if axis_units[0] is not None
+            else f"（单位：{unit}）" if unit is not None else "",
             fontsize=AXIS_LABEL_FONTSIZE,
         )
         yunit_applied = None  # 默认标题已含单位，避免 finalize 重复追加
@@ -1395,6 +1437,11 @@ def plot_series(
         override = right_axis_titles.get(group_index)
         if override is not None:
             right_axis.set_ylabel(override, fontsize=AXIS_LABEL_FONTSIZE)
+        elif axis_units[group_index] is not None:
+            right_axis.set_ylabel(
+                axis_units[group_index],
+                fontsize=AXIS_LABEL_FONTSIZE,
+            )
         elif unit is not None:
             # 轴标题只显示单位，不再自动拼接该轴上的变量名。
             right_axis.set_ylabel(f"（单位：{unit}）", fontsize=AXIS_LABEL_FONTSIZE)

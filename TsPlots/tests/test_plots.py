@@ -432,6 +432,39 @@ class TestPlotSeries:
             assert panel.get_ylabel() == "（单位：%）"
         plt.close(fig)
 
+    def test_per_series_units_drive_overlay_axis_titles(self):
+        fig, ax = plot_series(
+            {"price": [10, 11, 12], "revenue": [100, 110, 120]},
+            facet=False,
+            axis_groups={"price": "left", "revenue": "right"},
+            units={"price": "美元/桶", "revenue": "亿美元"},
+        )
+
+        assert ax.get_ylabel() == "美元/桶"
+        assert ax.right_ax.get_ylabel() == "亿美元"
+        assert [text.get_text() for text in ax.get_legend().get_texts()] == [
+            "price（左轴）",
+            "revenue（右轴）",
+        ]
+        plt.close(fig)
+
+    def test_per_series_units_reject_mixed_units_on_one_axis(self):
+        with pytest.raises(ValueError, match="same unit"):
+            plot_series(
+                {"a": [1, 2], "b": [2, 3]},
+                facet=False,
+                auto_dual_y=False,
+                units={"a": "人", "b": "家"},
+            )
+
+    def test_per_series_units_work_for_facets(self):
+        fig, axes = plot_series(
+            {"a": [1, 2], "b": [2, 3]},
+            units={"a": "人", "b": "家"},
+        )
+        assert [axis.get_ylabel() for axis in axes] == ["人", "家"]
+        plt.close(fig)
+
     def test_dual_axis_legend_role_suffix(self):
         # 双轴图：图例文字统一为「变量名（左轴/右轴）」。
         fig, ax = plot_series(
