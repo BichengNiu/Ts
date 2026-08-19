@@ -169,10 +169,18 @@ def _draw_bars(
         contract of one artist per series.
     """
     edge = edge_color if edge_color is not None else color
-    shifted = np.asarray(positions, dtype=float) + x_offset
+    positions = np.asarray(positions)
+    # x_offset 按“数据单位”平移柱位置。时间序列下 positions 是 datetime64，
+    # x_offset 以“天”计（见 _resolve_bar_width）；分类/日期数值直接用数值偏移。
+    if not x_offset:
+        draw_positions = positions
+    elif np.issubdtype(positions.dtype, np.datetime64):
+        draw_positions = positions + np.timedelta64(int(round(x_offset)), "D")
+    else:
+        draw_positions = positions.astype(float) + x_offset
     if horizontal:
         container = ax.barh(
-            shifted,
+            draw_positions,
             heights,
             height=width,
             left=left,
@@ -185,7 +193,7 @@ def _draw_bars(
         )
     else:
         container = ax.bar(
-            shifted,
+            draw_positions,
             heights,
             width=width,
             bottom=bottom,
