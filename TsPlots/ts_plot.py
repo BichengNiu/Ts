@@ -649,6 +649,42 @@ def _thin_x_labels(ax, *, count=None) -> None:
     )
 
 
+def _lift_line_axes_above_bar_axes(ax, right_axes, axis_by_label, bar_series) -> None:
+    """柱线混合、柱与线分处不同坐标轴时，把“含线（非柱）”坐标轴垫到柱轴之上。
+
+    模板契约要求线总是渲染在柱的前面。单轴柱线混合作图时这由同一坐标轴内的
+    图元 zorder 保证（``ZORDER_BAR=1 < ZORDER_LINE=3``）；但当柱和线被分到
+    不同坐标轴（如 ``axis_groups`` 双轴、或 ``second_axis_vars`` 多轴），
+    matplotlib 的跨轴叠放**不受图元 zorder 控制**，而是由每根坐标轴的
+    ``Axes.zorder``（相同 zorder 时按添加顺序，后添加的 twinx 轴绘制在上）
+    决定——如果线所在轴没有垫高，柱轴会整层盖住线。
+
+    这里把「只有线、没有柱」的坐标轴 zorder 统一垫到所有柱轴之上，并把
+    被垫高坐标轴的背景 patch 设为透明，避免其白底盖住柱轴的柱形。这样
+    双轴/多轴场景同样满足「线在柱前」，且不影响同一坐标轴内的既有次序
+    （网格 < 柱 < 线 < 标注线）。
+
+    参数与 ``plot_series`` 绘制阶段同名（均在作用域内）。
+    """
+    line_axes = {
+        axis for label, axis in axis_by_label.items() if label not in bar_series
+    }
+    bar_axes = {
+        axis for label, axis in axis_by_label.items() if label in bar_series
+    }
+    if not line_axes or not bar_axes:
+        return
+    # 只垫高“纯线”轴；柱线同轴的场景靠图元 zorder 已正确处理。
+    pure_line_axes = line_axes - bar_axes
+    if not pure_line_axes:
+        return
+    top_bar_zorder = max(axis.get_zorder() for axis in bar_axes)
+    target_zorder = top_bar_zorder + 1
+    for axis in pure_line_axes:
+        axis.set_zorder(target_zorder)
+        axis.patch.set_visible(False)
+
+
 def plot_series(
     data,
     x=None,
@@ -1412,4 +1448,5 @@ def plot_series(
         right_margin = max(0.5, 0.88 - 0.10 * (len(right_axes) - 1))
         fig.subplots_adjust(right=right_margin)
 
+    _lift_line_axes_above_bar_axes(ax, right_axes, axis_by_label, bar_series)
     return fig, ax

@@ -403,6 +403,35 @@ class TestPlotBar:
         assert all(line.get_zorder() > min_bar2 for line in all_lines)
         plt.close(fig2)
 
+    def test_bar_line_mix_dual_axis_line_axis_in_front(self):
+        """模板契约：柱与线分处不同坐标轴（双轴）时，含线坐标轴要垫到柱轴之上。
+
+        跨轴叠放由 ``Axes.zorder`` 决定（不受图元 zorder 控制），因此“线在柱前”
+        在双轴场景还要求：纯度线轴（只画线、不画柱）的 zorder 必须高于含柱轴。
+        """
+        # 柱在主轴的场景：volume 柱（left/主轴）、price 线（right/twinx）→ 线轴(twinx)在上。
+        fig, ax = plot_series(
+            {"volume": [1, 2, 3], "price": [100, 200, 300]},
+            facet=False,
+            axis_groups={"volume": "left", "price": "right"},
+            bar_series=["volume"],
+        )
+        assert ax.right_ax.get_zorder() > ax.get_zorder()
+        assert not ax.right_ax.patch.get_visible()  # 垫高轴白底透明，避免盖住柱
+        plt.close(fig)
+
+        # 线在主轴的场景：price 线（left/主轴）、volume 柱（right/twinx）→ 线轴(主轴)在上。
+        # （对应 HTFA「石油价格与阿联酋石油收入」图。）
+        fig2, ax2 = plot_series(
+            {"price": [10, 20, 30], "volume": [100, 200, 300]},
+            facet=False,
+            axis_groups={"price": "left", "volume": "right"},
+            bar_series=["volume"],
+        )
+        assert ax2.get_zorder() > ax2.right_ax.get_zorder()
+        assert not ax2.patch.get_visible()  # 被垫高的主轴白底透明
+        plt.close(fig2)
+
     def test_reference_lines_render_in_front(self):
         """模板契约：标注线（vlines / hlines）渲染在最前，高于线与柱。"""
         data = {"volume": [1, 2, 3], "price": [10, 20, 30]}
