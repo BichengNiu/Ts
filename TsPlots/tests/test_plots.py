@@ -22,6 +22,7 @@ from Ts.TsPlots.style import (
     DEFAULT_MARKERS,
     DEFAULT_PALETTE,
     _body_font_family,
+    format_compact_y_axis,
     _title_font_family,
 )
 
@@ -463,6 +464,27 @@ class TestPlotSeries:
             units={"a": "人", "b": "家"},
         )
         assert [axis.get_ylabel() for axis in axes] == ["人", "家"]
+        plt.close(fig)
+
+    def test_format_compact_y_axis_applies_descending_domain_rules(self):
+        fig, ax = plot_series(
+            {"amount": [100_000, 200_000]},
+            facet=False,
+            units={"amount": "百万迪拉姆"},
+        )
+        ax.set_ylim(0, 1_000_000)
+        format_compact_y_axis(
+            ax,
+            unit="百万迪拉姆",
+            rules={
+                "百万迪拉姆": (
+                    (100_000, 1_000_000, "万亿迪拉姆"),
+                    (0, 100, "亿迪拉姆"),
+                )
+            },
+        )
+        assert ax.get_ylabel() == "万亿迪拉姆"
+        assert ax.yaxis.get_major_formatter()(1_000_000, 0) == "1"
         plt.close(fig)
 
     def test_dual_axis_legend_role_suffix(self):

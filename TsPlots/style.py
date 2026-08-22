@@ -29,12 +29,13 @@ Functions
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 import math
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.colors import is_color_like
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 
 # --- Fonts -----------------------------------------------------------------
@@ -605,6 +606,70 @@ def draw_unit_label(ax, unit, *, axis="y"):
         ax.set_xlabel(f"{current}{text}" if current else text)
     else:
         raise ValueError(f"axis={axis!r} is not valid. Choose 'x' or 'y'.")
+
+
+def format_compact_y_axis(
+    axis,
+    *,
+    unit: str | None = None,
+    rules: Mapping[str, Sequence[tuple[float, float, str]]] | None = None,
+) -> None:
+    """Apply caller-provided compact units to a numeric y-axis.
+
+    Parameters
+    ----------
+    axis : matplotlib.axes.Axes
+        The y-axis to format.
+    unit : str, optional
+        The input unit used to select a rule. When omitted, the current
+        y-axis label is used.
+    rules : mapping, optional
+        Mapping from input unit to descending ``(threshold, divisor,
+        output_unit)`` rules. The first rule whose threshold is no greater
+        than the largest absolute y-limit is selected. Tick values are
+        divided by ``divisor`` and the axis label is replaced by
+        ``output_unit``.
+
+    Notes
+    -----
+    TsPlots does not prescribe domain-specific units. Callers can therefore
+    provide rules such as ``{"笔": ((1000, 10000, "万笔"), (0, 1, "笔"))}``
+    while keeping the tick formatter and axis-label update in one reusable
+    implementation.
+    """
+
+    if rules is None:
+        return
+    input_unit = str(unit if unit is not None else axis.get_ylabel()).strip()
+    candidates = rules.get(input_unit)
+    if not candidates:
+        return
+
+    lower, upper = axis.get_ylim()
+    maximum = max(abs(float(lower)), abs(float(upper)))
+    selected = next(
+        (
+            (float(threshold), float(divisor), str(output_unit))
+            for threshold, divisor, output_unit in candidates
+            if maximum >= float(threshold)
+        ),
+        None,
+    )
+    if selected is None:
+        return
+    _, divisor, output_unit = selected
+    if divisor <= 0:
+        raise ValueError("compact y-axis divisor must be positive")
+
+    def _format_tick(value: float, _position: int) -> str:
+        scaled = value / divisor
+        if abs(scaled) < 1e-12:
+            scaled = 0
+        return f"{scaled:.4g}"
+
+    axis.yaxis.set_major_formatter(FuncFormatter(_format_tick))
+    axis.set_ylabel(output_unit)
+    axis._ts_compact_y_axis = True
 
 
 def place_ylabel_at_top(ax):
