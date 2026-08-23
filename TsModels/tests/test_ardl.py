@@ -174,6 +174,31 @@ def test_auto_ardl_matches_statsmodels_selected_structure_and_exposes_table():
     assert result.predict(start=10, end=12).mean.shape == (3,)
 
 
+def test_auto_ardl_preserves_inputs_excluded_by_selected_order():
+    """A selected ``None`` input must not be restored as lag zero on refit."""
+    index = pd.date_range("2000-01-01", periods=60, freq="MS")
+    y = pd.Series(
+        10.0 + np.arange(60) * 0.08 + np.sin(np.arange(60) / 3.0),
+        index=index,
+    )
+    x = pd.DataFrame(
+        {"policy": 1.0 + np.arange(60) * 0.05 + np.cos(np.arange(60) / 4.0)},
+        index=index,
+    )
+
+    result = AutoARDL(
+        y,
+        maxlag=1,
+        exog=x,
+        maxorder={"policy": 0},
+        trend="c",
+        criterion="bic",
+    ).fit()
+
+    assert result.distributed_lags == {}
+    assert not any("policy" in name for name in result.params)
+
+
 def test_ardl_rejects_internal_missing_rows_that_break_lag_adjacency():
     y, x = _sample(40)
     y.iloc[20] = np.nan

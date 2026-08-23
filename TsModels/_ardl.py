@@ -848,7 +848,14 @@ class AutoARDL(BaseModel):
             self.data,
             lags=selected.model.ar_lags,
             exog=self.exog,
-            order=selected.model.dl_lags,
+            # statsmodels represents an excluded input as ``None`` in the
+            # selection criterion, but omits that key from ``dl_lags``.
+            # Preserve the exclusion explicitly: an empty mapping would make
+            # ARDL restore its default contemporaneous input lag on refit.
+            order={
+                name: selected.dl_lags.get(name)
+                for name in self.exog_names
+            },
             trend=self.trend,
             dates=self.dates,
             causal=self.causal,
