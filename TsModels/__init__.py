@@ -7,7 +7,9 @@ TsPlots for plotting and, where applicable, TsTests for diagnostics.
 Main interfaces
 ---------------
 SARIMAX
-    SARIMAX model estimation via statsmodels SARIMAX.
+    SARIMAX and rational distributed-lag estimation via statsmodels SARIMAX.
+ARDL
+    Standard autoregressive distributed-lag estimation and order selection.
 GARCH
     GARCH(p,q) model estimation via the ``arch`` library.  Handles both
     pure ARCH (q = 0) and GARCH (q >= 1) volatility models.
@@ -62,6 +64,7 @@ Quick start
 """
 
 from ._auto import AutoGARCH, AutoModelResult, AutoSARIMAX
+from ._ardl import ARDL, ARDLResult, AutoARDL, AutoARDLResult
 from ._backcast import BackcastResult
 from ._base import BaseModel, BaseModelResult, PredictResult, ResidualTestResults
 from ._compare import compare_models
@@ -94,6 +97,10 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "ResidualTestResults",
     "SARIMAX",
     "SARIMAXResult",
+    "ARDL",
+    "ARDLResult",
+    "AutoARDL",
+    "AutoARDLResult",
     "ARCycleResult",
     "ScenarioForecastResult",
     "RationalLagSpec",

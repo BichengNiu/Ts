@@ -95,4 +95,10 @@ def difference(data, *, order=1, log=False, lag=1):
     for _ in range(order):
         transformed = transformed.diff(periods=lag)
 
+    # ``astype`` and ``diff`` may reconstruct equal Index objects under newer
+    # pandas releases.  The public contract deliberately preserves the
+    # caller's axis objects as well as their labels, without mutating input.
+    transformed.index = data.index
+    if isinstance(data, pd.DataFrame):
+        transformed.columns = data.columns
     return transformed

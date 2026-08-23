@@ -5,7 +5,7 @@ This package consolidates six sub-packages under a unified namespace.
 - :mod:`Ts.TsPlots`  — shared plotting (series, scatter, ACF/PACF, lag response)
 - :mod:`Ts.TsSims`   — synthetic data generation (SARIMA, RDL, GARCH, TS/DS)
 - :mod:`Ts.TsUtils`  — preprocessing and identification diagnostics
-- :mod:`Ts.TsModels` — model estimation (SARIMAX, GARCH)
+- :mod:`Ts.TsModels` — model estimation (SARIMAX/RDL, ARDL, GARCH)
 - :mod:`Ts.TsMetrics` — forecast metrics and leakage-free evaluation
 - :mod:`Ts.TsTests`  — statistical tests (unit root, breaks, ARCH, feedback)
 
@@ -24,7 +24,7 @@ Quick start
 >>> from Ts.TsUtils import (
 ...     STL, calendar_table, eacf, interpolate_missing, seasonal_dummies,
 ... )
->>> from Ts.TsModels import SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
+>>> from Ts.TsModels import ARDL, AutoARDL, SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
 >>> from Ts.TsMetrics import Holdout, RollingOrigin, evaluate_forecasts, rmse
 >>> from Ts.TsTests import ADFTest, KPSSTest, LjungBoxTest
 """
@@ -79,6 +79,10 @@ from .TsSims import (
 # TsModels — estimation
 # ---------------------------------------------------------------------------
 from .TsModels import (
+    ARDL,
+    ARDLResult,
+    AutoARDL,
+    AutoARDLResult,
     BaseModel,
     BaseModelResult,
     ResidualTestResults,
@@ -197,6 +201,10 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     # TsModels — models
     "SARIMAX",
     "SARIMAXResult",
+    "ARDL",
+    "ARDLResult",
+    "AutoARDL",
+    "AutoARDLResult",
     "RationalLagSpec",
     "RationalLagResult",
     "ScenarioForecastResult",

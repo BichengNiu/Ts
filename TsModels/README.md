@@ -1,6 +1,7 @@
 # Ts/TsModels
 
-时间序列模型估计工具包。提供 SARIMAX、GARCH、VAR、SVAR、VECM 的统一使用接口，结果对象与 TsPlots、TsMetrics、TsTests 衔接。
+时间序列模型估计工具包。提供 SARIMAX/RDL、ARDL、GARCH、VAR、SVAR、VECM
+的统一使用接口，结果对象与 TsPlots、TsMetrics、TsTests 衔接。
 
 ## 交互式帮助
 
@@ -33,6 +34,7 @@ TsModels/
 ├── _base.py            # BaseModel (ABC) + BaseModelResult + ResidualTestResults (dataclass)
 ├── _sarimax.py          # SARIMAX + SARIMAXResult
 ├── _distributed_lag.py # RDL 规格、联合 MLE 后端与派生结果
+├── _ardl.py             # ARDL + ARDLResult + AutoARDL
 ├── _garch_result.py    # GARCHResult (dataclass) + 参数缩放辅助函数
 ├── _garch_base.py      # _BaseVolModel — 参数验证 + fit 调度 + IGARCH MLE
 ├── _garch.py           # GARCH — 公开 API 入口
@@ -70,7 +72,7 @@ TsModels/
 ```python
 import numpy as np
 
-from Ts.TsModels import SARIMAX, GARCH, VAR
+from Ts.TsModels import ARDL, AutoARDL, SARIMAX, GARCH, VAR
 from Ts.TsSims import simulate_sarima, simulate_garch
 
 # AR(1) 估计
@@ -79,6 +81,15 @@ model = SARIMAX(data, order=(1, 0, 0))
 result = model.fit()
 print(result.summary())
 result.plot_diagnostics()
+
+# 标准 ARDL：目标变量滞后 + 各解释变量有限滞后
+x = np.random.default_rng(42).normal(size=(200, 1))
+ardl = ARDL(data, lags=1, exog=x, exog_names=["x"], order={"x": [0, 1]})
+ardl_result = ardl.fit()
+
+# 自动选择目标和输入滞后（返回 AutoARDLResult）
+auto_ardl = AutoARDL(data, maxlag=3, exog=x, exog_names=["x"], maxorder=3)
+selected_ardl = auto_ardl.fit()
 
 # ARCH(2) 估计 (GARCH with q=0)
 data = simulate_garch(n=200, p=2, q=0, seed=42).data
@@ -141,6 +152,10 @@ result.test_residuals(lags=10)
 | | `.plot_roots(title)` | AR/MA 逆根单位圆图 |
 | | `.cycle_period(seasonal=False)` | 检验 AR(2) 复根和平稳性条件；返回 `ARCycleResult`，周期以原始观测间隔计 |
 | | `.likelihood_burn` / `.effective_nobs` | 状态/RDL 初始化所丢弃的期数与实际参与似然的样本量 |
+| `ARDL` / `ARDLResult` | `.ar_lags` / `.distributed_lags` | 标准 ARDL 的目标变量滞后与逐输入有限滞后；不等同于 SARIMAX AR 误差 |
+| | `.predict(..., future_exog=...)` | 使用完整未来解释变量路径生成统一的 `PredictResult` |
+| | `.roots` / `.is_stationary` | 目标变量自回归多项式根与稳定性结论 |
+| `AutoARDL` / `AutoARDLResult` | `.best_result` / `.criterion_table` | 按 AIC/BIC 选择目标和输入滞后，并保留候选准则表 |
 | | `.level_intercept` | `trend="c"` 在未差分拟合响应尺度上的截距 `C`；自动完成状态截距到水平截距的变换。`log=True` 时结果位于自然对数响应尺度 |
 | | `.level_intercept_inference(alpha)` | 拟合响应尺度截距 `C` 的 delta-method 标准误、统计量、p 值与区间；`log=True` 时均位于自然对数尺度 |
 | | `.unconditional_log_variance` | `log=True` 平稳模型的无条件对数响应方差；通过状态空间离散 Lyapunov 方程精确计算，其他模型返回 `None` |
