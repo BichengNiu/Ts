@@ -728,6 +728,42 @@ class TestPlotSeries:
         assert line.get_linestyle() == ":"
         plt.close(fig)
 
+    def test_series_styles_override_each_series(self):
+        data = {"first": [1, 2, 3], "second": [3, 2, 1]}
+        fig, ax = plot_series(
+            data,
+            facet=False,
+            auto_dual_y=False,
+            series_styles={
+                "first": {
+                    "color": "#123456",
+                    "linestyle": ":",
+                    "marker": "s",
+                    "linewidth": 1.25,
+                    "markersize": 4,
+                    "marker_edge_width": 0.75,
+                },
+                "second": {"marker": None, "linestyle": "--"},
+            },
+        )
+        first, second = ax.lines
+        assert first.get_color() == "#123456"
+        assert first.get_linestyle() == ":"
+        assert first.get_marker() == "s"
+        assert first.get_linewidth() == pytest.approx(1.25)
+        assert first.get_markersize() == pytest.approx(4)
+        assert first.get_markeredgewidth() == pytest.approx(0.75)
+        assert second.get_marker() == "None"
+        assert second.get_linestyle() == "--"
+        plt.close(fig)
+
+    def test_series_styles_reject_unknown_series(self):
+        with pytest.raises(ValueError, match="unknown series labels"):
+            plot_series(
+                {"first": [1, 2, 3]},
+                series_styles={"missing": {"linestyle": ":"}},
+            )
+
     def test_rejects_invalid_grid_axis(self):
         with pytest.raises(ValueError, match="grid_axis"):
             plot_series([1, 2, 3], grid=True, grid_axis="z")
@@ -735,6 +771,26 @@ class TestPlotSeries:
     def test_vlines_and_shade(self):
         data = np.random.randn(30)
         fig, _ax = plot_series(data, vlines=15, shade=(10, 20))
+        plt.close(fig)
+
+    def test_hlines_render_with_requested_style(self):
+        fig, ax = plot_series(
+            [1, 2, 3],
+            hlines=[1.5, 2.5],
+            hline_color="#123456",
+            hline_linestyle=":",
+            hline_linewidth=2.0,
+        )
+        horizontal_lines = [
+            line
+            for line in ax.lines
+            if len(line.get_ydata()) == 2
+            and line.get_ydata()[0] == line.get_ydata()[1]
+        ]
+        assert [line.get_ydata()[0] for line in horizontal_lines] == [1.5, 2.5]
+        assert all(line.get_color() == "#123456" for line in horizontal_lines)
+        assert all(line.get_linestyle() == ":" for line in horizontal_lines)
+        assert all(line.get_linewidth() == pytest.approx(2.0) for line in horizontal_lines)
         plt.close(fig)
 
     def test_rejects_color_count_mismatch(self):

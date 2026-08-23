@@ -87,6 +87,7 @@ from .style import (
     draw_suptitle,
     draw_legend,
     draw_shade,
+    draw_hlines,
     draw_vlines,
     BottomLegend,
     LEGEND_BELOW_OFFSET,
@@ -486,6 +487,47 @@ def _series_color(colors, index: int) -> str:
     return DEFAULT_PALETTE[index % len(DEFAULT_PALETTE)]
 
 
+def _resolve_series_styles(series_styles, series):
+    """Validate and copy optional per-series drawing styles."""
+    if series_styles is None:
+        return {}
+    if not isinstance(series_styles, Mapping):
+        raise TypeError(
+            "series_styles must map series labels to style mappings"
+        )
+
+    available = set(series)
+    unknown = sorted(set(series_styles) - available)
+    if unknown:
+        raise ValueError(
+            "series_styles contains unknown series labels: "
+            f"{unknown}; available: {list(series)}"
+        )
+
+    allowed = {
+        "color",
+        "linestyle",
+        "marker",
+        "linewidth",
+        "markersize",
+        "marker_edge_width",
+    }
+    resolved = {}
+    for label, style in series_styles.items():
+        if not isinstance(style, Mapping):
+            raise TypeError(
+                f"series_styles[{label!r}] must be a mapping of style values"
+            )
+        invalid = sorted(set(style) - allowed)
+        if invalid:
+            raise ValueError(
+                f"series_styles[{label!r}] contains unsupported styles: "
+                f"{invalid}; choose from {sorted(allowed)}"
+            )
+        resolved[label] = dict(style)
+    return resolved
+
+
 def _plot_one_series(
     ax,
     x_values,
@@ -494,6 +536,7 @@ def _plot_one_series(
     index,
     *,
     colors,
+    series_style,
     linewidth,
     markersize,
     marker_edge_width,
@@ -513,7 +556,8 @@ def _plot_one_series(
     shared bar-drawing implementation — so the bar cosmetics (edge colour,
     line width, alpha) match :func:`TsPlots.bar_plot.plot_bar` exactly.
     """
-    color = _series_color(colors, index)
+    style = series_style or {}
+    color = style.get("color", _series_color(colors, index))
     if is_bar:
         from .bar_plot import _draw_bars
 
@@ -533,20 +577,27 @@ def _plot_one_series(
             x_offset=bar_x_offset,
         )
 
-    linestyle = DEFAULT_LINESTYLES[index % len(DEFAULT_LINESTYLES)]
-    marker = DEFAULT_MARKERS[index % len(DEFAULT_MARKERS)]
+    linestyle = style.get(
+        "linestyle", DEFAULT_LINESTYLES[index % len(DEFAULT_LINESTYLES)]
+    )
+    marker = style.get("marker", DEFAULT_MARKERS[index % len(DEFAULT_MARKERS)])
+    effective_linewidth = style.get("linewidth", linewidth)
+    effective_markersize = style.get("markersize", markersize)
+    effective_marker_edge_width = style.get(
+        "marker_edge_width", marker_edge_width
+    )
     is_even = index % 2 == 0
     line = ax.plot(
         x_values,
         values,
         linestyle=linestyle,
-        linewidth=linewidth,
+        linewidth=effective_linewidth,
         marker=marker,
-        markersize=markersize,
+        markersize=effective_markersize,
         color=color,
         markerfacecolor=color if is_even else WHITE,
         markeredgecolor=color,
-        markeredgewidth=marker_edge_width,
+        markeredgewidth=effective_marker_edge_width,
         label=label,
         # 模板契约：柱线混合图默认线在柱的前面（ZORDER_LINE > ZORDER_BAR）。
         zorder=ZORDER_LINE,
@@ -562,9 +613,9 @@ def _plot_one_series(
     ):
         # 相邻标注交替上/下错开：密集数据下避免挤在一起。
         if point_index % 2 == 0:
-            y_offset, vertical_alignment = -(markersize + 12), "top"
+            y_offset, vertical_alignment = -(effective_markersize + 12), "top"
         else:
-            y_offset, vertical_alignment = markersize + 6, "bottom"
+            y_offset, vertical_alignment = effective_markersize + 6, "bottom"
         ax.annotate(
             f"{y_value:{fmt}}",
             xy=(x_value, y_value),
@@ -702,6 +753,7 @@ def plot_series(
     linewidth: float = 3,
     markersize: float = 7,
     marker_edge_width: float = 2.5,
+    series_styles: Mapping[str, Mapping[str, object]] | None = None,
     max_ticks: int = 12,
     year_ruler: bool = False,
     ymin: float | None = None,
@@ -732,6 +784,10 @@ def plot_series(
     vline_color: str = REFERENCE_LINE_COLOR,
     vline_linestyle: str = REFERENCE_LINE_STYLE,
     vline_linewidth: float = REFERENCE_LINE_WIDTH,
+    hlines=None,
+    hline_color: str = REFERENCE_LINE_COLOR,
+    hline_linestyle: str = REFERENCE_LINE_STYLE,
+    hline_linewidth: float = REFERENCE_LINE_WIDTH,
     shade=None,
     shade_color: str = SHADE_COLOR,
     shade_alpha: float = SHADE_ALPHA,
@@ -806,6 +862,11 @@ def plot_series(
         Size of the markers. Defaults to 7.
     marker_edge_width : float
         Width of the marker outlines. Defaults to 2.5.
+    series_styles : mapping, optional
+        Optional per-series style overrides keyed by plotted series label.
+        Each value may contain ``color``, ``linestyle``, ``marker``,
+        ``linewidth``, ``markersize`` and ``marker_edge_width``. Missing
+        values use the corresponding global argument or default style cycle.
     max_ticks : int
         Upper bound on the number of automatic x ticks. Defaults to 12.
     year_ruler : bool
@@ -895,6 +956,14 @@ def plot_series(
         Line style of vertical lines. Defaults to ``"--"``.
     vline_linewidth : float
         Width of vertical lines. Defaults to 1.5.
+    hlines : float or list of float, optional
+        Y-axis position(s) for horizontal reference lines.
+    hline_color : str
+        Color of horizontal lines. Defaults to the reference-line color.
+    hline_linestyle : str
+        Line style of horizontal lines. Defaults to ``"--"``.
+    hline_linewidth : float
+        Width of horizontal lines. Defaults to 1.5.
     shade : tuple or list of tuple, optional
         ``(xmin, xmax)`` interval(s) to shade, e.g. ``[(2008, 2009)]``.
     shade_color : str
@@ -1041,6 +1110,7 @@ def plot_series(
         raise TypeError("y requires a DataFrame input; use x for explicit values")
     x_values, series, default_xlabel = _resolve_input(data, x, y)
     colors = _resolve_colors(colors, len(series))
+    series_styles = _resolve_series_styles(series_styles, series)
     facet = _validate_bool("facet", facet)
     sharex = _validate_bool("sharex", sharex)
     sharey = _validate_bool("sharey", sharey)
@@ -1150,6 +1220,13 @@ def plot_series(
             vline_linestyle,
             vline_linewidth,
         )
+        draw_hlines(
+            target_ax,
+            hlines,
+            hline_color,
+            hline_linestyle,
+            hline_linewidth,
+        )
         is_bar = label in bar_series
         return _plot_one_series(
             target_ax,
@@ -1158,6 +1235,7 @@ def plot_series(
             label,
             index,
             colors=colors,
+            series_style=series_styles.get(label),
             linewidth=linewidth,
             markersize=markersize,
             marker_edge_width=marker_edge_width,
