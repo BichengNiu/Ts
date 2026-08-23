@@ -241,6 +241,33 @@ LEGEND_BELOW_OFFSET = -0.17
 LEGEND_BELOW_YEAR_RULER_OFFSET = -0.24
 
 
+def resolve_legend_fontsize(figure, legend_size=None) -> float:
+    """Resolve an explicit or figure-size-aware legend font size.
+
+    Parameters
+    ----------
+    figure : matplotlib.figure.Figure
+        Figure whose physical dimensions determine the automatic size.
+    legend_size : float, optional
+        Explicit legend font size in points. ``None`` scales the standard
+        legend size with the figure area. Defaults to ``None``.
+    """
+    if legend_size is not None:
+        try:
+            resolved = float(legend_size)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("legend_size must be a positive number or None") from exc
+        if not math.isfinite(resolved) or resolved <= 0:
+            raise ValueError("legend_size must be a positive number or None")
+        return resolved
+
+    width, height = figure.get_size_inches()
+    reference_area = FIGSIZE[0] * FIGSIZE[1]
+    figure_area = max(float(width) * float(height), 0.01)
+    scale = math.sqrt(figure_area / reference_area)
+    return max(8.0, min(24.0, LEGEND_FONTSIZE * scale))
+
+
 class BottomLegend:
     """Describes a legend drawn in the bottom figure margin under the time axis.
 
@@ -260,6 +287,9 @@ class BottomLegend:
         Number of columns. ``None`` auto-balances the entries into a
         near-square grid (``ceil(sqrt(n))`` columns)：例如 4 条 → 2×2、9 条
         → 3×3，避免条目文字过长时排成过宽的单行。
+    legend_size : float, optional
+        Legend font size in points. ``None`` automatically scales with the
+        physical figure size.
     below_offset : float
         Anchor offset (axes fraction, negative) for the legend top edge below
         the x-axis. Defaults to ``LEGEND_BELOW_OFFSET``.
@@ -272,12 +302,14 @@ class BottomLegend:
         *,
         legend_title=None,
         ncol=None,
+        legend_size=None,
         below_offset=LEGEND_BELOW_OFFSET,
     ):
         self.handles = list(handles)
         self.labels = list(labels)
         self.legend_title = legend_title
         self.ncol = ncol
+        self.legend_size = legend_size
         self.below_offset = below_offset
 
 
@@ -529,6 +561,7 @@ def draw_legend(
     fontsize=LEGEND_FONTSIZE,
     legend_title=None,
     legend_cols=None,
+    legend_size=None,
 ):
     """Draw a frameless legend, optionally overriding the entry text.
 
@@ -553,6 +586,9 @@ def draw_legend(
     legend_cols : int, optional
         Number of columns for the legend entries; ``None`` lets
         matplotlib choose.
+    legend_size : float, optional
+        Legend font size in points. ``None`` automatically scales the legend
+        with the physical figure size.
     """
     if not show_legend:
         return
@@ -568,13 +604,15 @@ def draw_legend(
         if legend_labels is not None
         else auto_labels
     )
+    fontsize = resolve_legend_fontsize(ax.figure, legend_size)
+    scale = fontsize / LEGEND_FONTSIZE
     ax.legend(
         handles,
         final_labels,
         frameon=False,
         fontsize=fontsize,
-        markerscale=1.6,
-        handlelength=2.6,
+        markerscale=1.6 * scale,
+        handlelength=2.6 * scale,
         loc=legend_loc,
         bbox_to_anchor=legend_bbox,
         title=legend_title or None,
@@ -868,17 +906,19 @@ def draw_note_and_bottom_title(
     count = len(legend.labels)
     # 近方形自动排布：ceil(sqrt(n)) 列（4 条 → 2×2），长文字时避免过宽单行。
     ncol = legend.ncol or (math.ceil(math.sqrt(count)) if count else 1)
+    fontsize = resolve_legend_fontsize(fig, legend.legend_size)
+    scale = fontsize / LEGEND_FONTSIZE
     legend_artist = ref_ax.legend(
         legend.handles,
         legend.labels,
         loc="upper center",
         bbox_to_anchor=(0.5, legend.below_offset),
         frameon=False,
-        fontsize=LEGEND_FONTSIZE,
-        markerscale=1.6,
-        handlelength=2.6,
+        fontsize=fontsize,
+        markerscale=1.6 * scale,
+        handlelength=2.6 * scale,
         title=legend.legend_title or None,
-        title_fontsize=LEGEND_FONTSIZE,
+        title_fontsize=fontsize,
         ncol=ncol,
     )
 
@@ -1025,6 +1065,7 @@ class _FigureContext:
         legend_bbox=None,
         legend_title=None,
         legend_cols=None,
+        legend_size=None,
         unit=None,
         x_unit=None,
         bottom_legend=None,
@@ -1064,6 +1105,7 @@ class _FigureContext:
                 legend_bbox=legend_bbox,
                 legend_title=legend_title,
                 legend_cols=legend_cols,
+                legend_size=legend_size,
             )
 
         if unit is not None:

@@ -296,6 +296,36 @@ class TestPlotSeries:
         with pytest.raises(ValueError, match="legend_cols must be"):
             plot_series({"a": [1, 2]}, facet=False, legend_cols=0)
 
+    def test_legend_size_scales_with_figure_and_accepts_override(self):
+        data = {"a": [1, 2, 3], "b": [2, 3, 4]}
+        small_fig, small_ax = plot_series(
+            data,
+            facet=False,
+            figsize=(6, 4),
+            legend_loc="upper left",
+        )
+        large_fig, large_ax = plot_series(
+            data,
+            facet=False,
+            figsize=(12, 8),
+            legend_loc="upper left",
+        )
+        small_size = small_ax.get_legend().get_texts()[0].get_fontsize()
+        large_size = large_ax.get_legend().get_texts()[0].get_fontsize()
+        assert large_size > small_size
+
+        manual_fig, manual_ax = plot_series(
+            data,
+            facet=False,
+            figsize=(12, 8),
+            legend_loc="upper left",
+            legend_size=11,
+        )
+        assert manual_ax.get_legend().get_texts()[0].get_fontsize() == pytest.approx(11)
+        plt.close(small_fig)
+        plt.close(large_fig)
+        plt.close(manual_fig)
+
     def _legend_window(self, fig, legend):
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()

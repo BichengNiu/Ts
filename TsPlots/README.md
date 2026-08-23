@@ -78,7 +78,8 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `show_legend` | bool | `True` | 是否显示图例 |
 | `legend_labels` | list | `None` | 覆盖图例文字（渲染时替换） |
 | `legend_loc` | str | `None` | 图例位置；**不传时图例绘制在时间轴下方、绘图区外的底部边距**（`year_ruler=True` 时贴在年份标签之下），图注紧随其下；传任意位置（如 `"best"`、`"upper left"`）则图例回到绘图区内 |
-| `legend_bbox` | tuple | `None` | 图例 `bbox_to_anchor`，如 `(1.02, 1)` |
+| `legend_bbox` | tuple | `None` | 图例 `bbox_to_anchor`；留空时由 `legend_loc` 自动定位，如 `(1.02, 1)` |
+| `legend_size` | float | `None` | 图例字号（磅）；留空时按图形物理尺寸自动缩放，并同步调整标记与图例句柄 |
 | `grid` | bool | `False` | 是否显示网格 |
 | `show_values` | bool | `False` | 是否在每个数据点标注数值；标注自动放在局部极小值上方、局部极大值下方，避免与相邻线段重叠 |
 | `value_decimals` | int | `1` | 数值标注小数位数 |

@@ -768,6 +768,7 @@ def plot_series(
     legend_bbox=None,
     legend_title: str | None = None,
     legend_cols: int | None = None,
+    legend_size: float | None = None,
     title_loc: str = "center",
     title_pad: float = 12,
     title_position: str = "top",
@@ -918,6 +919,9 @@ def plot_series(
     legend_cols : int, optional
         Number of columns for the legend entries; ``None`` lets
         matplotlib choose.
+    legend_size : float, optional
+        Legend font size in points. ``None`` automatically scales the legend
+        with the physical figure size.
     title_loc : str
         Title horizontal alignment: ``"center"``, ``"left"``, or ``"right"``.
     title_pad : float
@@ -1360,6 +1364,7 @@ def plot_series(
                     legend_bbox=legend_bbox,
                     legend_title=legend_title,
                     legend_cols=legend_cols,
+                    legend_size=legend_size,
                 )
 
         if title and title_position == "top":
@@ -1381,6 +1386,7 @@ def plot_series(
                 display_labels,
                 legend_title=legend_title,
                 ncol=legend_cols,
+                legend_size=legend_size,
                 below_offset=(
                     LEGEND_BELOW_YEAR_RULER_OFFSET if year_ruler else LEGEND_BELOW_OFFSET
                 ),
@@ -1547,6 +1553,7 @@ def plot_series(
                 display_labels,
                 legend_title=legend_title,
                 ncol=legend_cols,
+                legend_size=legend_size,
                 below_offset=(
                     LEGEND_BELOW_YEAR_RULER_OFFSET if year_ruler else LEGEND_BELOW_OFFSET
                 ),
@@ -1560,6 +1567,7 @@ def plot_series(
                 legend_bbox=legend_bbox,
                 legend_title=legend_title,
                 legend_cols=legend_cols,
+                legend_size=legend_size,
             )
 
     ctx.finalize(
