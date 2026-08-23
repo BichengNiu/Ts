@@ -1028,7 +1028,8 @@ def plot_series(
     log_vars : list of str, optional
         Series labels whose axis uses a logarithmic y-scale. The scale is
         applied to whichever axis the series is drawn on (first, second or
-        third). Defaults to None (linear).
+        third), including the corresponding faceted panel. Defaults to None
+        (linear).
     max_y_axes : int
         Maximum total number of y-axes, including the primary left axes.
         Automatic groups beyond this limit are merged by the closest scale
@@ -1181,6 +1182,23 @@ def plot_series(
 
     if axis_groups is not None and facet and len(series) >= 2:
         raise ValueError("axis_groups requires facet=False for multiple series")
+    if (
+        facet
+        and len(series) >= 2
+        and (second_axis_vars is not None or third_axis_vars is not None)
+    ):
+        raise ValueError(
+            "second_axis_vars and third_axis_vars require facet=False "
+            "for multiple series"
+        )
+
+    if log_vars is not None:
+        unknown_log_vars = sorted(set(log_vars) - set(series))
+        if unknown_log_vars:
+            raise ValueError(
+                f"log_vars contains unknown series: {unknown_log_vars}; "
+                f"available: {list(series)}"
+            )
 
     vlines = _clip_vlines_to_data(vlines, x_values)
     resolved_bar_width = _resolve_bar_width(x_values, bar_width)
@@ -1303,6 +1321,8 @@ def plot_series(
             facet_lines.append(_draw_one(panel_ax, label, values, index))
             if label in bar_series:
                 panel_ax.set_ylim(bottom=0)
+            if log_vars and label in log_vars:
+                panel_ax.set_yscale("log")
             panel_ax.set_title(
                 display_labels[index],
                 fontsize=AXIS_LABEL_FONTSIZE,
@@ -1445,11 +1465,6 @@ def plot_series(
 
     if log_vars:
         for label in log_vars:
-            if label not in axis_by_label:
-                raise ValueError(
-                    f"log_vars contains unknown series: {label}; "
-                    f"available: {list(series)}"
-                )
             axis_by_label[label].set_yscale("log")
 
     for label in bar_series:

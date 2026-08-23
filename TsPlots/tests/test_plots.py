@@ -227,6 +227,15 @@ class TestPlotSeries:
         assert ax.get_yscale() == "linear"
         plt.close(fig)
 
+        fig, axes = plot_series(
+            data,
+            facet=True,
+            log_vars=["a"],
+        )
+        assert axes[0].get_yscale() == "log"
+        assert axes[1].get_yscale() == "linear"
+        plt.close(fig)
+
     def test_rejects_unknown_axis_and_log_vars(self):
         with pytest.raises(ValueError, match="second_axis_vars contains unknown"):
             plot_series(
@@ -234,12 +243,26 @@ class TestPlotSeries:
             )
         with pytest.raises(ValueError, match="log_vars contains unknown"):
             plot_series({"a": [1, 2]}, facet=False, log_vars=["nope"])
+        with pytest.raises(ValueError, match="log_vars contains unknown"):
+            plot_series(
+                {"a": [1, 2], "b": [2, 3]},
+                facet=True,
+                log_vars=["nope"],
+            )
         with pytest.raises(ValueError, match="both the second and third axes"):
             plot_series(
                 {"a": [1, 2], "b": [2, 3]},
                 facet=False,
                 second_axis_vars=["b"],
                 third_axis_vars=["b"],
+            )
+
+    def test_rejects_manual_right_axes_in_facet_mode(self):
+        with pytest.raises(ValueError, match="require facet=False"):
+            plot_series(
+                {"a": [1, 2], "b": [2, 3]},
+                facet=True,
+                second_axis_vars=["b"],
             )
 
     def test_figsize_applies_to_single_axes(self):
