@@ -431,6 +431,24 @@ class TestAutoSARIMAX:
         for val in result.criterion_values:
             assert best_val <= val + 0.01
 
+    def test_criterion_table_contains_all_candidate_criteria(self, ar1_data):
+        """Each successful candidate exposes all supported criteria."""
+        from Ts.TsModels._auto import AutoSARIMAX
+
+        result = AutoSARIMAX(
+            ar1_data,
+            p=(0, 1),
+            d=(0, 0),
+            q=(0, 1),
+            criterion="aic",
+        ).fit()
+
+        table = result.criterion_table
+        assert list(table.columns) == ["order", "aic", "bic", "hqic", "aicc"]
+        assert len(table) == len(result.candidate_results)
+        for criterion in ("aic", "bic", "hqic", "aicc"):
+            assert np.isfinite(table[criterion].to_numpy(dtype=float)).all()
+
     def test_small_range_single_combo(self, ar1_data):
         """If range covers only one order, that model is selected."""
         from Ts.TsModels._auto import AutoSARIMAX

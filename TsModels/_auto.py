@@ -34,6 +34,7 @@ from Ts.TsModels._garch_base import (
 )
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
+_CRITERIA_ORDER = ("aic", "bic", "hqic", "aicc")
 
 
 def _get_criterion_value(result: BaseModelResult, criterion: str) -> float:
@@ -142,6 +143,40 @@ class AutoModelResult(BaseModelResult):
     best_seasonal_order: tuple | None = None
     candidate_seasonal_orders: list = field(default_factory=list, repr=False)
     search_messages: list[str] = field(default_factory=list, repr=False)
+
+    @property
+    def criterion_table(self) -> pd.DataFrame:
+        """Return all information-criterion values for successful candidates.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per successful candidate. The ``order`` column contains
+            the candidate order, ``seasonal_order`` is included when
+            seasonal candidates were searched, and the remaining columns are
+            ``aic``, ``bic``, ``hqic``, and ``aicc``. Lower values are better.
+        """
+        has_seasonal_orders = bool(self.candidate_seasonal_orders)
+        columns = ["order"]
+        if has_seasonal_orders:
+            columns.append("seasonal_order")
+        columns.extend(_CRITERIA_ORDER)
+
+        rows = []
+        for index, (order, candidate) in enumerate(
+            zip(self.candidate_orders, self.candidate_results)
+        ):
+            row = {"order": order}
+            if has_seasonal_orders:
+                row["seasonal_order"] = self.candidate_seasonal_orders[index]
+            row.update(
+                {
+                    criterion: _get_criterion_value(candidate, criterion)
+                    for criterion in _CRITERIA_ORDER
+                }
+            )
+            rows.append(row)
+        return pd.DataFrame(rows, columns=columns)
 
     @classmethod
     def from_search(

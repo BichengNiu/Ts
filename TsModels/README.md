@@ -638,6 +638,7 @@ result = auto.fit()
 | `best_order` | `tuple` | 最优参数组合 |
 | `candidate_results` | `list` | 所有成功拟合的模型结果 |
 | `candidate_orders` | `list` | 所有成功的参数组合 |
+| `criterion_table` | `pandas.DataFrame` | 所有成功候选模型的 AIC/BIC/HQIC/AICC 值；信息准则越小越好 |
 | `selection_criterion` | `str` | 使用的选择准则 |
 | `log` | `bool` | 所选模型是否在响应变量的自然对数尺度拟合 |
 | `level_intercept` | `float`/`None` | 委托所选 SARIMAX 模型的拟合响应尺度截距；`log=True` 时位于自然对数响应尺度 |
