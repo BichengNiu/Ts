@@ -440,7 +440,14 @@ class TestVARResultPlots:
             assert axes[position, 0].get_title().endswith(
                 "Standardized Residuals"
             )
-            assert axes[position, 0].get_ylabel() == "Standardized Residual"
+            assert all(
+                axes[position, column].get_ylabel() == ""
+                for column in range(3)
+            )
+            assert all(
+                axes[position, column].get_legend() is None
+                for column in range(3)
+            )
 
     def test_plot_irf_returns_fig_axes(self, fitted_var):
         """plot_irf() returns (fig, axes) with k x k grid.

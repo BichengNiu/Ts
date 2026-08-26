@@ -710,7 +710,8 @@ class BaseModelResult:
         includes the normality test result, while the ACF panel includes the
         white-noise test result.  Multi-variable residuals (shape ``(n, k)``)
         produce a ``k``-by-3 grid with standardized residuals, ACF, and PACF
-        for each variable.
+        for each variable.  Diagnostic panels omit y-axis titles and legends
+        by default.
 
         Parameters
         ----------
@@ -753,6 +754,17 @@ class BaseModelResult:
 
         diagnostic_residuals = self.standardized_residuals
 
+        def suppress_axis_decorations(figure):
+            """Hide diagnostic y-axis titles and legend handles."""
+            for axis in figure.axes:
+                axis.set_ylabel("")
+                for line in axis.lines:
+                    line.set_label("_nolegend_")
+                if axis.get_legend() is not None:
+                    axis.get_legend().remove()
+            for legend in list(figure.legends):
+                legend.remove()
+
         if np.ndim(self.residuals) > 1:
             k = self.residuals.shape[1]
             names = self._variable_names()
@@ -779,6 +791,7 @@ class BaseModelResult:
                 )
 
             draw_suptitle(fig, title)
+            suppress_axis_decorations(fig)
             fig.tight_layout()
             return fig, axes
 
@@ -861,6 +874,7 @@ class BaseModelResult:
         )
 
         draw_suptitle(fig, title)
+        suppress_axis_decorations(fig)
         fig.tight_layout()
         return fig, (ax_residuals, ax_histogram, ax_acf, ax_pacf)
 

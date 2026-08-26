@@ -198,7 +198,8 @@ class TestBaseModelResult:
 
         displayed = np.asarray(axes[0].lines[0].get_ydata(), dtype=float)
         np.testing.assert_allclose(displayed, result.standardized_residuals)
-        assert axes[0].get_ylabel() == "Standardized Residual"
+        assert all(axis.get_ylabel() == "" for axis in axes)
+        assert all(axis.get_legend() is None for axis in axes)
         assert axes[1].get_xlabel() == "Standardized Residual"
 
     def test_plot_diagnostics_histogram_contains_all_residuals(self, result):
