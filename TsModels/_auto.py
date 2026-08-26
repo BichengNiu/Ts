@@ -763,7 +763,7 @@ class _BaseAutoModel(BaseModel):
             )
         return y
 
-    def _run_grid_search(self, orders, build_model, criterion):
+    def _run_grid_search(self, orders, build_model, criterion, *, fit_kwargs=None):
         """Common grid search loop.
 
         Parameters
@@ -774,6 +774,9 @@ class _BaseAutoModel(BaseModel):
             Factory that creates a model from an order tuple.
         criterion : str
             Selection criterion.
+        fit_kwargs : dict, optional
+            Keyword arguments forwarded to each candidate model's ``fit``
+            method.
 
         Returns
         -------
@@ -797,7 +800,7 @@ class _BaseAutoModel(BaseModel):
                 warnings.simplefilter("always")
                 try:
                     model = build_model(order)
-                    result = model.fit()
+                    result = model.fit(**(fit_kwargs or {}))
                     value = _get_criterion_value(result, criterion)
                 except Exception as error:
                     search_messages.append(f"{order}: {type(error).__name__}: {error}")
@@ -898,6 +901,12 @@ class AutoSARIMAX(_BaseAutoModel):
         Whether every candidate enforces AR stationarity. Default ``True``.
     enforce_invertibility : bool
         Whether every candidate enforces MA invertibility. Default ``True``.
+    fit_method : str
+        Optimizer passed to every candidate SARIMAX fit. Default ``"bfgs"``.
+    maxiter : int
+        Maximum optimizer iterations for every candidate fit. Default ``500``.
+    cov_type : str
+        Covariance estimator passed to every candidate fit. Default ``"oim"``.
     distributed_lags : mapping[str, RationalLagSpec], optional
         Fixed rational distributed-lag specifications shared by every
         candidate. Their orders are not included in the automatic search.
@@ -941,10 +950,18 @@ class AutoSARIMAX(_BaseAutoModel):
         enforce_invertibility=True,
         missing="drop",
         log=False,
+        fit_method="bfgs",
+        maxiter=500,
+        cov_type="oim",
         distributed_lags=None,
         enforce_distributed_lag_stability=True,
     ):
-        from Ts.TsModels._sarimax import SARIMAX
+        from Ts.TsModels._sarimax import (
+            SARIMAX,
+            _normalise_cov_type,
+            _normalise_fit_method,
+            _normalise_maxiter,
+        )
 
         prototype = SARIMAX(
             data,
@@ -967,6 +984,9 @@ class AutoSARIMAX(_BaseAutoModel):
         self.missing = missing
         self.dropped_positions = prototype.dropped_positions
         self.log = prototype.log
+        self.fit_method = _normalise_fit_method(fit_method)
+        self.maxiter = _normalise_maxiter(maxiter)
+        self.cov_type = _normalise_cov_type(cov_type)
         self.criterion = criterion
         self.method = method
         self.dates = None if prototype.dates is None else prototype.dates.copy()
@@ -1030,6 +1050,9 @@ class AutoSARIMAX(_BaseAutoModel):
             enforce_invertibility=self.enforce_invertibility,
             missing="raise",
             log=self.log,
+            fit_method=self.fit_method,
+            maxiter=self.maxiter,
+            cov_type=self.cov_type,
             distributed_lags=self.distributed_lags,
             enforce_distributed_lag_stability=(self.enforce_distributed_lag_stability),
         )
@@ -1137,7 +1160,16 @@ class AutoSARIMAX(_BaseAutoModel):
             candidate_orders,
             n_attempted,
             search_messages,
-        ) = self._run_grid_search(orders, build_model, self.criterion)
+        ) = self._run_grid_search(
+            orders,
+            build_model,
+            self.criterion,
+            fit_kwargs={
+                "method": self.fit_method,
+                "maxiter": self.maxiter,
+                "cov_type": self.cov_type,
+            },
+        )
 
         criterion_values = [
             _get_criterion_value(r, self.criterion) for r in candidate_results

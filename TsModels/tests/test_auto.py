@@ -375,8 +375,8 @@ class TestAutoSARIMAX:
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
 
-    def test_candidates_inherit_sarimax_fit_defaults(self, ar1_data, monkeypatch):
-        """AutoSARIMAX does not override the shared SARIMAX fit defaults."""
+    def test_candidates_use_shared_sarimax_fit_defaults(self, ar1_data, monkeypatch):
+        """AutoSARIMAX forwards its shared SARIMAX fit defaults."""
         from Ts.TsModels._auto import AutoSARIMAX
         from Ts.TsModels._sarimax import SARIMAX
 
@@ -400,7 +400,39 @@ class TestAutoSARIMAX:
         with pytest.raises(RuntimeError, match="No model converged"):
             auto.fit()
 
-        assert calls == [{}]
+        assert calls == [{"method": "bfgs", "maxiter": 500, "cov_type": "oim"}]
+
+    def test_candidates_use_configured_sarimax_fit_options(
+        self, ar1_data, monkeypatch
+    ):
+        """Each automatic candidate receives the configured fit options."""
+        from Ts.TsModels._auto import AutoSARIMAX
+        from Ts.TsModels._sarimax import SARIMAX
+
+        calls = []
+
+        def recording_fit(self, **kwargs):
+            calls.append(kwargs.copy())
+            raise RuntimeError("sentinel candidate failure")
+
+        monkeypatch.setattr(SARIMAX, "fit", recording_fit)
+        auto = AutoSARIMAX(
+            ar1_data,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            P=(0, 0),
+            D=(0, 0),
+            Q=(0, 0),
+            fit_method="powell",
+            maxiter=125,
+            cov_type="opg",
+        )
+
+        with pytest.raises(RuntimeError, match="No model converged"):
+            auto.fit()
+
+        assert calls == [{"method": "powell", "maxiter": 125, "cov_type": "opg"}]
 
     def test_result_stored(self, ar1_data):
         """result_ is set after fit()."""
