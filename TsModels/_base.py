@@ -200,8 +200,8 @@ class PredictResult:
             ax.plot(
                 fitted_x,
                 self._full_fitted,
-                color=GRAY,
-                linestyle="--",
+                color=DARK_RED,
+                linestyle="-",
                 linewidth=1.5,
                 label="Fitted",
             )
@@ -251,7 +251,7 @@ class PredictResult:
                 bridge_x,
                 bridge_y,
                 color=DARK_RED,
-                linestyle="-",
+                linestyle="--",
                 linewidth=1.5,
                 label="Forecast",
             )

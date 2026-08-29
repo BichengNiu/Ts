@@ -441,6 +441,37 @@ class TestPredictResult:
 class TestPredictResultPlot:
     """Tests for PredictResult.plot()."""
 
+    def test_plot_line_semantics_match_forecast_contract(self):
+        """Plot uses black actual, red fitted, and red dashed OOS lines."""
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        from Ts.TsModels._base import PredictResult
+        from Ts.TsPlots.style import BLACK, DARK_RED
+
+        pr = PredictResult(
+            mean=np.array([10.0, 11.0, 12.0, 13.0]),
+            lower=None,
+            upper=None,
+            is_oos=np.array([False, False, True, True]),
+            _full_data=np.array([9.0, 10.0]),
+            _full_fitted=np.array([9.5, 10.5]),
+            _start=0,
+        )
+
+        fig, ax = pr.plot()
+        actual = next(line for line in ax.lines if line.get_label() == "Actual")
+        fitted = next(line for line in ax.lines if line.get_label() == "Fitted")
+        forecast = next(line for line in ax.lines if line.get_label() == "Forecast")
+
+        assert actual.get_color() == BLACK
+        assert actual.get_linestyle() == "-"
+        assert fitted.get_color() == DARK_RED
+        assert fitted.get_linestyle() == "-"
+        assert forecast.get_color() == DARK_RED
+        assert forecast.get_linestyle() == "--"
+        plt.close(fig)
+
     def test_plot_basic(self):
         """plot() returns fig, ax with full data and fitted."""
         import numpy as np
