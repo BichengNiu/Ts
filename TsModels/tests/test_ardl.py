@@ -199,6 +199,46 @@ def test_auto_ardl_preserves_inputs_excluded_by_selected_order():
     assert not any("policy" in name for name in result.params)
 
 
+def test_auto_ardl_global_parallel_matches_serial_and_statsmodels():
+    """Global ARDL selection keeps the reference structure in parallel mode."""
+    y, x = _sample(70)
+    kwargs = {
+        "maxlag": 1,
+        "exog": x,
+        "maxorder": {"x1": 1, "x2": 1},
+        "trend": "c",
+        "criterion": "bic",
+        "search_method": "global",
+        "missing": "raise",
+    }
+    expected = ardl_select_order(
+        y,
+        maxlag=kwargs["maxlag"],
+        exog=x,
+        maxorder=kwargs["maxorder"],
+        trend=kwargs["trend"],
+        ic=kwargs["criterion"],
+        glob=True,
+        missing="none",
+    )
+    serial = AutoARDL(y, n_jobs=1, **kwargs).fit()
+    parallel = AutoARDL(y, n_jobs=2, **kwargs).fit()
+
+    assert serial.best_result.ar_lags == tuple(expected.model.ar_lags or ())
+    assert serial.best_result.distributed_lags == {
+        name: tuple(lags) for name, lags in expected.model.dl_lags.items()
+    }
+    assert parallel.best_result.ar_lags == serial.best_result.ar_lags
+    assert parallel.best_result.distributed_lags == serial.best_result.distributed_lags
+    pd.testing.assert_frame_equal(
+        parallel.criterion_table,
+        serial.criterion_table,
+        check_exact=False,
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+
 def test_ardl_rejects_internal_missing_rows_that_break_lag_adjacency():
     y, x = _sample(40)
     y.iloc[20] = np.nan

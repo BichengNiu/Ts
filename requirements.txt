@@ -4,3 +4,4 @@ scipy>=1.18.0,<2
 matplotlib>=3.11.1,<4
 statsmodels>=0.14.6,<0.15
 arch>=8.0.0,<9
+joblib>=1.5.0,<2

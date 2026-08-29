@@ -529,6 +529,7 @@ AutoSARIMAX(
     criterion="aic",
     method="grid",
     *,
+    n_jobs=-1,
     dates=None,
     exog=None,
     exog_names=None,
@@ -548,6 +549,7 @@ AutoSARIMAX(
 | `P`, `D`, `Q` | `(min, max)` | `(0,1)` | 季节阶数范围（s=0 时忽略） |
 | `s` | int | `0` | 季节周期（0=无季节性） |
 | `criterion` | str | `"aic"` | 选择准则: `aic`, `bic`, `hqic`, `aicc` |
+| `n_jobs` | int | `-1` | 候选评估进程数；`-1` 使用 CPU 核数减 1，`1` 为串行 |
 | `dates` | datetime-like | `None` | 严格观测日期 |
 | `exog` | Series/DataFrame/array-like | `None` | 每个候选模型共享的普通外生变量；单输入可直接传命名 Series 或一维数组 |
 | `exog_names` | sequence[str] | `None` | 数组和未命名 Series 的必填列名 |

@@ -2,21 +2,204 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
+from itertools import combinations, product
+from math import prod
 from typing import Mapping
 
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.ardl import ARDL as StatsmodelsARDL
-from statsmodels.tsa.ardl import ardl_select_order
 
 from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
 from Ts.TsModels._base import _resolve_prediction_window
+from Ts.TsModels._parallel import _map_candidates, _validate_n_jobs
 from Ts.TsModels._sarimax import _normalise_log, _normalise_sarimax_inputs
 
 
 _ARDL_CRITERIA = frozenset({"aic", "bic"})
 _ARDL_SEARCH_METHODS = frozenset({"hierarchical", "global"})
+
+
+@dataclass(frozen=True)
+class _ARDLSelectionContext:
+    """Immutable, serializable design data shared by ARDL workers."""
+
+    y: np.ndarray
+    blocks: tuple[np.ndarray, ...]
+    all_x: np.ndarray
+    always_df: int
+    var_names: tuple[str, ...]
+    causal: bool
+
+
+@dataclass(frozen=True)
+class _ARDLSelectionTask:
+    """One hierarchical count or global column permutation to evaluate."""
+
+    context: _ARDLSelectionContext
+    key: tuple
+    counts: tuple[int, ...] | None = None
+    columns: tuple[int, ...] | None = None
+
+
+def _compute_ardl_ics(task: _ARDLSelectionTask) -> tuple[tuple, tuple[float, float, float]]:
+    """Compute the same AIC/BIC/HQIC triple as statsmodels ARDL selection."""
+    from statsmodels.tools import eval_measures
+
+    context = task.context
+    if task.columns is not None:
+        x = context.all_x[:, task.columns]
+    else:
+        assert task.counts is not None
+        x = np.column_stack(
+            [
+                block[:, :count]
+                for block, count in zip(context.blocks, task.counts, strict=True)
+            ]
+        )
+    if x.shape[1]:
+        resid = context.y - x @ np.linalg.lstsq(x, context.y, rcond=None)[0]
+    else:
+        resid = context.y
+    nobs = resid.shape[0]
+    sigma2 = 1.0 / nobs * np.sum(resid**2)
+    llf = -nobs * (np.log(2 * np.pi * sigma2) + 1) / 2
+    df_model = context.always_df + x.shape[1]
+    total_params = df_model + 1
+    return task.key, (
+        float(eval_measures.aic(llf, nobs, total_params)),
+        float(eval_measures.bic(llf, nobs, total_params)),
+        float(eval_measures.hqic(llf, nobs, total_params)),
+    )
+
+
+def _perm_to_ardl_key(keys, perm):
+    """Convert statsmodels-style selected columns into an ARDL lag key."""
+    if perm == ():
+        d = {key: 0 for key, _ in keys if key is not None}
+        return (0, tuple((key, value) for key, value in d.items()))
+
+    d = defaultdict(list)
+    y_lags = []
+    for index in perm:
+        key = keys[index]
+        if key[0] is None:
+            y_lags.append(key[1])
+        else:
+            d[key[0]].append(key[1])
+    d = dict(d)
+    y_lags = 0 if not y_lags or y_lags == [0] else tuple(y_lags)
+    for key in keys:
+        if key[0] not in d and key[0] is not None:
+            d[key[0]] = None
+    for key in d:
+        if d[key] is not None:
+            d[key] = tuple(d[key])
+    return (y_lags, tuple(d.items()))
+
+
+def _build_ardl_selection_context(
+    response: pd.Series,
+    *,
+    maxlag: int,
+    exog: pd.DataFrame,
+    maxorder: int | Mapping,
+    trend: str,
+    causal: bool,
+    seasonal: bool,
+    period: int | None,
+    hold_back: int | None,
+) -> tuple[_ARDLSelectionContext, tuple[tuple[int, ...], ...], tuple[str, ...]]:
+    """Build the design blocks used by statsmodels ARDL order selection."""
+    base = StatsmodelsARDL(
+        response,
+        maxlag,
+        exog,
+        maxorder,
+        trend,
+        causal=causal,
+        seasonal=seasonal,
+        hold_back=hold_back,
+        period=period,
+        missing="none",
+    )
+    effective_hold_back = base.hold_back
+    blocks = base._blocks
+    always = np.column_stack([blocks["deterministic"], blocks["fixed"]])
+    always = always[effective_hold_back:]
+    select = [blocks["endog"][effective_hold_back:]]
+    iter_orders = [tuple(range(blocks["endog"].shape[1] + 1))]
+    var_names = []
+    for name in blocks["exog"]:
+        block = blocks["exog"][name][effective_hold_back:]
+        select.append(block)
+        iter_orders.append(tuple(range(block.shape[1] + 1)))
+        var_names.append(name)
+    y = base._y
+    if always.shape[1]:
+        pinv_always = np.linalg.pinv(always)
+        for index, block in enumerate(select):
+            select[index] = block - always @ (pinv_always @ block)
+        y = y - always @ (pinv_always @ y)
+
+    blocks_tuple = tuple(select)
+    all_x = np.column_stack(blocks_tuple)
+    context = _ARDLSelectionContext(
+        y=y,
+        blocks=blocks_tuple,
+        all_x=all_x,
+        always_df=always.shape[1],
+        var_names=tuple(var_names),
+        causal=causal,
+    )
+    return context, tuple(iter_orders), tuple(var_names)
+
+
+def _iter_ardl_selection_tasks(
+    context: _ARDLSelectionContext,
+    iter_orders: tuple[tuple[int, ...], ...],
+    var_names: tuple[str, ...],
+    *,
+    search_method: str,
+) -> tuple[object, int]:
+    """Return a stable task iterator and its exact candidate count."""
+    if search_method == "hierarchical":
+        def hierarchical_tasks():
+            for counts in product(*iter_orders):
+                input_key = []
+                for index, value in enumerate(counts[1:]):
+                    name = var_names[index]
+                    if context.causal:
+                        input_key.append((name, None if value == 0 else value))
+                    else:
+                        input_key.append(
+                            (name, value - 1 if value - 1 >= 0 else None)
+                        )
+                key = (
+                    counts[0] if counts[0] else None,
+                    tuple(input_key),
+                )
+                yield _ARDLSelectionTask(context, key, tuple(counts))
+
+        return hierarchical_tasks(), prod(len(values) for values in iter_orders)
+
+    keys = [(None, index) for index in range(context.blocks[0].shape[1])]
+    for name, block in zip(var_names, context.blocks[1:], strict=True):
+        keys.extend((name, index) for index in range(block.shape[1]))
+    all_columns = range(context.all_x.shape[1])
+
+    def global_tasks():
+        for size in range(context.all_x.shape[1] + 1):
+            for permutation in combinations(all_columns, size):
+                yield _ARDLSelectionTask(
+                    context,
+                    _perm_to_ardl_key(keys, permutation),
+                    columns=tuple(permutation),
+                )
+
+    return global_tasks(), 1 << context.all_x.shape[1]
 
 
 @dataclass(frozen=True)
@@ -725,6 +908,10 @@ class AutoARDL(BaseModel):
         Non-finite input policy; internal gaps are rejected.
     log : bool, default False
         Select and fit on the log response, returning original-scale forecasts.
+    n_jobs : int, keyword-only
+        Candidate worker count. ``-1`` uses at most CPU count minus one,
+        ``1`` forces serial execution, and positive values request a bounded
+        number of workers. Default ``-1``.
 
     Examples
     --------
@@ -755,6 +942,7 @@ class AutoARDL(BaseModel):
         hold_back=None,
         missing="drop",
         log=False,
+        n_jobs=-1,
     ):
         prepared = _prepare_inputs(
             data,
@@ -787,6 +975,7 @@ class AutoARDL(BaseModel):
         self.seasonal = _validate_bool("seasonal", seasonal)
         self.period = period
         self.hold_back = hold_back
+        self.n_jobs = _validate_n_jobs(n_jobs)
 
     def _validate_maxorder(self, maxorder):
         if isinstance(maxorder, Mapping):
@@ -830,30 +1019,57 @@ class AutoARDL(BaseModel):
         """
         index = self.dates if self.dates is not None else pd.RangeIndex(len(self.data))
         response = pd.Series(self._model_data, index=index, name="y")
-        selected = ardl_select_order(
+        context, iter_orders, var_names = _build_ardl_selection_context(
             response,
             maxlag=self.maxlag,
             exog=self.exog,
             maxorder=self.maxorder,
             trend=self.trend,
             causal=self.causal,
-            ic=self.criterion,
-            glob=self.search_method == "global",
             seasonal=self.seasonal,
             period=self.period,
             hold_back=self.hold_back,
+        )
+        tasks, n_tasks = _iter_ardl_selection_tasks(
+            context,
+            iter_orders,
+            var_names,
+            search_method=self.search_method,
+        )
+        evaluated = _map_candidates(
+            tasks,
+            _compute_ardl_ics,
+            n_jobs=self.n_jobs,
+            n_tasks=n_tasks,
+        )
+        ics = dict(evaluated)
+        criterion_index = {"aic": 0, "bic": 1}[self.criterion]
+        selected_key = min(
+            ics,
+            key=lambda key: ics[key][criterion_index],
+        )
+        selected_model = StatsmodelsARDL(
+            response,
+            selected_key[0],
+            self.exog,
+            dict(selected_key[1]),
+            self.trend,
+            causal=self.causal,
+            seasonal=self.seasonal,
+            hold_back=self.hold_back,
+            period=self.period,
             missing="none",
         )
         selected_estimator = ARDL(
             self.data,
-            lags=selected.model.ar_lags,
+            lags=selected_model.ar_lags,
             exog=self.exog,
             # statsmodels represents an excluded input as ``None`` in the
             # selection criterion, but omits that key from ``dl_lags``.
             # Preserve the exclusion explicitly: an empty mapping would make
             # ARDL restore its default contemporaneous input lag on refit.
             order={
-                name: selected.dl_lags.get(name)
+                name: selected_model.dl_lags.get(name)
                 for name in self.exog_names
             },
             trend=self.trend,
@@ -861,7 +1077,7 @@ class AutoARDL(BaseModel):
             causal=self.causal,
             seasonal=self.seasonal,
             period=self.period,
-            hold_back=selected.model.hold_back,
+            hold_back=selected_model.hold_back,
             missing="raise",
             log=self.log,
         )
@@ -873,9 +1089,14 @@ class AutoARDL(BaseModel):
         best._default_future_exog = (
             None if self.future_exog is None else self.future_exog.copy()
         )
-        scores = getattr(selected, self.criterion)
+        scores = sorted(
+            ics.items(),
+            key=lambda item: item[1][criterion_index],
+        )
         rows = []
-        for score, specification in scores.items():
+        for key, values in scores:
+            score = values[criterion_index]
+            specification = key
             target_order, input_orders = specification
             rows.append(
                 {

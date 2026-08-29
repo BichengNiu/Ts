@@ -32,9 +32,54 @@ from Ts.TsModels._garch_base import (
     _prepare_vol_inputs,
     _validate_vol_options,
 )
+from Ts.TsModels._parallel import _map_candidates, _validate_n_jobs
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
 _CRITERIA_ORDER = ("aic", "bic", "hqic", "aicc")
+
+
+@dataclass(frozen=True)
+class _SARIMAXCandidateTask:
+    """Serializable input for one isolated SARIMAX candidate fit."""
+
+    order_pair: tuple[tuple[int, int, int], tuple[int, int, int, int]]
+    model_kwargs: dict
+    fit_kwargs: dict
+
+
+@dataclass(frozen=True)
+class _CandidateOutcome:
+    """Stable result envelope returned by a SARIMAX candidate worker."""
+
+    order_pair: tuple[tuple[int, int, int], tuple[int, int, int, int]]
+    result: BaseModelResult | None
+    messages: tuple[str, ...]
+
+
+def _fit_sarimax_candidate(task: _SARIMAXCandidateTask) -> _CandidateOutcome:
+    """Fit one SARIMAX candidate without accessing parent-process state."""
+    import warnings
+
+    from Ts.TsModels._sarimax import SARIMAX
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        try:
+            result = SARIMAX(**task.model_kwargs).fit(**task.fit_kwargs)
+        except Exception as error:
+            return _CandidateOutcome(
+                order_pair=task.order_pair,
+                result=None,
+                messages=(
+                    f"{task.order_pair}: {type(error).__name__}: {error}",
+                ),
+            )
+
+    messages = tuple(
+        f"{task.order_pair}: {warning.category.__name__}: {warning.message}"
+        for warning in caught_warnings
+    )
+    return _CandidateOutcome(task.order_pair, result, messages)
 
 
 def _get_criterion_value(result: BaseModelResult, criterion: str) -> float:
@@ -164,7 +209,7 @@ class AutoModelResult(BaseModelResult):
 
         rows = []
         for index, (order, candidate) in enumerate(
-            zip(self.candidate_orders, self.candidate_results)
+            zip(self.candidate_orders, self.candidate_results, strict=True)
         ):
             row = {"order": order}
             if has_seasonal_orders:
@@ -913,6 +958,10 @@ class AutoSARIMAX(_BaseAutoModel):
     enforce_distributed_lag_stability : bool
         Whether all candidates enforce and diagnose complete transfer
         denominator stability. Default ``True``.
+    n_jobs : int, keyword-only
+        Candidate worker count. ``-1`` uses at most CPU count minus one,
+        ``1`` forces serial execution, and positive values request a bounded
+        number of workers. Default ``-1``.
 
     Examples
     --------
@@ -953,6 +1002,7 @@ class AutoSARIMAX(_BaseAutoModel):
         fit_method="bfgs",
         maxiter=500,
         cov_type="oim",
+        n_jobs=-1,
         distributed_lags=None,
         enforce_distributed_lag_stability=True,
     ):
@@ -987,6 +1037,7 @@ class AutoSARIMAX(_BaseAutoModel):
         self.fit_method = _normalise_fit_method(fit_method)
         self.maxiter = _normalise_maxiter(maxiter)
         self.cov_type = _normalise_cov_type(cov_type)
+        self.n_jobs = _validate_n_jobs(n_jobs)
         self.criterion = criterion
         self.method = method
         self.dates = None if prototype.dates is None else prototype.dates.copy()
@@ -1053,6 +1104,7 @@ class AutoSARIMAX(_BaseAutoModel):
             fit_method=self.fit_method,
             maxiter=self.maxiter,
             cov_type=self.cov_type,
+            n_jobs=self.n_jobs,
             distributed_lags=self.distributed_lags,
             enforce_distributed_lag_stability=(self.enforce_distributed_lag_stability),
         )
@@ -1098,8 +1150,6 @@ class AutoSARIMAX(_BaseAutoModel):
         """
         import itertools
 
-        from Ts.TsModels._sarimax import SARIMAX
-
         p_lo, p_hi = self.p_range
         d_lo, d_hi = self.d_range
         q_lo, q_hi = self.q_range
@@ -1123,53 +1173,76 @@ class AutoSARIMAX(_BaseAutoModel):
         else:
             seasonal = ((0, 0, 0, 0),)
 
-        # Each order is a (nonseasonal, seasonal) pair
-        orders = itertools.product(nonseasonal, seasonal)
+        # Each order is a (nonseasonal, seasonal) pair.  Materialize this
+        # bounded search grid so attempted-count and result ordering remain
+        # deterministic when workers finish in different orders.
+        orders = list(itertools.product(nonseasonal, seasonal))
         candidate_exog = self._candidate_exog()
 
-        def build_model(order_tuple):
-            ns_order, s_order = order_tuple
-            return SARIMAX(
-                self.data,
-                order=ns_order,
-                seasonal_order=s_order,
-                trend=self.trend,
-                enforce_stationarity=self.enforce_stationarity,
-                enforce_invertibility=self.enforce_invertibility,
-                dates=self.dates,
-                exog=candidate_exog,
-                exog_names=(
-                    self.exog_names
-                    if candidate_exog is not None
-                    and not isinstance(candidate_exog, pd.DataFrame)
-                    else None
-                ),
-                events=self.events,
-                missing="raise",
-                log=self.log,
-                distributed_lags=self.distributed_lags,
-                enforce_distributed_lag_stability=(
-                    self.enforce_distributed_lag_stability
-                ),
+        tasks = [
+            _SARIMAXCandidateTask(
+                order_pair=order_pair,
+                model_kwargs={
+                    "data": self.data,
+                    "order": order_pair[0],
+                    "seasonal_order": order_pair[1],
+                    "trend": self.trend,
+                    "enforce_stationarity": self.enforce_stationarity,
+                    "enforce_invertibility": self.enforce_invertibility,
+                    "dates": self.dates,
+                    "exog": candidate_exog,
+                    "exog_names": (
+                        self.exog_names
+                        if candidate_exog is not None
+                        and not isinstance(candidate_exog, pd.DataFrame)
+                        else None
+                    ),
+                    "events": self.events,
+                    "missing": "raise",
+                    "log": self.log,
+                    "distributed_lags": self.distributed_lags,
+                    "enforce_distributed_lag_stability": (
+                        self.enforce_distributed_lag_stability
+                    ),
+                },
+                fit_kwargs={
+                    "method": self.fit_method,
+                    "maxiter": self.maxiter,
+                    "cov_type": self.cov_type,
+                },
             )
-
-        (
-            best_result,
-            best_order_pair,
-            candidate_results,
-            candidate_orders,
-            n_attempted,
-            search_messages,
-        ) = self._run_grid_search(
-            orders,
-            build_model,
-            self.criterion,
-            fit_kwargs={
-                "method": self.fit_method,
-                "maxiter": self.maxiter,
-                "cov_type": self.cov_type,
-            },
+            for order_pair in orders
+        ]
+        outcomes = _map_candidates(
+            tasks,
+            _fit_sarimax_candidate,
+            n_jobs=self.n_jobs,
+            n_tasks=len(tasks),
         )
+
+        best_result = None
+        best_order_pair = None
+        best_value = float("inf")
+        candidate_results = []
+        candidate_orders = []
+        search_messages = []
+        for outcome in outcomes:
+            if outcome.result is None:
+                search_messages.extend(outcome.messages)
+                continue
+            search_messages.extend(outcome.messages)
+            candidate_results.append(outcome.result)
+            candidate_orders.append(outcome.order_pair)
+            value = _get_criterion_value(outcome.result, self.criterion)
+            if value < best_value:
+                best_value = value
+                best_result = outcome.result
+                best_order_pair = outcome.order_pair
+
+        if best_result is None or best_order_pair is None:
+            raise RuntimeError("No model converged during grid search")
+
+        n_attempted = len(outcomes)
 
         criterion_values = [
             _get_criterion_value(r, self.criterion) for r in candidate_results

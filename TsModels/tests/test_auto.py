@@ -375,6 +375,43 @@ class TestAutoSARIMAX:
         assert isinstance(result, AutoModelResult)
         assert auto.result_ is result
 
+    def test_parallel_and_serial_sarimax_results_keep_order(self, ar1_data):
+        """Process evaluation preserves candidate order and selection values."""
+        from Ts.TsModels._auto import AutoSARIMAX
+
+        kwargs = {
+            "p": (0, 1),
+            "d": (0, 0),
+            "q": (0, 1),
+            "P": (0, 0),
+            "D": (0, 0),
+            "Q": (0, 0),
+            "criterion": "bic",
+        }
+        serial = AutoSARIMAX(ar1_data, n_jobs=1, **kwargs).fit()
+        parallel = AutoSARIMAX(ar1_data, n_jobs=2, **kwargs).fit()
+
+        assert parallel.candidate_orders == serial.candidate_orders
+        assert parallel.best_order == serial.best_order
+        np.testing.assert_allclose(
+            parallel.criterion_values,
+            serial.criterion_values,
+            rtol=1e-10,
+            atol=1e-10,
+        )
+
+    def test_default_auto_sarimax_worker_policy(self, ar1_data):
+        """Automatic SARIMAX defaults to the CPU-bounded process policy."""
+        from Ts.TsModels._auto import AutoSARIMAX
+
+        auto = AutoSARIMAX(
+            ar1_data,
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+        )
+        assert auto.n_jobs == -1
+
     def test_candidates_use_shared_sarimax_fit_defaults(self, ar1_data, monkeypatch):
         """AutoSARIMAX forwards its shared SARIMAX fit defaults."""
         from Ts.TsModels._auto import AutoSARIMAX
