@@ -200,6 +200,7 @@ class TestBaseModelResult:
         np.testing.assert_allclose(displayed, result.standardized_residuals)
         assert all(axis.get_ylabel() == "" for axis in axes)
         assert all(axis.get_legend() is None for axis in axes)
+        assert axes[0].get_xlabel() == ""
         assert axes[1].get_xlabel() == "Standardized Residual"
 
     def test_plot_diagnostics_histogram_contains_all_residuals(self, result):
@@ -268,22 +269,16 @@ class TestBaseModelResult:
         assert "Ljung-Box" in text
         assert "Engle LM" in text
 
-    def test_plot_diagnostics_shows_test_results(self, result):
-        """Diagnostic tests appear only on their semantically related panels."""
+    def test_plot_diagnostics_omits_test_result_annotations(self, result):
+        """Diagnostic charts do not duplicate results shown in the test table."""
         _fig, axes = result.plot_diagnostics()
 
         panel_text = [" ".join(text.get_text() for text in ax.texts) for ax in axes]
 
-        assert "White Noise" in panel_text[2]
-        assert "Q(" in panel_text[2]
-        assert "p=" in panel_text[2]
-        assert "Normality" in panel_text[1]
-        assert "JB=" in panel_text[1]
-        assert "p=" in panel_text[1]
-
-        for text in (panel_text[0], panel_text[3]):
-            assert "White Noise" not in text
-            assert "Normality" not in text
+        assert all("White Noise" not in text for text in panel_text)
+        assert all("Normality" not in text for text in panel_text)
+        assert all("JB=" not in text for text in panel_text)
+        assert all("Q(" not in text for text in panel_text)
 
     def test_cover_remaining(self, result):
         """Aggregate covers for items exercised by TestBaseModelResult.

@@ -707,8 +707,8 @@ class BaseModelResult:
 
         One-dimensional residuals produce a 2-by-2 figure: standardized
         residuals over time, their histogram, ACF, and PACF.  The histogram
-        includes the normality test result, while the ACF panel includes the
-        white-noise test result.  Multi-variable residuals (shape ``(n, k)``)
+        and correlogram panels contain only their respective plots.
+        Multi-variable residuals (shape ``(n, k)``)
         produce a ``k``-by-3 grid with standardized residuals, ACF, and PACF
         for each variable.  Diagnostic panels omit y-axis titles and legends
         by default.
@@ -738,11 +738,9 @@ class BaseModelResult:
         from Ts.TsPlots import plot_acf, plot_pacf, plot_series
         from Ts.TsPlots.style import (
             AXIS_LABEL_FONTSIZE,
-            ANNOTATION_EDGE,
             BLACK,
             WHITE,
             TITLE_PAD,
-            NOTE_FONTSIZE,
             TITLE_FONTSIZE,
             _ensure_fonts,
             draw_suptitle,
@@ -776,6 +774,7 @@ class BaseModelResult:
                     diagnostic_residuals[:, i],
                     ax=axes[i, 0],
                     title=f"{label} Standardized Residuals",
+                    xtitle="",
                     ytitle="Standardized Residual",
                     show_legend=False,
                 )
@@ -803,14 +802,9 @@ class BaseModelResult:
             diagnostic_residuals,
             ax=ax_residuals,
             title="Standardized Residuals",
+            xtitle="",
             ytitle="Standardized Residual",
             show_legend=False,
-        )
-
-        # Run white noise and normality tests for annotation
-        wn_lags = min(10, max(1, len(diagnostic_residuals) // 5))
-        wn_result, nm_result = self._white_noise_and_normality(
-            diagnostic_residuals, wn_lags
         )
 
         ax_histogram.hist(
@@ -843,34 +837,6 @@ class BaseModelResult:
             diagnostic_residuals,
             ax=ax_pacf,
             title="Standardized Residual PACF",
-        )
-
-        annotation_bbox = {
-            "boxstyle": "round,pad=0.3",
-            "facecolor": WHITE,
-            "alpha": 0.85,
-            "edgecolor": ANNOTATION_EDGE,
-        }
-        annotation_kwargs = {
-            "fontsize": NOTE_FONTSIZE,
-            "ha": "right",
-            "va": "top",
-            "bbox": annotation_bbox,
-        }
-        ax_acf.text(
-            0.98,
-            0.95,
-            f"White Noise: Q({wn_result.lags})={wn_result.statistic:.2f}, "
-            f"p={wn_result.pvalue:.3f}",
-            transform=ax_acf.transAxes,
-            **annotation_kwargs,
-        )
-        ax_histogram.text(
-            0.98,
-            0.95,
-            f"Normality: JB={nm_result.statistic:.2f}, p={nm_result.pvalue:.3f}",
-            transform=ax_histogram.transAxes,
-            **annotation_kwargs,
         )
 
         draw_suptitle(fig, title)

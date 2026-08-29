@@ -499,7 +499,8 @@ class TestVECMResultDiagnostics:
             assert axes[position, 0].get_title().endswith(
                 "Standardized Residuals"
             )
-            assert axes[position, 0].get_ylabel() == "Standardized Residual"
+            assert axes[position, 0].get_ylabel() == ""
+            assert axes[position, 0].get_xlabel() == ""
 
     def test_test_residuals_returns_dict(self, fitted):
         """test_residuals() returns dict of ResidualTestResults.
