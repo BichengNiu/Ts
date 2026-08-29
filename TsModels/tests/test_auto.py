@@ -425,8 +425,8 @@ class TestAutoSARIMAX:
         result = AutoSARIMAX(
             ar1_data,
             p=(0, 1),
-            d=(0, 0),
-            q=(0, 0),
+            d=(0, 1),
+            q=(0, 1),
             n_jobs=2,
         ).fit()
 
@@ -436,6 +436,28 @@ class TestAutoSARIMAX:
             for candidate in result.candidate_results
         )
         assert result._refit_candidate(0)._statsmodels_result is not None
+
+    def test_sarimax_search_records_resolved_schedule(self, ar1_data):
+        """Search audit facts describe the actual candidate execution mode."""
+        from Ts.TsModels._auto import AutoSARIMAX
+
+        result = AutoSARIMAX(
+            ar1_data,
+            p=(0, 1),
+            d=(0, 1),
+            q=(0, 1),
+            n_jobs=2,
+        ).fit()
+
+        assert result.search_metadata | {"elapsed_seconds": 0.0} == {
+            "mode": "parallel",
+            "worker_count": 2,
+            "candidate_count": 8,
+            "estimated_work": 6400,
+            "reason": "bounded_process_parallelism",
+            "elapsed_seconds": 0.0,
+        }
+        assert result.search_metadata["elapsed_seconds"] > 0.0
 
     def test_default_auto_sarimax_worker_policy(self, ar1_data):
         """Automatic SARIMAX defaults to the CPU-bounded process policy."""

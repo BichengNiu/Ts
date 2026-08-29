@@ -5,6 +5,7 @@ import pytest
 from Ts.TsModels._parallel import (
     _map_candidates,
     _resolve_n_jobs,
+    _resolve_sarimax_candidate_schedule,
     _validate_n_jobs,
 )
 
@@ -22,6 +23,52 @@ def test_resolve_n_jobs_reserves_one_cpu_and_caps_tasks(monkeypatch):
     assert _resolve_n_jobs(-2, 100) == 6
     assert _resolve_n_jobs(100, 4) == 4
     assert _resolve_n_jobs(-1, 1) == 1
+
+
+def test_sarimax_schedule_uses_bounded_parallelism_for_substantial_search(
+    monkeypatch,
+):
+    """SARIMAX limits process workers while retaining CPU and task bounds."""
+    monkeypatch.setattr("Ts.TsModels._parallel.os_cpu_count", lambda: 8)
+
+    schedule = _resolve_sarimax_candidate_schedule(
+        -1,
+        32,
+        nobs=120,
+        n_exog=2,
+        model_complexity=5,
+    )
+
+    assert schedule.mode == "parallel"
+    assert schedule.worker_count == 4
+    assert schedule.metadata()["candidate_count"] == 32
+
+
+def test_sarimax_schedule_falls_back_for_small_or_light_searches():
+    """Candidate startup and IPC costs do not dominate a small grid."""
+    small = _resolve_sarimax_candidate_schedule(
+        -1,
+        4,
+        nobs=10_000,
+        n_exog=10,
+        model_complexity=10,
+    )
+    light = _resolve_sarimax_candidate_schedule(
+        -1,
+        8,
+        nobs=10,
+        n_exog=0,
+        model_complexity=1,
+    )
+
+    assert (small.mode, small.reason) == (
+        "serial",
+        "candidate_count_below_threshold",
+    )
+    assert (light.mode, light.reason) == (
+        "serial",
+        "estimated_work_below_threshold",
+    )
 
 
 def test_map_candidates_preserves_input_order_with_processes():

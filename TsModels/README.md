@@ -549,7 +549,7 @@ AutoSARIMAX(
 | `P`, `D`, `Q` | `(min, max)` | `(0,1)` | 季节阶数范围（s=0 时忽略） |
 | `s` | int | `0` | 季节周期（0=无季节性） |
 | `criterion` | str | `"aic"` | 选择准则: `aic`, `bic`, `hqic`, `aicc` |
-| `n_jobs` | int | `-1` | 候选评估进程数；`-1` 使用 CPU 核数减 1，`1` 为串行 |
+| `n_jobs` | int | `-1` | 候选评估进程数；`1` 强制串行。默认策略只在至少 8 个且工作量足够的候选上并行，并限制为最多 4 个进程、每进程一个数值线程。|
 | `dates` | datetime-like | `None` | 严格观测日期 |
 | `exog` | Series/DataFrame/array-like | `None` | 每个候选模型共享的普通外生变量；单输入可直接传命名 Series 或一维数组 |
 | `exog_names` | sequence[str] | `None` | 数组和未命名 Series 的必填列名 |
@@ -560,6 +560,11 @@ AutoSARIMAX(
 | `log` | bool | `False` | 是否让所有候选模型拟合响应变量的自然对数；这是固定设置，不是搜索维度。输入必须严格为正，预测自动返回原尺度并进行对数正态均值偏差修正 |
 | `distributed_lags` | `dict[str, RationalLagSpec]` | `None` | 所有候选共享的固定 RDL 规格；不自动搜索其阶数 |
 | `enforce_distributed_lag_stability` | bool | `True` | 所有候选统一使用的分母稳定性规则 |
+
+自动 SARIMAX（包括自动 RDL 的误差项搜索）不会拆分单个优化器，而是在独立候选模型之间调度。结果的 `.search_metadata` 记录实际模式、工作进程数、候选数、搜索耗时、预计工作量及调度原因；候选顺序与最佳模型选择不因并发完成顺序而变化。
+
+在目标机器上复核串/并行耗时时，运行
+`python TsModels/benchmarks/benchmark_sarimax_schedule.py`。它固定 120 个观测、2 个外生变量、32 个候选，分别预热并重复测量串行及 2/3/4/6 工作进程请求各 5 次，输出中位数与相对串行加速比。
 
 对于严格为正的响应变量，可统一在对数尺度搜索候选阶数，同时让最终结果和
 预测自动返回原尺度：

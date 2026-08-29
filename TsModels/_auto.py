@@ -18,6 +18,7 @@ AutoGARCH
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
@@ -35,6 +36,7 @@ from Ts.TsModels._garch_base import (
 from Ts.TsModels._parallel import (
     _map_candidates,
     _resolve_n_jobs,
+    _resolve_sarimax_candidate_schedule,
     _validate_n_jobs,
 )
 
@@ -242,6 +244,9 @@ class AutoModelResult(BaseModelResult):
         Seasonal orders corresponding to successful AutoSARIMAX candidates.
     search_messages : list of str, optional
         Warnings and failed-fit messages collected during the search.
+    search_metadata : dict
+        Immutable execution facts for the completed candidate schedule, such
+        as mode, worker count, elapsed seconds and the scheduling reason.
     model_type, params, std_errors, p_values : see BaseModelResult
     aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
         Shared fields copied from the selected result.
@@ -271,6 +276,7 @@ class AutoModelResult(BaseModelResult):
     best_seasonal_order: tuple | None = None
     candidate_seasonal_orders: list = field(default_factory=list, repr=False)
     search_messages: list[str] = field(default_factory=list, repr=False)
+    search_metadata: dict[str, int | float | str] = field(default_factory=dict)
     _candidate_model_kwargs: dict | None = field(default=None, repr=False)
     _candidate_fit_kwargs: dict | None = field(default=None, repr=False)
 
@@ -322,6 +328,7 @@ class AutoModelResult(BaseModelResult):
         best_seasonal_order: tuple | None = None,
         candidate_seasonal_orders: list | None = None,
         search_messages: list[str] | None = None,
+        search_metadata: dict[str, int | float | str] | None = None,
         candidate_model_kwargs: dict | None = None,
         candidate_fit_kwargs: dict | None = None,
     ) -> AutoModelResult:
@@ -354,6 +361,9 @@ class AutoModelResult(BaseModelResult):
             Seasonal orders corresponding to successful candidates.
         search_messages : list of str or None
             Diagnostics recorded for unsuccessful candidates.
+        search_metadata : dict or None, optional
+            Execution facts such as the candidate scheduling mode and worker
+            count.  This is informational and never affects model selection.
         candidate_model_kwargs : dict or None, optional
             Internal model factory arguments used to refit a selected
             candidate when parallel search returned compact summaries.
@@ -403,6 +413,9 @@ class AutoModelResult(BaseModelResult):
                 [] if candidate_seasonal_orders is None else candidate_seasonal_orders
             ),
             search_messages=[] if search_messages is None else search_messages,
+            search_metadata=(
+                {} if search_metadata is None else dict(search_metadata)
+            ),
             _candidate_model_kwargs=(
                 None if candidate_model_kwargs is None else dict(candidate_model_kwargs)
             ),
@@ -1076,9 +1089,10 @@ class AutoSARIMAX(_BaseAutoModel):
         Whether all candidates enforce and diagnose complete transfer
         denominator stability. Default ``True``.
     n_jobs : int, keyword-only
-        Candidate worker count. ``-1`` uses at most CPU count minus one,
-        ``1`` forces serial execution, and positive values request a bounded
-        number of workers. Default ``-1``.
+        Candidate worker count. ``1`` forces serial execution. Otherwise,
+        SARIMAX uses processes only for substantial candidate searches and
+        caps execution at four workers while reserving one logical CPU.
+        Default ``-1``.
 
     Examples
     --------
@@ -1302,7 +1316,20 @@ class AutoSARIMAX(_BaseAutoModel):
         # deterministic when workers finish in different orders.
         orders = list(itertools.product(nonseasonal, seasonal))
         candidate_exog = self._candidate_exog()
-        compact_results = _resolve_n_jobs(self.n_jobs, len(orders)) > 1
+        search_started = perf_counter()
+        model_complexity = 1 + self.p_range[1] + self.d_range[1] + self.q_range[1]
+        if self.s > 0:
+            model_complexity += (
+                self.P_range[1] + self.D_range[1] + self.Q_range[1]
+            )
+        schedule = _resolve_sarimax_candidate_schedule(
+            self.n_jobs,
+            len(orders),
+            nobs=len(self.data),
+            n_exog=0 if self.exog_names is None else len(self.exog_names),
+            model_complexity=model_complexity,
+        )
+        compact_results = schedule.is_parallel
 
         tasks = [
             _SARIMAXCandidateTask(
@@ -1342,9 +1369,10 @@ class AutoSARIMAX(_BaseAutoModel):
         outcomes = _map_candidates(
             tasks,
             _fit_sarimax_candidate,
-            n_jobs=self.n_jobs,
+            n_jobs=schedule.worker_count,
             n_tasks=len(tasks),
             progress_callback=progress_callback,
+            inner_max_num_threads=1 if schedule.is_parallel else None,
         )
 
         best_result = None
@@ -1394,6 +1422,8 @@ class AutoSARIMAX(_BaseAutoModel):
         flat_orders = [o[0] for o in candidate_orders]
         seasonal_orders = [o[1] for o in candidate_orders]
 
+        search_metadata = schedule.metadata()
+        search_metadata["elapsed_seconds"] = perf_counter() - search_started
         auto_result = AutoModelResult.from_search(
             best_result=best_result,
             best_order=best_order,
@@ -1406,6 +1436,7 @@ class AutoSARIMAX(_BaseAutoModel):
             best_seasonal_order=best_order_pair[1] if self.s > 0 else None,
             candidate_seasonal_orders=seasonal_orders if self.s > 0 else None,
             search_messages=search_messages,
+            search_metadata=search_metadata,
             candidate_model_kwargs=(
                 best_task.model_kwargs if compact_results else None
             ),
