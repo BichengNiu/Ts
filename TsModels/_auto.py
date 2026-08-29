@@ -271,6 +271,8 @@ class AutoModelResult(BaseModelResult):
     best_seasonal_order: tuple | None = None
     candidate_seasonal_orders: list = field(default_factory=list, repr=False)
     search_messages: list[str] = field(default_factory=list, repr=False)
+    _candidate_model_kwargs: dict | None = field(default=None, repr=False)
+    _candidate_fit_kwargs: dict | None = field(default=None, repr=False)
 
     @property
     def criterion_table(self) -> pd.DataFrame:
@@ -320,6 +322,8 @@ class AutoModelResult(BaseModelResult):
         best_seasonal_order: tuple | None = None,
         candidate_seasonal_orders: list | None = None,
         search_messages: list[str] | None = None,
+        candidate_model_kwargs: dict | None = None,
+        candidate_fit_kwargs: dict | None = None,
     ) -> AutoModelResult:
         """Construct from a search loop outcome.
 
@@ -350,6 +354,11 @@ class AutoModelResult(BaseModelResult):
             Seasonal orders corresponding to successful candidates.
         search_messages : list of str or None
             Diagnostics recorded for unsuccessful candidates.
+        candidate_model_kwargs : dict or None, optional
+            Internal model factory arguments used to refit a selected
+            candidate when parallel search returned compact summaries.
+        candidate_fit_kwargs : dict or None, optional
+            Internal fit arguments paired with ``candidate_model_kwargs``.
 
         Returns
         -------
@@ -394,7 +403,32 @@ class AutoModelResult(BaseModelResult):
                 [] if candidate_seasonal_orders is None else candidate_seasonal_orders
             ),
             search_messages=[] if search_messages is None else search_messages,
+            _candidate_model_kwargs=(
+                None if candidate_model_kwargs is None else dict(candidate_model_kwargs)
+            ),
+            _candidate_fit_kwargs=(
+                None if candidate_fit_kwargs is None else dict(candidate_fit_kwargs)
+            ),
         )
+
+    def _refit_candidate(self, index: int) -> BaseModelResult:
+        """Return a complete result for a selected candidate order."""
+        if not 0 <= index < len(self.candidate_results):
+            raise IndexError(f"candidate index out of range: {index}")
+        if self._candidate_model_kwargs is None:
+            return self.candidate_results[index]
+
+        from Ts.TsModels._sarimax import SARIMAX
+
+        model_kwargs = dict(self._candidate_model_kwargs)
+        model_kwargs["order"] = self.candidate_orders[index]
+        model_kwargs["seasonal_order"] = (
+            self.candidate_seasonal_orders[index]
+            if index < len(self.candidate_seasonal_orders)
+            else (0, 0, 0, 0)
+        )
+        fit_kwargs = dict(self._candidate_fit_kwargs or {})
+        return SARIMAX(**model_kwargs).fit(**fit_kwargs)
 
     def summary(self) -> str:
         """Return a formatted summary with selection header.
@@ -1372,6 +1406,12 @@ class AutoSARIMAX(_BaseAutoModel):
             best_seasonal_order=best_order_pair[1] if self.s > 0 else None,
             candidate_seasonal_orders=seasonal_orders if self.s > 0 else None,
             search_messages=search_messages,
+            candidate_model_kwargs=(
+                best_task.model_kwargs if compact_results else None
+            ),
+            candidate_fit_kwargs=(
+                best_task.fit_kwargs if compact_results else None
+            ),
         )
 
         self.result_ = auto_result

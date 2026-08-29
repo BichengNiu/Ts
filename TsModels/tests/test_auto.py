@@ -435,6 +435,7 @@ class TestAutoSARIMAX:
             getattr(candidate, "_statsmodels_result", None) is None
             for candidate in result.candidate_results
         )
+        assert result._refit_candidate(0)._statsmodels_result is not None
 
     def test_default_auto_sarimax_worker_policy(self, ar1_data):
         """Automatic SARIMAX defaults to the CPU-bounded process policy."""
