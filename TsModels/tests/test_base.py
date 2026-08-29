@@ -502,6 +502,32 @@ class TestPredictResultPlot:
 
         plt.close(fig)
 
+    def test_plot_xlim_autoscales_y_to_visible_window(self):
+        """xlim restricts the y-axis range to the visible observations."""
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        from Ts.TsModels._base import PredictResult
+
+        pr = PredictResult(
+            mean=np.array([10.0, 11.0]),
+            lower=None,
+            upper=None,
+            is_oos=np.array([False, False]),
+            _full_data=np.array([1000.0, 10.0, 11.0, 2000.0]),
+            _full_fitted=np.array([900.0, 10.5, 11.5, 1900.0]),
+            _start=1,
+        )
+
+        fig, ax = pr.plot(xlim=(1, 2))
+
+        lower, upper = ax.get_ylim()
+        assert lower < 10.0
+        assert upper > 11.5
+        assert upper < 100.0
+        assert np.all(np.abs(ax.get_yticks()) < 100.0)
+        plt.close(fig)
+
     def test_plot_with_ci(self):
         """plot(ci=True) draws confidence bands."""
         import numpy as np

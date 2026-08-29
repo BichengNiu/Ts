@@ -92,6 +92,59 @@ def _resolve_prediction_window(nobs, start, end):
     )
 
 
+def _autoscale_y_to_visible_data(axis) -> None:
+    """Fit the y-axis limits to data visible within the current x-limits."""
+    x_min, x_max = axis.get_xlim()
+    x_min, x_max = sorted((float(x_min), float(x_max)))
+    visible_values = []
+
+    for line in axis.lines:
+        if line.get_transform() != axis.transData:
+            continue
+        try:
+            x_values = np.ma.asarray(line.get_xdata(orig=False), dtype=float)
+            y_values = np.ma.asarray(line.get_ydata(orig=False), dtype=float)
+            if x_values.shape != y_values.shape:
+                continue
+            mask = (
+                np.isfinite(x_values)
+                & np.isfinite(y_values)
+                & (x_values >= x_min)
+                & (x_values <= x_max)
+            )
+            visible_values.extend(np.asarray(y_values[mask], dtype=float))
+        except (TypeError, ValueError):
+            continue
+
+    for collection in axis.collections:
+        if collection.get_transform() != axis.transData:
+            continue
+        for path in collection.get_paths():
+            vertices = np.asarray(path.vertices, dtype=float)
+            if vertices.ndim != 2 or vertices.shape[1] < 2:
+                continue
+            mask = (
+                np.isfinite(vertices[:, 0])
+                & np.isfinite(vertices[:, 1])
+                & (vertices[:, 0] >= x_min)
+                & (vertices[:, 0] <= x_max)
+            )
+            visible_values.extend(vertices[mask, 1])
+
+    if not visible_values:
+        return
+    values = np.asarray(visible_values, dtype=float)
+    lower = float(np.min(values))
+    upper = float(np.max(values))
+    span = upper - lower
+    padding = span * 0.05
+    if padding == 0.0:
+        padding = abs(lower) * 0.05
+    if padding == 0.0:
+        padding = 1.0
+    axis.set_ylim(lower - padding, upper + padding)
+
+
 @dataclass
 class PredictResult:
     """Container for unified prediction output.
@@ -144,7 +197,8 @@ class PredictResult:
             Chart title. Auto-generated when ``None``.
         xlim : tuple of (float, float), optional
             Set x-axis limits, e.g. ``(9800, 10020)`` to zoom in on a
-            specific time window.
+            specific time window. The y-axis is automatically fitted to the
+            data visible in that window.
 
         Returns
         -------
@@ -325,6 +379,7 @@ class PredictResult:
 
         if xlim is not None:
             ax.set_xlim(xlim)
+            _autoscale_y_to_visible_data(ax)
 
         if has_any:
             ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
