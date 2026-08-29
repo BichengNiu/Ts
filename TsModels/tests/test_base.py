@@ -568,6 +568,7 @@ class TestPredictResultPlot:
         """
         import numpy as np
         from Ts.TsModels._base import PredictResult
+        from Ts.TsPlots.style import GRAY
 
         nobs = 10
         pr = PredictResult(
@@ -588,6 +589,12 @@ class TestPredictResultPlot:
 
         assert 9 in band_x
         assert 10 in band_x
+        from matplotlib.colors import to_rgba
+
+        assert np.allclose(
+            forecast_band.get_facecolor()[0],
+            to_rgba(GRAY, alpha=0.15),
+        )
         import matplotlib.pyplot as plt
 
         plt.close(fig)

@@ -116,7 +116,8 @@ result.test_residuals(lags=10)
 | `backcast(steps, alpha)` | 反转时间后重新拟合并估计样本前数值 |
 
 `PredictResult.plot(ci=False, title=None, xlim=None)` 绘制实际值、拟合值和预测值。
-传入 `xlim` 缩放到指定时间窗口时，纵轴范围和刻度会同步按窗口内可见数据自动调整。
+传入 `ci=True` 可显示浅灰色置信区间；传入 `xlim` 缩放到指定时间窗口时，纵轴范围和刻度
+会同步按窗口内可见数据自动调整。
 
 估计模型的 Result 类继承 `BaseModelResult`，共享方法和字段：
 

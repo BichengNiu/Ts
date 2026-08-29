@@ -343,7 +343,7 @@ class PredictResult:
                     ci_x,
                     ci_lower,
                     ci_upper,
-                    color=DARK_RED,
+                    color=GRAY,
                     alpha=0.15,
                     linewidth=0,
                     label="Forecast 95% CI",
