@@ -17,7 +17,7 @@ AutoGARCH
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,11 @@ from Ts.TsModels._garch_base import (
     _prepare_vol_inputs,
     _validate_vol_options,
 )
-from Ts.TsModels._parallel import _map_candidates, _validate_n_jobs
+from Ts.TsModels._parallel import (
+    _map_candidates,
+    _resolve_n_jobs,
+    _validate_n_jobs,
+)
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
 _CRITERIA_ORDER = ("aic", "bic", "hqic", "aicc")
@@ -45,6 +49,7 @@ class _SARIMAXCandidateTask:
     order_pair: tuple[tuple[int, int, int], tuple[int, int, int, int]]
     model_kwargs: dict
     fit_kwargs: dict
+    compact_result: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,80 @@ class _CandidateOutcome:
     order_pair: tuple[tuple[int, int, int], tuple[int, int, int, int]]
     result: BaseModelResult | None
     messages: tuple[str, ...]
+
+
+@dataclass
+class _SARIMAXCandidateSummary(BaseModelResult):
+    """Lightweight SARIMAX result retained for parallel search metadata."""
+
+    _log: bool = False
+    _converged: bool = False
+    _optimizer: str | None = None
+    _optimization_details: dict = field(default_factory=dict, repr=False)
+    _likelihood_burn: int = 0
+
+    @property
+    def log(self):
+        """Whether the candidate used a log response transformation."""
+        return self._log
+
+    @property
+    def converged(self):
+        """Whether the candidate optimizer reported convergence."""
+        return self._converged
+
+    @property
+    def optimizer(self):
+        """Return the candidate optimizer name, if available."""
+        return self._optimizer
+
+    @property
+    def optimization_details(self):
+        """Return copied candidate optimizer metadata."""
+        return dict(self._optimization_details)
+
+    @property
+    def likelihood_burn(self):
+        """Number of candidate state-initialization observations."""
+        return self._likelihood_burn
+
+    @property
+    def effective_nobs(self):
+        """Number of candidate observations contributing to likelihood."""
+        return self.nobs - self.likelihood_burn
+
+
+def _summarize_sarimax_result(result: BaseModelResult) -> BaseModelResult:
+    """Remove the large raw state-space object before IPC transfer."""
+    return _SARIMAXCandidateSummary(
+        model_type=result.model_type,
+        params=dict(result.params),
+        std_errors=dict(result.std_errors),
+        p_values=dict(result.p_values),
+        aic=result.aic,
+        bic=result.bic,
+        log_likelihood=result.log_likelihood,
+        residuals=np.empty(0, dtype=float),
+        fitted_values=None,
+        nobs=result.nobs,
+        data=np.empty(0, dtype=float),
+        _parameter_covariance=_copy_optional_array(
+            getattr(result, "_parameter_covariance", None)
+        ),
+        _parameter_names=tuple(getattr(result, "_parameter_names", ())),
+        _log=bool(getattr(result, "log", False)),
+        _converged=bool(getattr(result, "converged", False)),
+        _optimizer=getattr(result, "optimizer", None),
+        _optimization_details=dict(
+            getattr(result, "optimization_details", {})
+        ),
+        _likelihood_burn=int(getattr(result, "likelihood_burn", 0)),
+    )
+
+
+def _copy_optional_array(values):
+    """Copy a result array while preserving ``None`` values."""
+    return None if values is None else np.asarray(values).copy()
 
 
 def _fit_sarimax_candidate(task: _SARIMAXCandidateTask) -> _CandidateOutcome:
@@ -66,6 +145,8 @@ def _fit_sarimax_candidate(task: _SARIMAXCandidateTask) -> _CandidateOutcome:
         warnings.simplefilter("always")
         try:
             result = SARIMAX(**task.model_kwargs).fit(**task.fit_kwargs)
+            if task.compact_result:
+                result = _summarize_sarimax_result(result)
         except Exception as error:
             return _CandidateOutcome(
                 order_pair=task.order_pair,
@@ -140,7 +221,9 @@ class AutoModelResult(BaseModelResult):
         Optimal parameter combination (e.g. ``(1, 0, 0)`` for SARIMAX or
         ``(p, o, q)`` for GARCH / GJR-GARCH).
     candidate_results : list
-        All successfully fitted :class:`BaseModelResult` objects.
+        All successfully fitted candidate result summaries. Parallel
+        selection keeps these summaries lightweight; ``best_result`` remains
+        the complete fitted model.
     candidate_orders : list
         All parameter combinations that were attempted and succeeded.
     criterion_values : list
@@ -1185,10 +1268,12 @@ class AutoSARIMAX(_BaseAutoModel):
         # deterministic when workers finish in different orders.
         orders = list(itertools.product(nonseasonal, seasonal))
         candidate_exog = self._candidate_exog()
+        compact_results = _resolve_n_jobs(self.n_jobs, len(orders)) > 1
 
         tasks = [
             _SARIMAXCandidateTask(
                 order_pair=order_pair,
+                compact_result=compact_results,
                 model_kwargs={
                     "data": self.data,
                     "order": order_pair[0],
@@ -1230,11 +1315,12 @@ class AutoSARIMAX(_BaseAutoModel):
 
         best_result = None
         best_order_pair = None
+        best_task = None
         best_value = float("inf")
         candidate_results = []
         candidate_orders = []
         search_messages = []
-        for outcome in outcomes:
+        for task, outcome in zip(tasks, outcomes, strict=True):
             if outcome.result is None:
                 search_messages.extend(outcome.messages)
                 continue
@@ -1246,9 +1332,22 @@ class AutoSARIMAX(_BaseAutoModel):
                 best_value = value
                 best_result = outcome.result
                 best_order_pair = outcome.order_pair
+                best_task = task
 
-        if best_result is None or best_order_pair is None:
+        if best_result is None or best_order_pair is None or best_task is None:
             raise RuntimeError("No model converged during grid search")
+
+        if compact_results:
+            full_outcome = _fit_sarimax_candidate(
+                replace(best_task, compact_result=False)
+            )
+            if full_outcome.result is None:
+                raise RuntimeError(
+                    "The selected SARIMAX candidate could not be refit "
+                    "after parallel selection"
+                )
+            best_result = full_outcome.result
+            search_messages.extend(full_outcome.messages)
 
         n_attempted = len(outcomes)
 

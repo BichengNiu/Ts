@@ -638,7 +638,7 @@ result = auto.fit()
 |------|------|------|
 | `best_result` | `BaseModelResult` | 最优模型的完整结果对象 |
 | `best_order` | `tuple` | 最优参数组合 |
-| `candidate_results` | `list` | 所有成功拟合的模型结果 |
+| `candidate_results` | `list` | 所有成功候选的结果摘要；并行搜索时不携带大型原始状态空间对象；完整结果见 `best_result` |
 | `candidate_orders` | `list` | 所有成功的参数组合 |
 | `criterion_table` | `pandas.DataFrame` | 所有成功候选模型的 AIC/BIC/HQIC/AICC 值；信息准则越小越好 |
 | `selection_criterion` | `str` | 使用的选择准则 |

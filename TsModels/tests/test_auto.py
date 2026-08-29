@@ -418,6 +418,24 @@ class TestAutoSARIMAX:
         assert result.n_attempted == 4
         assert progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
 
+    def test_parallel_sarimax_returns_compact_candidates(self, ar1_data):
+        """Parallel candidates omit raw state-space results during IPC."""
+        from Ts.TsModels._auto import AutoSARIMAX
+
+        result = AutoSARIMAX(
+            ar1_data,
+            p=(0, 1),
+            d=(0, 0),
+            q=(0, 0),
+            n_jobs=2,
+        ).fit()
+
+        assert result.best_result._statsmodels_result is not None
+        assert all(
+            getattr(candidate, "_statsmodels_result", None) is None
+            for candidate in result.candidate_results
+        )
+
     def test_default_auto_sarimax_worker_policy(self, ar1_data):
         """Automatic SARIMAX defaults to the CPU-bounded process policy."""
         from Ts.TsModels._auto import AutoSARIMAX
