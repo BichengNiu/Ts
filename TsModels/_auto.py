@@ -1115,8 +1115,15 @@ class AutoSARIMAX(_BaseAutoModel):
 
         return SARIMAX._evaluation_predict_kwargs(self, start, stop)
 
-    def fit(self):
+    def fit(self, progress_callback=None):
         """Run grid search and return the best model.
+
+        Parameters
+        ----------
+        progress_callback : callable, optional
+            Parent-process callback invoked as ``callback(completed, total)``
+            after each candidate finishes. The callback is never sent to a
+            worker process.
 
         Returns
         -------
@@ -1218,6 +1225,7 @@ class AutoSARIMAX(_BaseAutoModel):
             _fit_sarimax_candidate,
             n_jobs=self.n_jobs,
             n_tasks=len(tasks),
+            progress_callback=progress_callback,
         )
 
         best_result = None

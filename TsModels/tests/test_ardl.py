@@ -239,6 +239,29 @@ def test_auto_ardl_global_parallel_matches_serial_and_statsmodels():
     )
 
 
+def test_auto_ardl_progress_callback_reports_each_candidate():
+    """AutoARDL reports all IC candidates before fitting the selected model."""
+    y, x = _sample(50)
+    progress = []
+
+    result = AutoARDL(
+        y,
+        maxlag=1,
+        exog=x[["x1"]],
+        maxorder={"x1": 1},
+        n_jobs=2,
+    ).fit(
+        progress_callback=lambda done, total: progress.append((done, total))
+    )
+
+    n_candidates = result.criterion_table.shape[0]
+    assert n_candidates > 1
+    assert progress == [
+        (completed, n_candidates)
+        for completed in range(1, n_candidates + 1)
+    ]
+
+
 def test_ardl_rejects_internal_missing_rows_that_break_lag_adjacency():
     y, x = _sample(40)
     y.iloc[20] = np.nan

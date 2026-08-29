@@ -34,6 +34,24 @@ def test_map_candidates_preserves_input_order_with_processes():
     ) == [1, 2, 3, 4]
 
 
+def test_parallel_candidate_mapping_reports_parent_progress():
+    """Parallel completion callbacks run in order of completion count."""
+    progress = []
+
+    result = _map_candidates(
+        range(4),
+        _increment,
+        n_jobs=2,
+        n_tasks=4,
+        progress_callback=lambda completed, total: progress.append(
+            (completed, total)
+        ),
+    )
+
+    assert result == [1, 2, 3, 4]
+    assert progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+
 @pytest.mark.parametrize("value", [0, True, "2"])
 def test_validate_n_jobs_rejects_invalid_values(value):
     """Zero, booleans, and non-integers are not valid worker requests."""

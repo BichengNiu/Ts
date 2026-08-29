@@ -991,7 +991,14 @@ class AutoARDL(BaseModel):
             }
         return _validate_nonnegative_int("maxorder", maxorder)
 
-    def fit(self, *, cov_type="nonrobust", cov_kwds=None, use_t=True):
+    def fit(
+        self,
+        *,
+        cov_type="nonrobust",
+        cov_kwds=None,
+        use_t=True,
+        progress_callback=None,
+    ):
         """Run lag selection and fit the selected ARDL model.
 
         Parameters
@@ -1002,6 +1009,10 @@ class AutoARDL(BaseModel):
             Additional covariance-estimator options.
         use_t : bool, default True
             Whether final-model inference uses the Student t distribution.
+        progress_callback : callable, optional
+            Parent-process callback invoked as ``callback(completed, total)``
+            after each candidate finishes. The callback is never sent to a
+            worker process.
 
         Returns
         -------
@@ -1041,6 +1052,7 @@ class AutoARDL(BaseModel):
             _compute_ardl_ics,
             n_jobs=self.n_jobs,
             n_tasks=n_tasks,
+            progress_callback=progress_callback,
         )
         ics = dict(evaluated)
         criterion_index = {"aic": 0, "bic": 1}[self.criterion]

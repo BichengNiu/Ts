@@ -400,6 +400,24 @@ class TestAutoSARIMAX:
             atol=1e-10,
         )
 
+    def test_sarimax_progress_callback_reports_each_candidate(self, ar1_data):
+        """AutoSARIMAX forwards parent-process candidate progress."""
+        from Ts.TsModels._auto import AutoSARIMAX
+
+        progress = []
+        result = AutoSARIMAX(
+            ar1_data,
+            p=(0, 1),
+            d=(0, 0),
+            q=(0, 1),
+            n_jobs=2,
+        ).fit(
+            progress_callback=lambda done, total: progress.append((done, total))
+        )
+
+        assert result.n_attempted == 4
+        assert progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
     def test_default_auto_sarimax_worker_policy(self, ar1_data):
         """Automatic SARIMAX defaults to the CPU-bounded process policy."""
         from Ts.TsModels._auto import AutoSARIMAX

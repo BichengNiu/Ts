@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from numbers import Integral
-from typing import TypeVar
+from typing import TypeVar, cast
 
 
 T = TypeVar("T")
 R = TypeVar("R")
+ProgressCallback = Callable[[int, int], None]
 
 
 def _validate_n_jobs(n_jobs: int) -> int:
@@ -57,6 +58,7 @@ def _map_candidates(
     *,
     n_jobs: int,
     n_tasks: int,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[R]:
     """Evaluate candidate tasks in stable input order.
 
@@ -67,17 +69,48 @@ def _map_candidates(
     """
     effective_jobs = _resolve_n_jobs(n_jobs, n_tasks)
     if effective_jobs == 1:
-        return [worker(item) for item in items]
+        results = []
+        for completed, item in enumerate(items, start=1):
+            results.append(worker(item))
+            if progress_callback is not None:
+                progress_callback(completed, n_tasks)
+        if len(results) != n_tasks:
+            raise ValueError("n_tasks does not match the candidate iterable")
+        return results
 
     from joblib import Parallel, delayed
 
-    return Parallel(
+    def indexed_results():
+        for index, item in enumerate(items):
+            yield delayed(_run_indexed_candidate)(index, worker, item)
+
+    generator = Parallel(
         n_jobs=effective_jobs,
         backend="loky",
         prefer="processes",
         batch_size="auto",
         pre_dispatch="2*n_jobs",
-    )(delayed(worker)(item) for item in items)
+        return_as="generator_unordered",
+    )(indexed_results())
+    ordered: list[R | None] = [None] * n_tasks
+    completed = 0
+    for index, result in generator:
+        ordered[index] = result
+        completed += 1
+        if progress_callback is not None:
+            progress_callback(completed, n_tasks)
+    if completed != n_tasks:
+        raise ValueError("n_tasks does not match the candidate iterable")
+    return cast(list[R], ordered)
+
+
+def _run_indexed_candidate(
+    index: int,
+    worker: Callable[[T], R],
+    item: T,
+) -> tuple[int, R]:
+    """Run one candidate and return its input index for stable reordering."""
+    return index, worker(item)
 
 
 __all__ = ["_map_candidates", "_resolve_n_jobs", "_validate_n_jobs"]
