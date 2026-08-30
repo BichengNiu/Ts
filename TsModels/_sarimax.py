@@ -59,6 +59,12 @@ _SARIMAX_OPTIMIZERS = frozenset(
 _SARIMAX_COVARIANCE_TYPES = frozenset(
     {"approx", "oim", "opg", "robust", "robust_approx"}
 )
+_TREND_PARAMETER_NAMES = {
+    "n": (),
+    "c": ("intercept",),
+    "t": ("drift",),
+    "ct": ("intercept", "drift"),
+}
 
 
 @dataclass(frozen=True)
@@ -955,6 +961,7 @@ class SARIMAXResult(BaseModelResult):
     _event_metadata: dict[str, EventColumns] | None = None
     _design_columns: tuple[str, ...] = ()
     _design_matrix: np.ndarray | None = None
+    _trend_matrix: np.ndarray | None = None
     _default_future_exog: pd.DataFrame | None = None
     _model_kwargs: dict | None = None
     _distributed_lag_results: dict[str, RationalLagResult] | None = None
@@ -1335,6 +1342,83 @@ class SARIMAXResult(BaseModelResult):
     def design_columns(self):
         """Return the fitted combined-design column names."""
         return tuple(self._design_columns)
+
+    @property
+    def order(self):
+        """Return the fitted non-seasonal order ``(p, d, q)``."""
+        return None if self._order is None else tuple(self._order)
+
+    @property
+    def seasonal_order(self):
+        """Return the fitted seasonal order ``(P, D, Q, s)``."""
+        return (
+            None
+            if self._seasonal_order is None
+            else tuple(self._seasonal_order)
+        )
+
+    @property
+    def trend(self):
+        """Return the fitted deterministic trend specification."""
+        return self._trend
+
+    @property
+    def deterministic_component(self):
+        """Return the fitted deterministic response component on model scale.
+
+        The component includes the fitted trend and ordinary exogenous design
+        columns, but excludes the stochastic SARIMA error process.  It is
+        intended for reconstructing a response simulation from the fitted
+        parameters; with ``log=True`` it remains on the natural-log scale.
+
+        Returns
+        -------
+        np.ndarray
+            One deterministic value per fitted observation.
+
+        Raises
+        ------
+        RuntimeError
+            If the stored trend design does not match the fitted trend
+            parameters or a required coefficient is missing.
+        ValueError
+            If the fitted model contains rational distributed-lag inputs.
+        """
+        if self.distributed_lag_names:
+            raise ValueError(
+                "deterministic_component is unavailable for distributed-lag models"
+            )
+
+        matrices = []
+        names = []
+        if self._trend_matrix is not None and self._trend_matrix.shape[1]:
+            trend_names = _TREND_PARAMETER_NAMES.get(self._trend)
+            if trend_names is None or len(trend_names) != self._trend_matrix.shape[1]:
+                raise RuntimeError(
+                    "stored trend design does not match the fitted trend specification"
+                )
+            matrices.append(self._trend_matrix)
+            names.extend(trend_names)
+        if self._design_matrix is not None and self._design_matrix.shape[1]:
+            matrices.append(self._design_matrix)
+            names.extend(self._design_columns)
+        if not matrices:
+            return np.zeros(self.nobs, dtype=float)
+
+        matrix = np.column_stack(matrices)
+        try:
+            coefficients = np.asarray(
+                [self.params[name] for name in names],
+                dtype=float,
+            )
+        except KeyError as error:
+            raise RuntimeError(
+                f"fitted deterministic coefficient is missing: {error.args[0]}"
+            ) from error
+        component = matrix @ coefficients
+        if not np.all(np.isfinite(component)):
+            raise RuntimeError("fitted deterministic component is not finite")
+        return component
 
     @property
     def ar_lags(self):
@@ -2754,6 +2838,12 @@ class SARIMAX(BaseModel):
             _design_columns=self.design_columns,
             _design_matrix=(
                 None if self.design_matrix is None else self.design_matrix.copy()
+            ),
+            _trend_matrix=(
+                None
+                if getattr(getattr(fitted, "model", None), "_trend_data", None)
+                is None
+                else np.asarray(fitted.model._trend_data, dtype=float).copy()
             ),
             _default_future_exog=(
                 None if self.future_exog is None else self.future_exog.copy()

@@ -175,6 +175,29 @@ simulate_sarima(
 | `seed` | int | None | 随机种子 |
 | `burn` | int | `100` | 预热期数 |
 
+## `simulate_sarimax` — 带确定性响应路径的 SARIMAX 过程
+
+`simulate_sarimax` 复用 `simulate_sarima` 生成 SARIMA 随机误差，并在逆差分
+之后叠加长度为 `n` 的确定性响应路径。它适合把已估计的趋势项和静态外生
+变量贡献与随机误差组合成一条 SARIMAX 响应模拟路径：
+
+```python
+import numpy as np
+from Ts.TsSims import simulate_sarimax
+
+result = simulate_sarimax(
+    n=100,
+    order=(1, 0, 0),
+    ar=[0.6],
+    deterministic=np.full(100, 2.0),
+    sigma2=0.5,
+    seed=42,
+)
+```
+
+`deterministic` 应由调用方按模型尺度计算；对数响应模型应先在 log 尺度
+组合模拟路径，再由调用方还原到原始尺度。
+
 ## `simulate_rdl` — Rational distributed lag 过程
 
 `RDLInputSpec` 的映射键就是活动多项式滞后。例如

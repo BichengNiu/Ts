@@ -262,6 +262,29 @@ def test_fitted_result_owns_model_arrays_and_default_future_exog():
     )
 
 
+def test_fitted_result_exposes_sarimax_simulation_components():
+    """Public result properties expose all deterministic simulation inputs."""
+    y, x = _arimax_fixture()
+
+    fitted = SARIMAX(
+        y,
+        exog=x,
+        order=(1, 0, 0),
+        trend="ct",
+    ).fit(require_convergence=False)
+
+    assert fitted.order == (1, 0, 0)
+    assert fitted.seasonal_order == (0, 0, 0, 0)
+    assert fitted.trend == "ct"
+    expected = (
+        fitted._trend_matrix @ np.array(
+            [fitted.params["intercept"], fitted.params["drift"]]
+        )
+        + fitted._design_matrix @ np.array([fitted.params["x"]])
+    )
+    np.testing.assert_allclose(fitted.deterministic_component, expected)
+
+
 def _arimax_fixture(seed=42, n=300):
     rng = np.random.default_rng(seed)
     dates = pd.date_range("2000-01-01", periods=n, freq="MS")

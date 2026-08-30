@@ -139,3 +139,43 @@ class TestSimulateSARIMA:
 
         assert result.get_data().shape[0] == 50
         assert "order" in result.get_params()
+
+
+class TestSimulateSARIMAX:
+    """Test SARIMAX response simulation built on the SARIMA simulator."""
+
+    def test_deterministic_path_is_added_after_sarima_simulation(self):
+        """A deterministic response path shifts the same seeded error path."""
+        from Ts.TsSims._sarima import simulate_sarima, simulate_sarimax
+
+        deterministic = np.linspace(1.0, 2.0, 40)
+        base = simulate_sarima(
+            n=40,
+            order=(1, 0, 0),
+            ar=[0.4],
+            seed=42,
+            burn=30,
+        )
+        result = simulate_sarimax(
+            n=40,
+            order=(1, 0, 0),
+            ar=[0.4],
+            deterministic=deterministic,
+            seed=42,
+            burn=30,
+        )
+
+        np.testing.assert_allclose(result.data, base.data + deterministic)
+        assert result.params["model"] == "SARIMAX"
+        assert result.params["deterministic"] == pytest.approx(deterministic.tolist())
+
+    @pytest.mark.parametrize(
+        "deterministic",
+        [np.ones(9), np.full(10, np.inf), np.ones((10, 1))],
+    )
+    def test_deterministic_path_requires_finite_one_dimensional_length(self, deterministic):
+        """Invalid deterministic paths fail before random simulation starts."""
+        from Ts.TsSims._sarima import simulate_sarimax
+
+        with pytest.raises((TypeError, ValueError), match="deterministic"):
+            simulate_sarimax(n=10, deterministic=deterministic)
