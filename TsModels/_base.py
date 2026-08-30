@@ -248,7 +248,7 @@ class PredictResult:
             )
             has_any = True
 
-        # Layer 2: full in-sample fitted values (+ CI for fitted)
+        # Layer 2: full in-sample fitted values
         if self._full_fitted is not None:
             fitted_x = np.arange(len(self._full_fitted))
             ax.plot(
@@ -260,17 +260,6 @@ class PredictResult:
                 label="Fitted",
             )
             has_any = True
-
-            if ci and self._full_lower is not None and self._full_upper is not None:
-                ax.fill_between(
-                    fitted_x,
-                    self._full_lower,
-                    self._full_upper,
-                    color=GRAY,
-                    alpha=0.10,
-                    linewidth=0,
-                    label="Fitted 95% CI",
-                )
 
         # Layer 3: forecast (OOS portion only)
         oos_mask = np.asarray(self.is_oos, dtype=bool)
@@ -318,26 +307,6 @@ class PredictResult:
                 ci_x = fc_x
                 ci_lower = fc_lower
                 ci_upper = fc_upper
-
-                # Anchor the forecast band to the preceding fitted interval.
-                # Without this point, the two confidence bands visually break
-                # at the in-sample / forecast boundary.
-                has_fitted_anchor = (
-                    self._full_lower is not None
-                    and self._full_upper is not None
-                    and 0 <= anchor_x < len(self._full_lower)
-                    and anchor_x < len(self._full_upper)
-                )
-                if has_fitted_anchor:
-                    ci_x = np.concatenate([[anchor_x], fc_x])
-                    ci_lower = np.concatenate([[self._full_lower[anchor_x]], fc_lower])
-                    ci_upper = np.concatenate([[self._full_upper[anchor_x]], fc_upper])
-                elif first_oos > 0:
-                    lower_arr = np.asarray(self.lower)
-                    upper_arr = np.asarray(self.upper)
-                    ci_x = np.concatenate([[anchor_x], fc_x])
-                    ci_lower = np.concatenate([[lower_arr[first_oos - 1]], fc_lower])
-                    ci_upper = np.concatenate([[upper_arr[first_oos - 1]], fc_upper])
 
                 ax.fill_between(
                     ci_x,

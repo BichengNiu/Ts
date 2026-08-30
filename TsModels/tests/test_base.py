@@ -560,11 +560,10 @@ class TestPredictResultPlot:
 
         plt.close(fig)
 
-    def test_plot_forecast_ci_has_fitted_boundary_anchor(self):
-        """Forecast CI band includes the period before its first forecast.
+    def test_plot_forecast_ci_starts_at_first_oos_period(self):
+        """Forecast CI band starts at the first out-of-sample period.
 
-        This prevents the forecast and fitted confidence intervals from
-        visibly breaking at the in-sample / out-of-sample boundary.
+        Confidence intervals are limited to the out-of-sample forecast.
         """
         import numpy as np
         from Ts.TsModels._base import PredictResult
@@ -587,8 +586,9 @@ class TestPredictResultPlot:
         forecast_band = ax.collections[-1]
         band_x = forecast_band.get_paths()[0].vertices[:, 0]
 
-        assert 9 in band_x
+        assert 9 not in band_x
         assert 10 in band_x
+        assert len(ax.collections) == 1
         from matplotlib.colors import to_rgba
 
         assert np.allclose(
