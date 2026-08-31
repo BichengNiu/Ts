@@ -8,8 +8,6 @@ Main interfaces
 ---------------
 simulate_sarima
     Generate SARIMA(p,d,q)(P,D,Q,s) data.
-simulate_sarimax
-    Generate a SARIMAX response from a deterministic path and SARIMA errors.
 simulate_rdl
     Generate rational distributed-lag data with one or more inputs.
 simulate_garch
@@ -49,7 +47,7 @@ SimTSDSResult
 
 Quick start
 -----------
->>> from Ts.TsSims import simulate_sarima, simulate_sarimax, simulate_garch
+>>> from Ts.TsSims import simulate_sarima, simulate_garch
 >>> from Ts.TsSims import simulate_cointegrated
 >>> from Ts.TsSims import simulate_trend_stationary, simulate_difference_stationary
 
@@ -83,7 +81,7 @@ from ._base import BaseSimResult
 from ._cointegration import SimCointegratedResult, simulate_cointegrated
 from ._garch_result import SimGARCHResult
 from ._rdl import RDLInputSpec, SimRDLResult, simulate_rdl
-from ._sarima import SimSARIMAResult, simulate_sarima, simulate_sarimax
+from ._sarima import SimSARIMAResult, simulate_sarima
 from ._garch import simulate_garch, simulate_igarch
 from ._garch_ext import (
     simulate_garch_m,
@@ -115,7 +113,6 @@ __all__ = [  # noqa: RUF022 - public API is grouped by result and function
     "simulate_igarch",
     # Functions
     "simulate_sarima",
-    "simulate_sarimax",
     "simulate_rdl",
     "simulate_trend_stationary",
 ]

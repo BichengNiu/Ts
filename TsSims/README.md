@@ -170,36 +170,10 @@ simulate_sarima(
 | `ma` | list | None | MA 系数 `[theta1, theta2, ...]` |
 | `seasonal_ar` | list | None | 季节 AR 系数 `[Phi1, ...]` |
 | `seasonal_ma` | list | None | 季节 MA 系数 `[Theta1, ...]` |
-| `const` | float | `0.0` | ARMA 状态截距；有 AR 项时自动换算为长期均值，差分模型中形成漂移 |
+| `const` | float | `0.0` | 常数项 |
 | `sigma2` | float | `1.0` | 新息方差 |
 | `seed` | int | None | 随机种子 |
 | `burn` | int | `100` | 预热期数 |
-
-## `simulate_sarimax` — 带确定性响应路径的 SARIMAX 过程
-
-`simulate_sarimax` 复用 `simulate_sarima` 生成 SARIMA 随机误差，并在逆差分
-之后叠加长度为 `n` 的确定性响应路径。它适合把已估计的趋势项和静态外生
-变量贡献与随机误差组合成一条 SARIMAX 响应模拟路径：
-
-```python
-import numpy as np
-from Ts.TsSims import simulate_sarimax
-
-result = simulate_sarimax(
-    n=100,
-    order=(1, 0, 0),
-    ar=[0.6],
-    const=0.2,
-    deterministic=np.full(100, 2.0),
-    sigma2=0.5,
-    seed=42,
-)
-```
-
-`deterministic` 应由调用方按模型尺度计算；对数响应模型应先在 log 尺度
-组合模拟路径，再由调用方还原到原始尺度。对有差分的条件模拟，可传入
-`initial_value`，使随机部分在首个返回期从该已知初值开始；`const` 则作为
-SARIMA 误差的状态截距传入，并形成正确的长期漂移。
 
 ## `simulate_rdl` — Rational distributed lag 过程
 
