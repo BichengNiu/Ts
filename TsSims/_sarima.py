@@ -335,14 +335,24 @@ def simulate_sarima(
 
     errors = innovations * np.sqrt(sigma2)
 
-    # Add constant to the stationary component
-    arma_data = arma_data + const
+    # ``const`` is the ARMA state intercept c, not a response-level shift.
+    # For A(B) u_t = c + B(B) eps_t, E[u_t] = c / A(1).  Adding c after
+    # the ARMA recursion would therefore understate the mean whenever AR
+    # terms are present (and produces the wrong drift after integration).
+    ar_at_one = float(np.sum(ar_poly))
+    if np.isclose(ar_at_one, 0.0):
+        raise ValueError(
+            "const is undefined because the combined AR polynomial equals zero at one"
+        )
+    arma_data = arma_data + const / ar_at_one
 
-    # Apply inverse differencing
-    integrated = _apply_inverse_differencing(arma_data, d, D, s)
+    # Burn-in stabilises the stationary ARMA recursion.  It must be removed
+    # before inverse differencing so an integrated response starts from its
+    # requested initial state instead of inheriting an arbitrary burn-in level.
+    stationary_data = arma_data[burn:]
 
-    # Discard burn-in
-    result_data = integrated[burn:]
+    # Apply inverse differencing to the returned simulation horizon.
+    result_data = _apply_inverse_differencing(stationary_data, d, D, s)
     result_residuals = errors[burn:]
 
     params = {
@@ -387,7 +397,9 @@ def simulate_sarimax(
     ma: list[float] | None = None,
     seasonal_ar: list[float] | None = None,
     seasonal_ma: list[float] | None = None,
+    const: float = 0.0,
     deterministic=None,
+    initial_value: float | None = None,
     sigma2: float = 1.0,
     seed: int | None = None,
     burn: int = 100,
@@ -417,10 +429,18 @@ def simulate_sarimax(
         Seasonal AR coefficients for the error process.
     seasonal_ma : float or list of float, optional
         Seasonal MA coefficients for the error process.
+    const : float, default=0.0
+        State intercept of the SARIMA error process.  With an integrated
+        error, it induces the corresponding long-run drift.
     deterministic : array-like, optional
         Finite one-dimensional deterministic response path of length ``n``.
         Pass the fitted trend and static-exogenous contribution on the model
         response scale; omit it for a zero deterministic response.
+    initial_value : float or None, default=None
+        Optional value at the first returned observation before adding the
+        deterministic response path.  When provided, the stochastic path is
+        shifted so every simulated path starts from this known value.  This is
+        useful for conditional simulations of integrated models.
     sigma2 : float
         Innovation variance of the SARIMA error process.
     seed : int, optional
@@ -453,6 +473,8 @@ def simulate_sarimax(
     (30,)
     """
     deterministic_path = _normalise_deterministic_path(deterministic, n)
+    if initial_value is not None:
+        initial_value = validate_real("initial_value", initial_value)
     result = simulate_sarima(
         n=n,
         order=order,
@@ -461,15 +483,18 @@ def simulate_sarimax(
         ma=ma,
         seasonal_ar=seasonal_ar,
         seasonal_ma=seasonal_ma,
-        const=0.0,
+        const=const,
         sigma2=sigma2,
         seed=seed,
         burn=burn,
     )
+    if initial_value is not None:
+        result.data = result.data - result.data[0] + initial_value
     if deterministic_path is not None:
         result.data = result.data + deterministic_path
     result.params["model"] = "SARIMAX"
     result.params["deterministic"] = (
         None if deterministic_path is None else deterministic_path.tolist()
     )
+    result.params["initial_value"] = initial_value
     return result

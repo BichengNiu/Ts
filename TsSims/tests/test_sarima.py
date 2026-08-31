@@ -144,6 +144,60 @@ class TestSimulateSARIMA:
 class TestSimulateSARIMAX:
     """Test SARIMAX response simulation built on the SARIMA simulator."""
 
+    def test_constant_is_propagated_through_the_ar_recursion(self):
+        """The ARMA intercept produces its long-run mean before integration."""
+        from Ts.TsSims._sarima import simulate_sarima
+
+        baseline = simulate_sarima(
+            n=40,
+            order=(1, 0, 0),
+            ar=[0.5],
+            const=0.0,
+            seed=42,
+            burn=0,
+        )
+        shifted = simulate_sarima(
+            n=40,
+            order=(1, 0, 0),
+            ar=[0.5],
+            const=2.0,
+            seed=42,
+            burn=0,
+        )
+
+        np.testing.assert_allclose(shifted.data - baseline.data, 4.0)
+
+    def test_initial_value_conditions_a_differenced_sarimax_path(self):
+        """A supplied initial value anchors every simulated integrated path."""
+        from Ts.TsSims._sarima import simulate_sarimax
+
+        deterministic = np.linspace(1.0, 2.0, 40)
+        baseline = simulate_sarimax(
+            n=40,
+            order=(1, 1, 0),
+            ar=[0.5],
+            const=2.0,
+            deterministic=deterministic,
+            seed=42,
+            burn=30,
+        )
+        anchored = simulate_sarimax(
+            n=40,
+            order=(1, 1, 0),
+            ar=[0.5],
+            const=2.0,
+            deterministic=deterministic,
+            initial_value=100.0,
+            seed=42,
+            burn=30,
+        )
+
+        assert anchored.data[0] == pytest.approx(101.0)
+        np.testing.assert_allclose(
+            np.diff(anchored.data - deterministic),
+            np.diff(baseline.data - deterministic),
+        )
+
     def test_deterministic_path_is_added_after_sarima_simulation(self):
         """A deterministic response path shifts the same seeded error path."""
         from Ts.TsSims._sarima import simulate_sarima, simulate_sarimax
