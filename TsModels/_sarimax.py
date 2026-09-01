@@ -42,6 +42,12 @@ from Ts.TsModels._intervention import (
     _validate_datetime_index,
     build_event_matrix,
 )
+from Ts.TsModels._time_series_operator import (
+    TimeSeriesOperator,
+    apply_exog_operators,
+    normalise_exog_operators,
+    operator_burn,
+)
 
 
 _SARIMAX_OPTIMIZERS = frozenset(
@@ -75,6 +81,11 @@ class _SARIMAXInputs:
     exog_names: tuple[str, ...]
     future_exog: pd.DataFrame | None
     dropped_positions: tuple[int, ...]
+    raw_endog: np.ndarray
+    raw_dates: pd.DatetimeIndex | None
+    raw_exog_history: pd.DataFrame | None
+    exog_operators: dict[str, TimeSeriesOperator]
+    operator_burn: int
 
 
 def _numeric_array(values, name):
@@ -352,6 +363,7 @@ def _normalise_sarimax_inputs(
     exog=None,
     exog_names=None,
     missing="drop",
+    exog_operators=None,
 ):
 
     endog, data_dates = _normalise_data_and_dates(data, dates)
@@ -383,6 +395,33 @@ def _normalise_sarimax_inputs(
             exog_names,
         )
 
+    raw_endog = endog.copy()
+    raw_dates = None if data_dates is None else data_dates.copy()
+    operators = normalise_exog_operators(exog_operators, names)
+    raw_exog_history = None
+    structural_burn = operator_burn(operators)
+    if historical_exog is not None:
+        raw_exog_history = pd.DataFrame(
+            historical_exog,
+            index=(
+                pd.RangeIndex(len(historical_exog))
+                if data_dates is None
+                else data_dates.copy()
+            ),
+            columns=names,
+        )
+        if operators:
+            historical_exog = apply_exog_operators(
+                raw_exog_history,
+                operators,
+            ).to_numpy(dtype=float)
+    if structural_burn:
+        endog = endog[structural_burn:]
+        if data_dates is not None:
+            data_dates = data_dates[structural_burn:].copy()
+        if historical_exog is not None:
+            historical_exog = historical_exog[structural_burn:]
+
     finite = np.isfinite(endog)
     if historical_exog is not None:
         finite &= np.all(np.isfinite(historical_exog), axis=1)
@@ -391,6 +430,10 @@ def _normalise_sarimax_inputs(
         missing,
         name="data or historical exog",
     )
+    if structural_burn:
+        dropped_positions = tuple(
+            structural_burn + position for position in dropped_positions
+        )
     if missing == "drop":
         endog = endog[finite]
         if data_dates is not None:
@@ -409,6 +452,11 @@ def _normalise_sarimax_inputs(
         dropped_positions=dropped_positions,
         exog_names=names,
         future_exog=future_exog,
+        raw_endog=raw_endog,
+        raw_dates=raw_dates,
+        raw_exog_history=raw_exog_history,
+        exog_operators=operators,
+        operator_burn=structural_burn,
     )
 
 
@@ -963,6 +1011,8 @@ class SARIMAXResult(BaseModelResult):
     _design_matrix: np.ndarray | None = None
     _trend_matrix: np.ndarray | None = None
     _default_future_exog: pd.DataFrame | None = None
+    _raw_exog_history: pd.DataFrame | None = None
+    _exog_operators: dict[str, TimeSeriesOperator] | None = None
     _model_kwargs: dict | None = None
     _distributed_lag_results: dict[str, RationalLagResult] | None = None
     _enforce_distributed_lag_stability: bool = True
@@ -971,6 +1021,11 @@ class SARIMAXResult(BaseModelResult):
     def distributed_lags(self):
         """Return structured rational distributed-lag results by input."""
         return dict(self._distributed_lag_results or {})
+
+    @property
+    def exog_operators(self):
+        """Return the non-identity time-series operators by exogenous name."""
+        return dict(self._exog_operators or {})
 
     @property
     def distributed_lag_names(self):
@@ -1544,6 +1599,18 @@ class SARIMAXResult(BaseModelResult):
             header_lines.append(
                 "Active MA Lags     : " + ", ".join(str(lag) for lag in self.ma_lags)
             )
+        root_table = self.root_diagnostics
+        for component, label, passed in (
+            ("AR", "AR Roots", self.is_stationary),
+            ("MA", "MA Roots", self.is_invertible),
+        ):
+            rows = root_table.loc[root_table["component"] == component]
+            if not rows.empty:
+                header_lines.append(
+                    f"{label:<21s}: "
+                    f"{'Passed' if passed else 'Failed'} "
+                    f"(minimum |root| = {rows['modulus'].min():.4f})"
+                )
         if self.log:
             header_lines.append(
                 "Response Scale     : original (log fit; bias-adjusted mean)"
@@ -1707,7 +1774,8 @@ class SARIMAXResult(BaseModelResult):
     def _future_design(self, ordinary_exog, future_dates):
         frames = []
         if ordinary_exog is not None and self._static_exog_names:
-            frames.append(ordinary_exog.loc[:, list(self._static_exog_names)])
+            transformed = self._transform_future_exog(ordinary_exog)
+            frames.append(transformed.loc[:, list(self._static_exog_names)])
         if self._event_specs:
             if future_dates is None or self._dates is None:
                 raise ValueError("future event generation requires future_dates")
@@ -1725,6 +1793,24 @@ class SARIMAXResult(BaseModelResult):
         if tuple(design.columns) != self._design_columns:
             raise RuntimeError("future design columns do not match the fitted design")
         return design
+
+    def _transform_future_exog(self, future_exog):
+        """Transform raw future exogenous data with the fitted history."""
+        operators = self._exog_operators or {}
+        if not operators:
+            return future_exog.copy()
+        history = self._raw_exog_history
+        if history is None:
+            raise RuntimeError("fitted raw exogenous history is unavailable")
+        combined = pd.concat(
+            [history.reset_index(drop=True), future_exog.reset_index(drop=True)],
+            ignore_index=True,
+        )
+        transformed = apply_exog_operators(combined, operators).iloc[
+            -len(future_exog) :
+        ]
+        transformed.index = future_exog.index.copy()
+        return transformed
 
     def _future_observation_intercept(self, future_inputs, future_design):
         if future_inputs is None:
@@ -2157,6 +2243,135 @@ class SARIMAXResult(BaseModelResult):
             raise RuntimeError("No fitted statsmodels result available")
         return np.asarray(self._statsmodels_result.maroots)
 
+    @property
+    def root_diagnostics(self):
+        """Return AR and MA root moduli with their unit-circle conclusions.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per AR or MA root with real and imaginary components,
+            root modulus, inverse-root modulus, and an outside-unit-circle
+            indicator. An empty table has the same columns when no roots exist.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> import numpy as np
+        >>> result = SARIMAX(np.random.default_rng(42).normal(size=60), order=(1, 0, 0)).fit()
+        >>> set(result.root_diagnostics["component"]) == {"AR"}
+        True
+        """
+        columns = [
+            "component",
+            "root_real",
+            "root_imag",
+            "modulus",
+            "inverse_modulus",
+            "outside_unit_circle",
+        ]
+        rows = []
+        for component, roots in (("AR", self.arroots), ("MA", self.maroots)):
+            for root in roots:
+                modulus = float(abs(root))
+                rows.append(
+                    {
+                        "component": component,
+                        "root_real": float(np.real(root)),
+                        "root_imag": float(np.imag(root)),
+                        "modulus": modulus,
+                        "inverse_modulus": float(1.0 / modulus),
+                        "outside_unit_circle": bool(modulus > 1.0),
+                    }
+                )
+        return pd.DataFrame(rows, columns=columns)
+
+    def innovation_impulse_response(self, steps=20, cumulative=False):
+        """Return the univariate ARMA innovation impulse response.
+
+        Parameters
+        ----------
+        steps : int, default 20
+            Non-negative maximum horizon. The returned series contains
+            horizons zero through ``steps`` inclusively.
+        cumulative : bool, default False
+            Whether to return cumulative responses.
+
+        Returns
+        -------
+        pandas.Series
+            Innovation response indexed by integer horizon.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> import numpy as np
+        >>> result = SARIMAX(np.random.default_rng(42).normal(size=60), order=(1, 0, 1)).fit()
+        >>> result.innovation_impulse_response(2).index.tolist()
+        [0, 1, 2]
+        """
+        if isinstance(steps, (bool, np.bool_)):
+            raise TypeError("steps must be a non-negative integer")
+        steps = validate_int("steps", steps, minimum=0)
+        if not isinstance(cumulative, (bool, np.bool_)):
+            raise TypeError("cumulative must be boolean")
+        if self._statsmodels_result is None:
+            raise RuntimeError("No fitted statsmodels result available")
+        values = np.asarray(
+            self._statsmodels_result.impulse_responses(
+                steps=steps,
+                cumulative=bool(cumulative),
+            ),
+            dtype=float,
+        )
+        return pd.Series(
+            values,
+            index=pd.RangeIndex(len(values), name="horizon"),
+            name="innovation_response",
+        )
+
+    def plot_innovation_impulse_response(
+        self,
+        steps=20,
+        cumulative=False,
+        **kwargs,
+    ):
+        """Plot the univariate ARMA innovation impulse response.
+
+        Parameters
+        ----------
+        steps : int, default 20
+            Non-negative maximum horizon.
+        cumulative : bool, default False
+            Whether to plot cumulative responses.
+        **kwargs
+            Additional options forwarded to :func:`Ts.TsPlots.plot_lag_response`.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` returned by :func:`Ts.TsPlots.plot_lag_response`.
+
+        Examples
+        --------
+        >>> from Ts.TsModels import SARIMAX
+        >>> import numpy as np
+        >>> result = SARIMAX(np.random.default_rng(42).normal(size=60), order=(1, 0, 1)).fit()
+        >>> fig, ax = result.plot_innovation_impulse_response(2)
+        >>> len(ax.patches)
+        3
+        """
+        from Ts.TsPlots import plot_lag_response
+
+        response = self.innovation_impulse_response(
+            steps=steps,
+            cumulative=cumulative,
+        )
+        title = kwargs.pop("title", None)
+        if title is None:
+            title = "Cumulative ARMA Innovation Response" if cumulative else "ARMA Innovation Response"
+        return plot_lag_response(response, title=title, **kwargs)
+
     def plot_roots(self, title=None):
         """Plot inverse AR and MA roots on the complex unit circle.
 
@@ -2472,6 +2687,10 @@ class SARIMAX(BaseModel):
     exog_names : sequence[str], optional
         Required for array exog and for an unnamed Series. Named Series and
         DataFrame labels are authoritative and must not be overridden.
+    exog_operators : mapping[str, TimeSeriesOperator], optional
+        Per-variable lag, ordinary-difference, and seasonal-difference
+        specifications for ordinary exogenous inputs. Future inputs remain on
+        their raw scale and are transformed with the fitted historical path.
     events : sequence of EventSpec, optional
         Date-mapped pulse, step, or event-study intervention designs.
     missing : {"raise", "drop"}
@@ -2522,6 +2741,7 @@ class SARIMAX(BaseModel):
         dates=None,
         exog=None,
         exog_names=None,
+        exog_operators=None,
         events=None,
         missing="drop",
         log=False,
@@ -2534,6 +2754,7 @@ class SARIMAX(BaseModel):
             exog=exog,
             exog_names=exog_names,
             missing=missing,
+            exog_operators=exog_operators,
         )
 
         order = _normalise_order(order)
@@ -2545,6 +2766,10 @@ class SARIMAX(BaseModel):
             raise ValueError("log transformation requires strictly positive data")
         event_specs = _validate_events(events, inputs.dates)
         distributed_lags = _normalise_distributed_lags(distributed_lags, inputs)
+        if inputs.exog_operators and distributed_lags:
+            raise ValueError(
+                "exog_operators cannot be combined with distributed_lags"
+            )
         if not isinstance(
             enforce_distributed_lag_stability,
             (bool, np.bool_),
@@ -2563,6 +2788,11 @@ class SARIMAX(BaseModel):
         self.dates = inputs.dates
         self.exog = inputs.exog
         self.exog_names = inputs.exog_names
+        self.exog_operators = dict(inputs.exog_operators)
+        self.operator_burn = inputs.operator_burn
+        self._raw_data = inputs.raw_endog
+        self._raw_dates = inputs.raw_dates
+        self._raw_exog_history = inputs.raw_exog_history
         self.distributed_lags = distributed_lags
         self.distributed_lag_names = tuple(distributed_lags)
         self.ordinary_exog_names = tuple(
@@ -2608,6 +2838,7 @@ class SARIMAX(BaseModel):
             dates=dates,
             exog=exog,
             exog_names=self.exog_names if exog is not None else None,
+            exog_operators=self.exog_operators,
             events=self.events,
             missing="raise",
             log=self.log,
@@ -2848,6 +3079,12 @@ class SARIMAX(BaseModel):
             _default_future_exog=(
                 None if self.future_exog is None else self.future_exog.copy()
             ),
+            _raw_exog_history=(
+                None
+                if self._raw_exog_history is None
+                else self._raw_exog_history.copy()
+            ),
+            _exog_operators=dict(self.exog_operators),
             _model_kwargs={
                 "order": self.order,
                 "seasonal_order": self.seasonal_order,

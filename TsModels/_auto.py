@@ -1070,6 +1070,9 @@ class AutoSARIMAX(_BaseAutoModel):
         Required column names for array exog and for an unnamed Series. Named
         Series and DataFrame labels are authoritative and must not be
         overridden.
+    exog_operators : mapping[str, TimeSeriesOperator], optional
+        Per-variable time-series operators applied to ordinary exogenous
+        inputs before every candidate is fitted.
     events : sequence[EventSpec], optional
         Event designs shared by every candidate.
     enforce_stationarity : bool
@@ -1125,6 +1128,7 @@ class AutoSARIMAX(_BaseAutoModel):
         dates=None,
         exog=None,
         exog_names=None,
+        exog_operators=None,
         events=None,
         enforce_stationarity=True,
         enforce_invertibility=True,
@@ -1154,6 +1158,7 @@ class AutoSARIMAX(_BaseAutoModel):
             dates=dates,
             exog=exog,
             exog_names=exog_names,
+            exog_operators=exog_operators,
             events=events,
             missing=missing,
             log=log,
@@ -1161,7 +1166,9 @@ class AutoSARIMAX(_BaseAutoModel):
             enforce_distributed_lag_stability=(enforce_distributed_lag_stability),
         )
 
-        self.data = self._validate_params(prototype.data, criterion, method)
+        raw_operator_input = bool(prototype.exog_operators)
+        candidate_data = prototype._raw_data if raw_operator_input else prototype.data
+        self.data = self._validate_params(candidate_data, criterion, method)
         self.missing = missing
         self.dropped_positions = prototype.dropped_positions
         self.log = prototype.log
@@ -1171,13 +1178,23 @@ class AutoSARIMAX(_BaseAutoModel):
         self.n_jobs = _validate_n_jobs(n_jobs)
         self.criterion = criterion
         self.method = method
-        self.dates = None if prototype.dates is None else prototype.dates.copy()
-        self.exog = None if prototype.exog is None else prototype.exog.copy()
+        self.dates = (
+            None
+            if (prototype._raw_dates if raw_operator_input else prototype.dates) is None
+            else (prototype._raw_dates if raw_operator_input else prototype.dates).copy()
+        )
+        self.exog = (
+            None
+            if (prototype._raw_exog_history if raw_operator_input else prototype.exog)
+            is None
+            else (prototype._raw_exog_history if raw_operator_input else prototype.exog).copy()
+        )
         self.exog_names = prototype.exog_names
         self.future_exog = (
             None if prototype.future_exog is None else prototype.future_exog.copy()
         )
         self.events = prototype.events
+        self.exog_operators = prototype.exog_operators
         self.distributed_lags = prototype.distributed_lags
         self.enforce_distributed_lag_stability = (
             prototype.enforce_distributed_lag_stability
@@ -1227,6 +1244,7 @@ class AutoSARIMAX(_BaseAutoModel):
             dates=dates,
             exog=exog,
             exog_names=self.exog_names if exog is not None else None,
+            exog_operators=self.exog_operators,
             events=self.events,
             enforce_stationarity=self.enforce_stationarity,
             enforce_invertibility=self.enforce_invertibility,
@@ -1350,6 +1368,7 @@ class AutoSARIMAX(_BaseAutoModel):
                         and not isinstance(candidate_exog, pd.DataFrame)
                         else None
                     ),
+                    "exog_operators": self.exog_operators,
                     "events": self.events,
                     "missing": "raise",
                     "log": self.log,

@@ -74,6 +74,7 @@ from ._garch_result import GARCHResult
 from ._intervention import EventSpec, PolicyEffectResult
 from ._outlier import OutlierDetector, OutlierDetectorResult
 from ._sarimax import ARCycleResult, SARIMAX, SARIMAXResult, ScenarioForecastResult
+from ._time_series_operator import TimeSeriesOperator
 from ._svar import SVAR, SVARResult
 from ._var import (
     VAR,
@@ -103,6 +104,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "AutoARDLResult",
     "ARCycleResult",
     "ScenarioForecastResult",
+    "TimeSeriesOperator",
     "RationalLagSpec",
     "RationalLagResult",
     "EventSpec",
