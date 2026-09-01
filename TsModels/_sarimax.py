@@ -47,7 +47,7 @@ from Ts.TsModels._time_series_operator import (
     apply_exog_operators,
     normalise_exog_operators,
     operator_burn,
-    transformed_exog_names,
+    _transformed_exog_names,
 )
 
 
@@ -543,7 +543,7 @@ def _combined_design(inputs, events, trend, *, distributed_lag_names=()):
         ]
         if ordinary_names:
             ordinary_frame = exog_frame.loc[:, ordinary_names].copy()
-            ordinary_frame.columns = transformed_exog_names(
+            ordinary_frame.columns = _transformed_exog_names(
                 ordinary_names,
                 inputs.exog_operators,
             )
@@ -554,7 +554,7 @@ def _combined_design(inputs, events, trend, *, distributed_lag_names=()):
         event_frame, event_metadata = build_event_matrix(
             inputs.dates,
             events,
-            reserved_names=transformed_exog_names(
+            reserved_names=_transformed_exog_names(
                 inputs.exog_names,
                 inputs.exog_operators,
             ),
@@ -1818,7 +1818,7 @@ class SARIMAXResult(BaseModelResult):
         transformed = apply_exog_operators(combined, operators).iloc[
             -len(future_exog) :
         ]
-        transformed.columns = transformed_exog_names(
+        transformed.columns = _transformed_exog_names(
             tuple(transformed.columns),
             operators,
         )
@@ -2802,7 +2802,7 @@ class SARIMAX(BaseModel):
         self.exog = inputs.exog
         self.exog_names = inputs.exog_names
         self.exog_operators = dict(inputs.exog_operators)
-        self.transformed_exog_names = transformed_exog_names(
+        self.transformed_exog_names = _transformed_exog_names(
             inputs.exog_names,
             self.exog_operators,
         )

@@ -82,7 +82,18 @@ class TimeSeriesOperator:
         return self.required_history == 0 and not self.log
 
     def transformed_name(self, name: str) -> str:
-        """Return the parameter name after applying this operator."""
+        """Return the parameter name after applying this operator.
+
+        Parameters
+        ----------
+        name : str
+            Raw exogenous-variable name.
+
+        Returns
+        -------
+        str
+            Fitted parameter name with transformation prefixes.
+        """
         prefixes = []
         if self.log:
             prefixes.append("log.")
@@ -123,7 +134,7 @@ def operator_burn(operators) -> int:
     return max((operator.required_history for operator in operators.values()), default=0)
 
 
-def transformed_exog_names(exog_names, operators) -> tuple[str, ...]:
+def _transformed_exog_names(exog_names, operators) -> tuple[str, ...]:
     """Return unique fitted-column names for raw exogenous names and operators."""
     names = tuple(
         operators.get(name, TimeSeriesOperator()).transformed_name(name)
