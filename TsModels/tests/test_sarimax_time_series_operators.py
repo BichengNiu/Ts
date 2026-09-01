@@ -74,6 +74,77 @@ def test_future_exog_is_transformed_with_raw_history():
     assert np.isfinite(prediction.scenarios["custom"].mean).all()
 
 
+def test_log_operator_transforms_exog_and_prefixes_parameter_name():
+    rng = np.random.default_rng(20260903)
+    dates = pd.date_range("2018-01-01", periods=48, freq="MS")
+    exog = pd.DataFrame(
+        {"x": np.exp(rng.normal(size=len(dates)))},
+        index=dates,
+    )
+    y = pd.Series(rng.normal(size=len(dates)), index=dates, name="y")
+    operator = TimeSeriesOperator(
+        lag=1,
+        difference=1,
+        seasonal_difference=1,
+        seasonal_period=12,
+        log=True,
+    )
+
+    model = SARIMAX(
+        y,
+        exog=exog,
+        order=(0, 0, 0),
+        trend="n",
+        exog_operators={"x": operator},
+        missing="raise",
+    )
+
+    expected = np.log(exog["x"]).diff(12).diff().shift(1).iloc[14:]
+    assert model.design_columns == ("log.L.D.S.x",)
+    np.testing.assert_allclose(model.exog[:, 0], expected.to_numpy())
+
+    result = model.fit(maxiter=100)
+    assert "log.L.D.S.x" in result.params
+
+
+def test_log_operator_requires_positive_exogenous_values():
+    exog = pd.DataFrame({"x": [1.0, 2.0, 0.0] * 8})
+    with pytest.raises(ValueError, match="strictly positive exogenous"):
+        SARIMAX(
+            np.ones(len(exog)),
+            exog=exog,
+            order=(0, 0, 0),
+            trend="n",
+            exog_operators={"x": TimeSeriesOperator(log=True)},
+        )
+
+
+def test_log_operator_future_exog_uses_raw_scale():
+    rng = np.random.default_rng(20260904)
+    n = 40
+    exog = pd.DataFrame(
+        {"x": np.exp(rng.normal(size=n + 3))},
+        index=pd.date_range("2019-01-01", periods=n + 3, freq="MS"),
+    )
+    y = pd.Series(rng.normal(size=n), index=exog.index[:n], name="y")
+    result = SARIMAX(
+        y,
+        exog=exog,
+        order=(0, 0, 0),
+        trend="n",
+        exog_operators={"x": TimeSeriesOperator(log=True)},
+    ).fit(maxiter=100)
+
+    prediction = result.predict(
+        start=result.nobs,
+        end=result.nobs + 2,
+        future_exog=exog.iloc[n:],
+    )
+
+    assert len(prediction.scenarios["custom"].mean) == 3
+    assert np.isfinite(prediction.scenarios["custom"].mean).all()
+
+
 def test_operator_mapping_validation_and_rdl_boundary():
     y, exog, _ = _operator_fixture()
     with pytest.raises(ValueError, match="unknown exogenous"):

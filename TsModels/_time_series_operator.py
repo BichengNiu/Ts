@@ -14,7 +14,7 @@ from Ts.TsUtils._validation import validate_int
 
 @dataclass(frozen=True)
 class TimeSeriesOperator:
-    """Immutable lag and differencing specification for one exogenous variable.
+    """Immutable transformation specification for one exogenous variable.
 
     Parameters
     ----------
@@ -26,6 +26,8 @@ class TimeSeriesOperator:
         Number of seasonal first differences.
     seasonal_period : int or None, default None
         Seasonal lag required when ``seasonal_difference`` is positive.
+    log : bool, default False
+        Whether to take the natural logarithm before differencing and lagging.
 
     Examples
     --------
@@ -39,6 +41,7 @@ class TimeSeriesOperator:
     difference: int = 0
     seasonal_difference: int = 0
     seasonal_period: int | None = None
+    log: bool = False
 
     def __post_init__(self):
         for name in ("lag", "difference", "seasonal_difference"):
@@ -63,6 +66,9 @@ class TimeSeriesOperator:
                 "seasonal_period",
                 validate_int("seasonal_period", self.seasonal_period, minimum=2),
             )
+        if not isinstance(self.log, (bool, np.bool_)):
+            raise TypeError("log must be a boolean")
+        object.__setattr__(self, "log", bool(self.log))
 
     @property
     def required_history(self) -> int:
@@ -73,7 +79,20 @@ class TimeSeriesOperator:
     @property
     def is_identity(self) -> bool:
         """Whether this operator leaves a variable unchanged."""
-        return self.required_history == 0
+        return self.required_history == 0 and not self.log
+
+    def transformed_name(self, name: str) -> str:
+        """Return the parameter name after applying this operator."""
+        prefixes = []
+        if self.log:
+            prefixes.append("log.")
+        if self.lag:
+            prefixes.append("L.")
+        if self.difference:
+            prefixes.append("D.")
+        if self.seasonal_difference:
+            prefixes.append("S.")
+        return "".join(prefixes) + name
 
 
 def normalise_exog_operators(operators, exog_names) -> dict[str, TimeSeriesOperator]:
@@ -104,11 +123,32 @@ def operator_burn(operators) -> int:
     return max((operator.required_history for operator in operators.values()), default=0)
 
 
+def transformed_exog_names(exog_names, operators) -> tuple[str, ...]:
+    """Return unique fitted-column names for raw exogenous names and operators."""
+    names = tuple(
+        operators.get(name, TimeSeriesOperator()).transformed_name(name)
+        for name in exog_names
+    )
+    if len(set(names)) != len(names):
+        raise ValueError(
+            "exogenous transformations produce duplicate parameter names: "
+            f"{names}"
+        )
+    return names
+
+
 def apply_exog_operators(frame: pd.DataFrame, operators) -> pd.DataFrame:
-    """Apply seasonal differences, ordinary differences, then lags by column."""
+    """Apply log, seasonal differences, ordinary differences, then lags by column."""
     transformed = frame.astype(float).copy()
     for name, operator in operators.items():
         values = transformed[name]
+        if operator.log:
+            if (values <= 0.0).any():
+                raise ValueError(
+                    f"log transformation requires strictly positive exogenous "
+                    f"data for {name!r}"
+                )
+            values = np.log(values)
         if operator.seasonal_difference:
             for _ in range(operator.seasonal_difference):
                 values = difference(values, order=1, lag=operator.seasonal_period)

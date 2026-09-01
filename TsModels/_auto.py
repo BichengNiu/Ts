@@ -1071,8 +1071,8 @@ class AutoSARIMAX(_BaseAutoModel):
         Series and DataFrame labels are authoritative and must not be
         overridden.
     exog_operators : mapping[str, TimeSeriesOperator], optional
-        Per-variable time-series operators applied to ordinary exogenous
-        inputs before every candidate is fitted.
+        Per-variable log, lag, and differencing operators applied to ordinary
+        exogenous inputs before every candidate is fitted.
     events : sequence[EventSpec], optional
         Event designs shared by every candidate.
     enforce_stationarity : bool

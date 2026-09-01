@@ -105,7 +105,7 @@ result.test_residuals(lags=10)
 
 ### 外生变量时序算子
 
-`TimeSeriesOperator` 为每个普通外生变量显式声明滞后、普通差分和季节差分。
+`TimeSeriesOperator` 为每个普通外生变量显式声明对数、滞后、普通差分和季节差分。
 算子仅改变模型设计矩阵；预测时仍传入原始尺度的未来外生变量，SARIMAX 会使用
 拟合历史自动完成同一变换。
 
@@ -114,11 +114,12 @@ import pandas as pd
 from Ts.TsModels import SARIMAX, TimeSeriesOperator
 
 operators = {
-    "price": TimeSeriesOperator(lag=1),
+    "price": TimeSeriesOperator(log=True, lag=1),
     "income": TimeSeriesOperator(difference=1),
     "oil": TimeSeriesOperator(seasonal_difference=1, seasonal_period=12),
 }
 result = SARIMAX(y, exog=exog, exog_operators=operators).fit()
+# 对数、滞后、差分算子对应的参数名为 log.L.price；未来路径仍填写原始尺度。
 ```
 
 ## 统一接口
@@ -157,7 +158,7 @@ result = SARIMAX(y, exog=exog, exog_operators=operators).fit()
 | 模型 | 方法 | 说明 |
 |------|------|------|
 | `SARIMAX` / `SARIMAXResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
-| | `TimeSeriesOperator` / `exog_operators` | 按外生变量声明 lag、普通差分和季节差分；未来路径保持原始尺度 |
+| | `TimeSeriesOperator` / `exog_operators` | 按外生变量声明 log、lag、普通差分和季节差分；未来路径保持原始尺度 |
 | | `.parameter_correlation(parameters=None)` | SARIMA/SARIMAX、外生变量、事件与 RDL 的已估参数相关矩阵；固定为零的稀疏滞后不进入矩阵 |
 | | `.plot_parameter_correlation(...)` | 参数相关矩阵热图；可按参数名筛选 |
 | | `.arroots` | AR 多项式特征根 (ndarray) |

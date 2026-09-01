@@ -47,6 +47,7 @@ from Ts.TsModels._time_series_operator import (
     apply_exog_operators,
     normalise_exog_operators,
     operator_burn,
+    transformed_exog_names,
 )
 
 
@@ -541,14 +542,22 @@ def _combined_design(inputs, events, trend, *, distributed_lag_names=()):
             name for name in inputs.exog_names if name not in distributed_lag_names
         ]
         if ordinary_names:
-            frames.append(exog_frame.loc[:, ordinary_names])
+            ordinary_frame = exog_frame.loc[:, ordinary_names].copy()
+            ordinary_frame.columns = transformed_exog_names(
+                ordinary_names,
+                inputs.exog_operators,
+            )
+            frames.append(ordinary_frame)
     event_metadata: dict[str, EventColumns] = {}
     event_frame = None
     if events:
         event_frame, event_metadata = build_event_matrix(
             inputs.dates,
             events,
-            reserved_names=inputs.exog_names,
+            reserved_names=transformed_exog_names(
+                inputs.exog_names,
+                inputs.exog_operators,
+            ),
         )
         frames.append(event_frame)
     design = pd.concat(frames, axis=1) if frames else None
@@ -1784,7 +1793,7 @@ class SARIMAXResult(BaseModelResult):
                 future_dates,
                 self._event_specs,
                 calendar=calendar,
-                reserved_names=self._ordinary_exog_names,
+                reserved_names=self._static_exog_names,
             )
             frames.append(event_frame)
         if not frames:
@@ -1809,6 +1818,10 @@ class SARIMAXResult(BaseModelResult):
         transformed = apply_exog_operators(combined, operators).iloc[
             -len(future_exog) :
         ]
+        transformed.columns = transformed_exog_names(
+            tuple(transformed.columns),
+            operators,
+        )
         transformed.index = future_exog.index.copy()
         return transformed
 
@@ -2688,7 +2701,7 @@ class SARIMAX(BaseModel):
         Required for array exog and for an unnamed Series. Named Series and
         DataFrame labels are authoritative and must not be overridden.
     exog_operators : mapping[str, TimeSeriesOperator], optional
-        Per-variable lag, ordinary-difference, and seasonal-difference
+        Per-variable log, lag, ordinary-difference, and seasonal-difference
         specifications for ordinary exogenous inputs. Future inputs remain on
         their raw scale and are transformed with the fitted historical path.
     events : sequence of EventSpec, optional
@@ -2789,6 +2802,10 @@ class SARIMAX(BaseModel):
         self.exog = inputs.exog
         self.exog_names = inputs.exog_names
         self.exog_operators = dict(inputs.exog_operators)
+        self.transformed_exog_names = transformed_exog_names(
+            inputs.exog_names,
+            self.exog_operators,
+        )
         self.operator_burn = inputs.operator_burn
         self._raw_data = inputs.raw_endog
         self._raw_dates = inputs.raw_dates
@@ -2797,6 +2814,10 @@ class SARIMAX(BaseModel):
         self.distributed_lag_names = tuple(distributed_lags)
         self.ordinary_exog_names = tuple(
             name for name in inputs.exog_names if name not in distributed_lags
+        )
+        self.static_exog_names = tuple(
+            self.transformed_exog_names[inputs.exog_names.index(name)]
+            for name in self.ordinary_exog_names
         )
         if inputs.exog is None:
             self.distributed_inputs = None
@@ -3063,7 +3084,7 @@ class SARIMAX(BaseModel):
             _dates=None if self.dates is None else self.dates.copy(),
             _ordinary_exog=(None if self.exog is None else self.exog.copy()),
             _ordinary_exog_names=self.exog_names,
-            _static_exog_names=self.ordinary_exog_names,
+            _static_exog_names=self.static_exog_names,
             _event_specs=self.events,
             _event_metadata=dict(self._event_metadata),
             _design_columns=self.design_columns,
