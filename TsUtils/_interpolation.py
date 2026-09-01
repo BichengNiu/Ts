@@ -7,7 +7,19 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-_METHODS = frozenset({"linear", "time", "nearest", "cubic"})
+_METHODS = frozenset(
+    {
+        "linear",
+        "time",
+        "nearest",
+        "cubic",
+        "ffill",
+        "bfill",
+        "spline",
+        "polynomial",
+        "kalman",
+    }
+)
 _EDGE_POLICIES = frozenset({"keep", "nearest"})
 
 
@@ -235,9 +247,36 @@ def _validate_time_index(frame):
 
 
 def _interpolate_frame(frame, method):
-    """Delegate supported interior interpolation to pandas."""
+    """Apply the selected interpolation or missing-value method by column."""
     if method == "time":
         _validate_time_index(frame)
+    if method == "ffill":
+        return frame.ffill(axis=0)
+    if method == "bfill":
+        return frame.bfill(axis=0)
+    if method == "kalman":
+        return frame.apply(_kalman_fill, axis=0)
+    if method in {"spline", "polynomial"}:
+        result = frame.copy(deep=True)
+        base_order = 3 if method == "spline" else 2
+        for column in frame.columns:
+            series = frame[column]
+            valid_count = int(series.notna().sum())
+            if valid_count < 2:
+                continue
+            order = min(base_order, valid_count - 1)
+            try:
+                result[column] = series.interpolate(
+                    method=method,
+                    order=order,
+                    axis=0,
+                    limit_area="inside",
+                )
+            except (TypeError, ValueError, NotImplementedError) as error:
+                raise ValueError(
+                    f"{method} interpolation failed: {error}"
+                ) from error
+        return result
     try:
         return frame.interpolate(
             method=method,
@@ -262,6 +301,54 @@ def _fill_nearest_edges(output, original, missing, eligible):
         trailing = trailing[eligible[trailing, column]]
         output[leading, column] = original[first, column]
         output[trailing, column] = original[last, column]
+
+
+def _kalman_fill(series):
+    """Fill a series with a one-dimensional local-level Kalman smoother."""
+    values = series.to_numpy(dtype=float, copy=True)
+    observed = np.isfinite(values)
+    observed_count = int(observed.sum())
+    if observed_count == 0:
+        return series.copy(deep=True)
+    if observed_count == 1:
+        values[~observed] = values[observed][0]
+        return pd.Series(values, index=series.index, name=series.name)
+
+    observed_values = values[observed]
+    differences = np.diff(observed_values)
+    scale = float(np.nanvar(differences)) if len(differences) else 0.0
+    scale = max(scale, np.finfo(float).eps)
+    process_variance = scale
+    measurement_variance = max(scale * 0.1, np.finfo(float).eps)
+
+    filtered_state = np.empty(len(values), dtype=float)
+    filtered_variance = np.empty(len(values), dtype=float)
+    state = float(observed_values[0])
+    variance = scale
+    for position, value in enumerate(values):
+        predicted_variance = variance + process_variance
+        if observed[position]:
+            gain = predicted_variance / (
+                predicted_variance + measurement_variance
+            )
+            state += gain * (value - state)
+            variance = (1.0 - gain) * predicted_variance
+        else:
+            variance = predicted_variance
+        filtered_state[position] = state
+        filtered_variance[position] = variance
+
+    smoothed_state = filtered_state.copy()
+    for position in range(len(values) - 2, -1, -1):
+        predicted_variance = filtered_variance[position] + process_variance
+        smoothing_gain = filtered_variance[position] / predicted_variance
+        smoothed_state[position] = filtered_state[position] + (
+            smoothing_gain
+            * (smoothed_state[position + 1] - filtered_state[position])
+        )
+
+    values[~observed] = smoothed_state[~observed]
+    return pd.Series(values, index=series.index, name=series.name)
 
 
 def _restore_data(values, frame, kind):
@@ -296,9 +383,13 @@ def interpolate_missing(
     ----------
     data : array-like, pandas.Series, or pandas.DataFrame
         Numeric observations ordered along rows.
-    method : {"linear", "time", "nearest", "cubic"}
-        Interpolation method. ``"time"`` requires a unique, increasing
-        DatetimeIndex or TimedeltaIndex.
+    method : {"linear", "time", "nearest", "cubic", "ffill", "bfill", "spline", "polynomial", "kalman"}
+        Interpolation or missing-value method. ``"time"`` requires a unique,
+        increasing DatetimeIndex or TimedeltaIndex. ``"spline"`` uses a
+        cubic spline when enough observations are available, ``"polynomial"``
+        uses a quadratic polynomial, and ``"kalman"`` uses a local-level
+        Kalman smoother. ``"ffill"`` and ``"bfill"`` perform forward and
+        backward filling respectively.
     max_gap : int, optional
         Maximum consecutive missing run eligible for filling. Longer runs are
         retained in full.

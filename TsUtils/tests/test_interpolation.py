@@ -126,6 +126,57 @@ def test_scipy_interpolation_methods_fill_interior_gap(method):
         assert result.data[2] == pytest.approx(8.0)
 
 
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        ("ffill", [1.0, 1.0, 3.0, 3.0, 5.0, 6.0]),
+        ("bfill", [1.0, 3.0, 3.0, 5.0, 5.0, 6.0]),
+    ],
+)
+def test_directional_fill_methods(method, expected):
+    """Forward and backward filling are available through the same API."""
+    from Ts.TsUtils import interpolate_missing
+
+    result = interpolate_missing(
+        np.array([1.0, np.nan, 3.0, np.nan, 5.0, 6.0]),
+        method=method,
+    )
+
+    np.testing.assert_allclose(result.data, expected)
+    assert result.method == method
+    assert result.complete
+
+
+@pytest.mark.parametrize("method", ["spline", "polynomial"])
+def test_spline_and_polynomial_methods_fill_interior_gap(method):
+    """Spline and polynomial methods fill an interior gap with SciPy."""
+    from Ts.TsUtils import interpolate_missing
+
+    result = interpolate_missing(
+        np.array([0.0, 1.0, np.nan, 27.0, 64.0]),
+        method=method,
+    )
+
+    assert result.data[2] == pytest.approx(8.0)
+    assert result.complete
+
+
+def test_kalman_method_fills_missing_values_without_mutating_input():
+    """Kalman smoothing fills missing values and preserves observations."""
+    from Ts.TsUtils import interpolate_missing
+
+    data = np.array([1.0, np.nan, 3.0, np.nan, 5.0])
+    original = data.copy()
+    result = interpolate_missing(data, method="kalman")
+
+    assert np.isfinite(result.data).all()
+    assert result.data[0] == 1.0
+    assert result.data[2] == 3.0
+    assert result.data[4] == 5.0
+    assert result.complete
+    np.testing.assert_array_equal(data, original)
+
+
 def test_max_gap_leaves_long_gap_unfilled():
     """A gap longer than max_gap is retained in full, not partially filled."""
     from Ts.TsUtils import interpolate_missing
@@ -230,7 +281,7 @@ def test_invalid_input_is_rejected(data, message):
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({"method": "polynomial"}, "method must be"),
+        ({"method": "unknown"}, "method must be"),
         ({"max_gap": 0}, "max_gap"),
         ({"max_gap": True}, "max_gap"),
         ({"edge": "extrapolate"}, "edge must be"),
