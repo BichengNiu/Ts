@@ -71,7 +71,7 @@ from ._compare import compare_models
 from ._distributed_lag import RationalLagResult, RationalLagSpec
 from ._garch import GARCH
 from ._garch_result import GARCHResult
-from ._intervention import EventSpec, PolicyEffectResult
+from ._intervention import EventSpec, PolicyEffectResult, build_event_matrix
 from ._outlier import OutlierDetector, OutlierDetectorResult
 from ._sarimax import ARCycleResult, SARIMAX, SARIMAXResult, ScenarioForecastResult
 from ._time_series_operator import TimeSeriesOperator
@@ -108,6 +108,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by model family
     "RationalLagSpec",
     "RationalLagResult",
     "EventSpec",
+    "build_event_matrix",
     "PolicyEffectResult",
     "OutlierDetector",
     "OutlierDetectorResult",

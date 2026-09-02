@@ -33,7 +33,7 @@ from scipy.stats import chi2, norm
 from Ts.TsUtils._calendar import validate_time_index
 
 DateRule = Literal["exact", "period", "next", "previous"]
-EventKind = Literal["pulse", "step"]
+EventKind = Literal["pulse", "step", "temporary"]
 
 
 @dataclass(frozen=True)
@@ -46,14 +46,18 @@ class EventSpec:
         Non-empty event name used in generated design columns.
     dates : sequence of datetime-like
         One or more intervention dates.
-    kind : {"pulse", "step"}
-        Temporary impulse or persistent level intervention.
+    kind : {"pulse", "step", "temporary"}
+        One-period impulse, persistent level intervention, or inclusive
+        start/end window intervention.
     window : tuple of int, optional
         Inclusive relative-period window for a pulse event study.
     reference : int, optional
         Omitted reference period inside ``window``.
     date_rule : {"exact", "period", "next", "previous"}, default "period"
         Rule mapping event dates to observation dates.
+    end_date : datetime-like, optional
+        Inclusive end date required for ``kind="temporary"`` and invalid for
+        other event kinds.
 
     Examples
     --------
@@ -77,12 +81,13 @@ class EventSpec:
     window: tuple[int, int] | None = None
     reference: int | None = None
     date_rule: DateRule = "period"
+    end_date: object | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("event name must be a non-empty string")
-        if self.kind not in {"pulse", "step"}:
-            raise ValueError("event kind must be 'pulse' or 'step'")
+        if self.kind not in {"pulse", "step", "temporary"}:
+            raise ValueError("event kind must be 'pulse', 'step', or 'temporary'")
         if self.date_rule not in {
             "exact",
             "period",
@@ -102,7 +107,29 @@ class EventSpec:
         if len(set(parsed_dates)) != len(parsed_dates):
             raise ValueError(f"event {self.name.strip()!r} contains duplicate dates")
 
+        if self.end_date is None:
+            parsed_end_date = None
+        else:
+            try:
+                parsed_end_date = pd.Timestamp(self.end_date)
+            except (TypeError, ValueError) as error:
+                raise ValueError("end_date must be a valid date") from error
+
+        if self.kind == "temporary":
+            if len(parsed_dates) != 1:
+                raise ValueError("temporary event must contain one start date")
+            if parsed_end_date is None:
+                raise ValueError("temporary event requires end_date")
+            if parsed_dates[0] > parsed_end_date:
+                raise ValueError("end_date must not be before the start date")
+        elif parsed_end_date is not None:
+            raise ValueError("end_date is only valid for temporary events")
+
         if self.kind == "step" and self.window is not None:
+            raise ValueError("window is only valid for pulse events")
+        if self.kind == "temporary" and (
+            self.window is not None or self.reference is not None
+        ):
             raise ValueError("window is only valid for pulse events")
         if (self.window is None) != (self.reference is None):
             raise ValueError("window and reference must be specified together")
@@ -128,6 +155,7 @@ class EventSpec:
 
         object.__setattr__(self, "name", self.name.strip())
         object.__setattr__(self, "dates", parsed_dates)
+        object.__setattr__(self, "end_date", parsed_end_date)
 
 
 @dataclass(frozen=True)
@@ -478,7 +506,48 @@ def build_event_matrix(
     calendar: pd.DatetimeIndex | None = None,
     reserved_names: Sequence[str] = (),
 ) -> tuple[pd.DataFrame, dict[str, EventColumns]]:
-    """Build event regressors on target dates using a complete calendar."""
+    """Build event regressors on target dates using a complete calendar.
+
+    Parameters
+    ----------
+    target_dates : pandas.DatetimeIndex
+        Dates receiving the generated event columns. They must be an exact
+        subset of ``calendar`` when a separate calendar is supplied.
+    events : sequence of EventSpec
+        Event definitions to encode. Pulse, step, and temporary events are
+        supported; temporary events include both mapped endpoints.
+    calendar : pandas.DatetimeIndex, optional
+        Complete regularly spaced calendar used for date mapping and relative
+        positions. Defaults to ``target_dates``.
+    reserved_names : sequence of str, optional
+        Existing column names that generated event columns must not collide
+        with.
+
+    Returns
+    -------
+    matrix : pandas.DataFrame
+        Floating-point event regressors indexed by ``target_dates``.
+    metadata : dict[str, EventColumns]
+        Generated-column and mapped-position metadata keyed by event name.
+
+    Raises
+    ------
+    ValueError
+        If dates, calendars, event definitions, or generated column names are
+        invalid or incompatible.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from Ts.TsModels import EventSpec, build_event_matrix
+    >>> dates = pd.date_range("2025-01-01", periods=4, freq="MS")
+    >>> event = EventSpec(
+    ...     "policy", ["2025-02-15"], "temporary", end_date="2025-03-15"
+    ... )
+    >>> matrix, _ = build_event_matrix(dates, [event])
+    >>> matrix["event__policy"].tolist()
+    [0.0, 1.0, 1.0, 0.0]
+    """
     target_index = _validate_datetime_index(target_dates, "target dates")
     calendar_index = _validate_datetime_index(
         target_index if calendar is None else calendar,
@@ -520,19 +589,46 @@ def build_event_matrix(
     metadata: dict[str, EventColumns] = {}
     for event in event_specs:
         columns, relative_periods = schemas[event.name]
-        positions = tuple(
-            position
-            for event_date in event.dates
-            if (
-                position := _mapped_position(
-                    event_date,
-                    event.date_rule,
-                    calendar_index,
-                )
+        if event.kind == "temporary":
+            start_position = _mapped_position(
+                event.dates[0],
+                event.date_rule,
+                calendar_index,
             )
-            is not None
-        )
-        if event.kind == "step":
+            end_position = _mapped_position(
+                event.end_date,
+                event.date_rule,
+                calendar_index,
+            )
+            positions = (
+                ()
+                if start_position is None or end_position is None
+                else (start_position, end_position)
+            )
+            if positions and positions[0] > positions[1]:
+                raise ValueError(
+                    f"temporary event {event.name!r} maps to a reversed interval"
+                )
+        else:
+            positions = tuple(
+                position
+                for event_date in event.dates
+                if (
+                    position := _mapped_position(
+                        event_date,
+                        event.date_rule,
+                        calendar_index,
+                    )
+                )
+                is not None
+            )
+        if event.kind == "temporary":
+            if positions:
+                full.iloc[
+                    positions[0] : positions[1] + 1,
+                    full.columns.get_loc(columns[0]),
+                ] += 1.0
+        elif event.kind == "step":
             for position in positions:
                 full.iloc[position:, full.columns.get_loc(columns[0])] += 1.0
         elif relative_periods is None:

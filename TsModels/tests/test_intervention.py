@@ -17,6 +17,49 @@ def test_event_spec_defaults_to_period_mapping():
     assert event.dates == (pd.Timestamp("2025-03-15"),)
 
 
+def test_temporary_event_spec_requires_one_start_and_an_end_date():
+    from Ts.TsModels._intervention import EventSpec
+
+    event = EventSpec(
+        name="policy",
+        dates=["2025-03-15"],
+        kind="temporary",
+        end_date="2025-05-15",
+    )
+
+    assert event.dates == (pd.Timestamp("2025-03-15"),)
+    assert event.end_date == pd.Timestamp("2025-05-15")
+
+    with pytest.raises(ValueError, match="end_date"):
+        EventSpec(name="policy", dates=["2025-03-15"], kind="temporary")
+    with pytest.raises(ValueError, match="one start"):
+        EventSpec(
+            name="policy",
+            dates=["2025-03-15", "2025-04-15"],
+            kind="temporary",
+            end_date="2025-05-15",
+        )
+    with pytest.raises(ValueError, match="before"):
+        EventSpec(
+            name="policy",
+            dates=["2025-05-15"],
+            kind="temporary",
+            end_date="2025-04-15",
+        )
+
+
+def test_non_temporary_event_rejects_end_date():
+    from Ts.TsModels._intervention import EventSpec
+
+    with pytest.raises(ValueError, match="only valid for temporary"):
+        EventSpec(
+            name="policy",
+            dates=["2025-03-15"],
+            kind="pulse",
+            end_date="2025-05-15",
+        )
+
+
 @pytest.mark.parametrize("kind", ["other", "", None])
 def test_event_spec_rejects_unknown_kind(kind):
     from Ts.TsModels._intervention import EventSpec
@@ -125,6 +168,56 @@ def test_period_maps_within_month_to_monthly_observation():
     assert matrix["event__policy"].tolist() == [0, 0, 1, 0, 0]
     assert metadata["policy"].columns == ("event__policy",)
     assert metadata["policy"].mapped_positions == (2,)
+
+
+def test_temporary_event_marks_inclusive_observation_interval():
+    from Ts.TsModels import EventSpec, build_event_matrix
+
+    dates = pd.date_range("2025-01-01", periods=6, freq="MS")
+    matrix, metadata = build_event_matrix(
+        dates,
+        [
+            EventSpec(
+                "policy",
+                ["2025-02-15"],
+                "temporary",
+                end_date="2025-04-20",
+            )
+        ],
+    )
+
+    assert matrix["event__policy"].tolist() == [0, 1, 1, 1, 0, 0]
+    assert metadata["policy"].mapped_positions == (1, 3)
+
+
+def test_temporary_event_maps_endpoints_with_directional_date_rules():
+    from Ts.TsModels import EventSpec, build_event_matrix
+
+    dates = pd.date_range("2025-01-01", periods=6, freq="MS")
+    matrix, _ = build_event_matrix(
+        dates,
+        [
+            EventSpec(
+                "policy",
+                ["2025-02-15"],
+                "temporary",
+                end_date="2025-04-20",
+                date_rule="next",
+            )
+        ],
+    )
+
+    assert matrix["event__policy"].tolist() == [0, 0, 1, 1, 1, 0]
+
+
+def test_build_event_matrix_is_exported_from_tsmodels():
+    from Ts.TsModels import build_event_matrix
+
+    assert callable(build_event_matrix)
+    assert "target_dates" in build_event_matrix.__doc__
+    assert "events" in build_event_matrix.__doc__
+    assert "calendar" in build_event_matrix.__doc__
+    assert "reserved_names" in build_event_matrix.__doc__
 
 
 @pytest.mark.parametrize(
