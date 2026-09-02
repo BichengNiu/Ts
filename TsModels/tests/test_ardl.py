@@ -75,6 +75,63 @@ def test_manual_ardl_matches_statsmodels_for_sparse_per_input_lags():
     assert result.optimizer == "conditional_mle"
 
 
+def test_manual_ardl_supports_sarima_error_structure_and_forecast():
+    """Manual ARDL lags and SARIMA error orders are estimated together."""
+    y, x = _sample()
+    result = ARDL(
+        y,
+        lags=[1, 2],
+        exog=x,
+        order={"x1": [0, 2], "x2": [1]},
+        trend="c",
+        missing="raise",
+        error_order=(1, 0, 1),
+        error_seasonal_order=(0, 0, 0, 0),
+        error_enforce_stationarity=False,
+        error_enforce_invertibility=False,
+    ).fit(error_method="bfgs", error_maxiter=200, error_cov_type="oim")
+
+    assert isinstance(result, ARDLResult)
+    assert result.model_type == "ARDL"
+    assert result.ar_lags == (1, 2)
+    assert result.distributed_lags == {"x1": (0, 2), "x2": (1,)}
+    assert result.ardl_order == (2, 2, 1)
+    assert result.error_order == (1, 0, 1)
+    assert result.error_seasonal_order == (0, 0, 0, 0)
+    assert result.error_likelihood_burn >= 0
+    assert result.converged
+    assert "y.L1" in result.params
+    assert "ar.L1" in result.params
+    assert "ma.L1" in result.params
+    assert "Error SARIMA" in result.summary()
+
+    future_dates = pd.date_range(y.index[-1], periods=4, freq="MS")[1:]
+    future = pd.DataFrame(
+        {"x1": [0.1, 0.2, 0.3], "x2": [0.4, 0.5, 0.6]},
+        index=future_dates,
+    )
+    prediction = result.predict(
+        start=len(y),
+        end=len(y) + 2,
+        future_exog=future,
+    )
+
+    assert prediction.mean.shape == (3,)
+    assert np.isfinite(prediction.mean).all()
+    assert np.isfinite(prediction.lower).all()
+    assert np.isfinite(prediction.upper).all()
+    assert prediction.is_oos.tolist() == [True] * 3
+
+
+def test_ardl_without_error_order_keeps_ols_path():
+    """Omitting error orders preserves the existing conditional OLS path."""
+    y, x = _sample()
+    result = ARDL(y, lags=1, exog=x, order=1, trend="c").fit()
+
+    assert result.error_order is None
+    assert result.optimizer == "conditional_mle"
+
+
 def test_ardl_predict_validates_complete_named_future_inputs():
     y, x = _sample()
     result = ARDL(y, lags=1, exog=x, order={"x1": 1, "x2": 0}).fit()

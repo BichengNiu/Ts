@@ -15,7 +15,17 @@ from statsmodels.tsa.ardl import ARDL as StatsmodelsARDL
 from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
 from Ts.TsModels._base import _resolve_prediction_window
 from Ts.TsModels._parallel import _map_candidates, _validate_n_jobs
-from Ts.TsModels._sarimax import _normalise_log, _normalise_sarimax_inputs
+from Ts.TsModels._sarimax import (
+    SARIMAX,
+    _normalise_cov_type,
+    _normalise_fit_method,
+    _normalise_log,
+    _normalise_maxiter,
+    _normalise_order,
+    _normalise_require_convergence,
+    _normalise_sarimax_inputs,
+    _normalise_seasonal_order,
+)
 
 
 _ARDL_CRITERIA = frozenset({"aic", "bic"})
@@ -313,6 +323,18 @@ def _normalize_lag_mapping(mapping):
     }
 
 
+def _normalise_error_orders(error_order, error_seasonal_order):
+    """Normalize the optional SARIMA error orders and their dependency."""
+    seasonal_order = _normalise_seasonal_order(error_seasonal_order)
+    if error_order is None:
+        if seasonal_order != (0, 0, 0, 0):
+            raise ValueError(
+                "error_seasonal_order requires error_order to be specified"
+            )
+        return None, seasonal_order
+    return _normalise_order(error_order), seasonal_order
+
+
 @dataclass
 class ARDLResult(BaseModelResult):
     """Result container for a fitted autoregressive distributed-lag model.
@@ -344,6 +366,11 @@ class ARDLResult(BaseModelResult):
     _exog_names: tuple[str, ...] = ()
     _default_future_exog: pd.DataFrame | None = None
     _log_transform: bool = False
+    _model_data: np.ndarray | None = None
+    _ardl_model: object = None
+    _error_result: object = None
+    _error_order: tuple | None = None
+    _error_seasonal_order: tuple = (0, 0, 0, 0)
 
     @property
     def log(self):
@@ -388,14 +415,73 @@ class ARDLResult(BaseModelResult):
     @property
     def effective_nobs(self):
         """Return observations used by conditional maximum likelihood."""
+        if self._error_result is not None:
+            return self._error_result.effective_nobs
         return self.nobs - self.hold_back
+
+    @property
+    def likelihood_burn(self):
+        """Return the original-sample position of the first valid fit value."""
+        if self._error_result is None:
+            return self.hold_back
+        return self.hold_back + self._error_result.likelihood_burn
+
+    @property
+    def error_order(self):
+        """Return the manually configured non-seasonal SARIMA error order."""
+        return None if self._error_order is None else tuple(self._error_order)
+
+    @property
+    def error_seasonal_order(self):
+        """Return the manually configured seasonal SARIMA error order."""
+        return tuple(self._error_seasonal_order)
+
+    @property
+    def error_likelihood_burn(self):
+        """Return state-space initialization burn for the SARIMA error."""
+        if self._error_result is None:
+            return 0
+        return int(self._error_result.likelihood_burn)
+
+    @property
+    def error_arroots(self):
+        """Return roots of the fitted SARIMA error AR polynomial."""
+        if self._error_result is None:
+            return np.array([], dtype=float)
+        return self._error_result.arroots.copy()
+
+    @property
+    def error_marroots(self):
+        """Return roots of the fitted SARIMA error MA polynomial."""
+        if self._error_result is None:
+            return np.array([], dtype=float)
+        return self._error_result.marroots.copy()
+
+    @property
+    def error_is_stationary(self):
+        """Whether the SARIMA error AR polynomial is stationary."""
+        if self._error_result is None:
+            return True
+        return self._error_result.is_stationary
+
+    @property
+    def error_is_invertible(self):
+        """Whether the SARIMA error MA polynomial is invertible."""
+        if self._error_result is None:
+            return True
+        return self._error_result.is_invertible
 
     @property
     def roots(self):
         """Return roots of the fitted target autoregressive polynomial."""
-        if self._statsmodels_result is None:
+        if self._statsmodels_result is not None:
+            return np.asarray(self._statsmodels_result.roots).copy()
+        if not self.ar_lags:
             return np.array([], dtype=float)
-        return np.asarray(self._statsmodels_result.roots).copy()
+        coefficients = [1.0]
+        for lag in range(1, max(self.ar_lags) + 1):
+            coefficients.append(-self.params.get(f"y.L{lag}", 0.0))
+        return np.roots(coefficients)
 
     @property
     def is_stationary(self):
@@ -405,11 +491,15 @@ class ARDLResult(BaseModelResult):
     @property
     def converged(self):
         """Whether conditional maximum-likelihood estimation completed."""
+        if self._error_result is not None:
+            return self._error_result.converged
         return self._statsmodels_result is not None
 
     @property
     def optimizer(self):
         """Return the conditional-MLE estimator label."""
+        if self._error_result is not None:
+            return self._error_result.optimizer
         return "conditional_mle"
 
     def _normalise_future_exog(self, steps, future_exog):
@@ -439,6 +529,226 @@ class ARDLResult(BaseModelResult):
             raise ValueError("future exog contains non-finite values")
         return frame
 
+    def _resolve_prediction_bounds(self, start, end, future_dates):
+        """Resolve integer or dated bounds against the original ARDL sample."""
+        date_bounds = [
+            value
+            for value in (start, end)
+            if value is not None and not isinstance(value, (int, np.integer))
+        ]
+        if not date_bounds:
+            return start, end
+        if self._dates is None:
+            raise TypeError("date prediction bounds require dated model data")
+
+        parsed_bounds = []
+        for value in date_bounds:
+            try:
+                timestamp = pd.Timestamp(value)
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    "prediction bounds must be integer positions or dates"
+                ) from error
+            if str(timestamp.tz) != str(self._dates.tz):
+                raise ValueError("prediction date timezone must match model dates")
+            parsed_bounds.append(timestamp)
+
+        future_bound = max(
+            (timestamp for timestamp in parsed_bounds if timestamp > self._dates[-1]),
+            default=None,
+        )
+        future_index = None
+        if future_bound is not None:
+            if future_dates is not None:
+                future_index = pd.DatetimeIndex(future_dates)
+            else:
+                frequency = self._dates.freq or pd.infer_freq(self._dates)
+                if frequency is None:
+                    raise ValueError(
+                        "future_dates is required when date frequency cannot be inferred"
+                    )
+                future_index = pd.date_range(
+                    start=self._dates[-1],
+                    end=future_bound,
+                    freq=frequency,
+                )[1:]
+        calendar = (
+            self._dates if future_index is None else self._dates.append(future_index)
+        )
+
+        def position(value, name):
+            if value is None or isinstance(value, (int, np.integer)):
+                return value
+            timestamp = pd.Timestamp(value)
+            location = int(calendar.get_indexer([timestamp])[0])
+            if location < 0:
+                raise ValueError(
+                    f"prediction date {timestamp.isoformat()} for {name} is absent "
+                    "from the prediction calendar"
+                )
+            return location
+
+        return position(start, "start"), position(end, "end")
+
+    def _build_error_future_design(self, steps, future_exog, future_dates):
+        """Build future ARDL lag columns for the SARIMA error backend."""
+        if self._error_result is None or self._ardl_model is None:
+            raise RuntimeError("SARIMA error state is unavailable")
+        future_inputs = None
+        if self.exog_names:
+            future_inputs = self._normalise_future_exog(steps, future_exog)
+        elif future_exog is not None:
+            raise ValueError(
+                "future_exog is invalid because the model has no explanatory inputs"
+            )
+
+        index = (
+            future_dates.copy()
+            if future_dates is not None
+            else pd.RangeIndex(steps)
+        )
+        columns = tuple(self._error_result.exog_names)
+        future_design = pd.DataFrame(index=index, columns=columns, dtype=float)
+
+        deterministics = getattr(self._ardl_model, "_deterministics", None)
+        if deterministics is not None:
+            if future_dates is None:
+                deterministic = deterministics.out_of_sample(steps)
+            else:
+                deterministic = deterministics.out_of_sample(
+                    steps,
+                    forecast_index=future_dates,
+                )
+            for name in deterministic.columns:
+                if name in future_design.columns:
+                    future_design[name] = np.asarray(deterministic[name], dtype=float)
+
+        historical_response = np.asarray(self._model_data, dtype=float)
+        response_path = np.full(self.nobs + steps, np.nan, dtype=float)
+        response_path[: self.nobs] = historical_response
+        exog_path = None
+        if self._exog is not None:
+            exog_path = np.vstack(
+                [
+                    self._exog.to_numpy(dtype=float),
+                    future_inputs.to_numpy(dtype=float),
+                ]
+            )
+
+        lag_columns = {
+            f"y.L{lag}": ("response", lag)
+            for lag in self.ar_lags
+        }
+        for name, lags in self.distributed_lags.items():
+            for lag in lags:
+                lag_columns[f"{name}.L{lag}"] = (name, lag)
+
+        for step in range(steps):
+            for column, (source, lag) in lag_columns.items():
+                if column not in future_design.columns:
+                    continue
+                source_position = self.nobs + step - lag
+                if source == "response":
+                    value = response_path[source_position]
+                else:
+                    if exog_path is None:
+                        raise RuntimeError("fitted explanatory input history is missing")
+                    value = exog_path[source_position, self.exog_names.index(source)]
+                future_design.loc[index[step], column] = value
+
+            partial_design = future_design.iloc[: step + 1].copy()
+            future_prediction = self._error_result.predict(
+                start=self._error_result.nobs,
+                end=self._error_result.nobs + step,
+                dynamic=False,
+                alpha=0.05,
+                future_exog=partial_design,
+                future_dates=(
+                    None if future_dates is None else future_dates[: step + 1]
+                ),
+            )
+            response_path[self.nobs + step] = float(future_prediction.mean[-1])
+
+        if not np.all(np.isfinite(future_design.to_numpy(dtype=float))):
+            raise RuntimeError("future ARDL design contains non-finite values")
+        return future_design
+
+    def _predict_with_error(
+        self,
+        window,
+        *,
+        dynamic,
+        alpha,
+        future_exog,
+        future_dates,
+    ):
+        """Predict through the SARIMA error result and remap to ARDL positions."""
+        mean = np.full(window.size, np.nan, dtype=float)
+        lower = np.full(window.size, np.nan, dtype=float)
+        upper = np.full(window.size, np.nan, dtype=float)
+
+        if window.in_sample_size:
+            valid_start = max(window.start, self.hold_back)
+            valid_end = min(window.end, self.nobs - 1)
+            if valid_start <= valid_end:
+                prediction = self._error_result.predict(
+                    start=valid_start - self.hold_back,
+                    end=valid_end - self.hold_back,
+                    dynamic=dynamic,
+                    alpha=alpha,
+                )
+                destination = valid_start - window.start
+                size = valid_end - valid_start + 1
+                mean[destination : destination + size] = prediction.mean[:size]
+                lower[destination : destination + size] = prediction.lower[:size]
+                upper[destination : destination + size] = prediction.upper[:size]
+
+        if window.has_forecast:
+            resolved_dates = self._error_result._resolve_future_dates(
+                window.forecast_steps,
+                future_dates,
+            )
+            future_design = self._build_error_future_design(
+                window.forecast_steps,
+                future_exog,
+                resolved_dates,
+            )
+            prediction = self._error_result.predict(
+                start=self._error_result.nobs,
+                end=self._error_result.nobs + window.forecast_steps - 1,
+                dynamic=dynamic,
+                alpha=alpha,
+                future_exog=future_design,
+                future_dates=resolved_dates,
+            )
+            destination = window.in_sample_size
+            source = window.forecast_skip
+            mean[destination:] = prediction.mean[source:]
+            lower[destination:] = prediction.lower[source:]
+            upper[destination:] = prediction.upper[source:]
+
+        full = self._error_result.predict(
+            start=0,
+            end=self._error_result.nobs - 1,
+            alpha=alpha,
+        )
+        full_lower = np.full(self.nobs, np.nan, dtype=float)
+        full_upper = np.full(self.nobs, np.nan, dtype=float)
+        if full._full_lower is not None:
+            full_lower[self.hold_back :] = full._full_lower
+            full_upper[self.hold_back :] = full._full_upper
+        return PredictResult(
+            mean=mean,
+            lower=lower,
+            upper=upper,
+            is_oos=np.arange(window.start, window.end + 1) >= self.nobs,
+            _full_data=self.data,
+            _full_fitted=self.fitted_values,
+            _full_lower=full_lower,
+            _full_upper=full_upper,
+            _start=window.start,
+        )
+
     def predict(
         self,
         start=0,
@@ -446,6 +756,7 @@ class ARDLResult(BaseModelResult):
         dynamic=False,
         alpha=0.05,
         future_exog=None,
+        future_dates=None,
     ):
         """Return unified in-sample predictions and out-of-sample forecasts.
 
@@ -462,6 +773,8 @@ class ARDLResult(BaseModelResult):
         future_exog : pandas.DataFrame or array-like, optional
             Complete future explanatory path from the first post-sample period
             through the requested forecast end.
+        future_dates : datetime-like sequence, optional
+            Exact forecast dates when a dated model has no inferable frequency.
 
         Returns
         -------
@@ -486,7 +799,22 @@ class ARDLResult(BaseModelResult):
         alpha = float(alpha)
         if not 0.0 < alpha < 1.0:
             raise ValueError("alpha must lie strictly between 0 and 1")
+        start, end = self._resolve_prediction_bounds(start, end, future_dates)
         window = _resolve_prediction_window(self.nobs, start, end)
+        if self._error_result is not None:
+            if not window.has_forecast and (
+                future_exog is not None or future_dates is not None
+            ):
+                raise ValueError(
+                    "future_exog and future_dates require an out-of-sample range"
+                )
+            return self._predict_with_error(
+                window,
+                dynamic=bool(dynamic),
+                alpha=alpha,
+                future_exog=future_exog,
+                future_dates=future_dates,
+            )
         kwargs = {}
         if window.has_forecast and self.exog_names:
             kwargs["exog_oos"] = self._normalise_future_exog(
@@ -548,6 +876,20 @@ class ARDLResult(BaseModelResult):
             f"Hold Back         : {self.hold_back}",
             f"AR Stability      : {'Passed' if self.is_stationary else 'Failed'}",
         ]
+        if self.error_order is not None:
+            header.extend(
+                [
+                    f"Error SARIMA      : {self.error_order}",
+                    f"Error Seasonal    : {self.error_seasonal_order}",
+                    f"Error Burn        : {self.error_likelihood_burn}",
+                    "Error Stationarity: "
+                    + ("Passed" if self.error_is_stationary else "Failed"),
+                    "Error Invertibility: "
+                    + ("Passed" if self.error_is_invertible else "Failed"),
+                    "Optimizer         : " + (self.optimizer or "Unknown"),
+                    "Converged         : " + ("Yes" if self.converged else "No"),
+                ]
+            )
         if self.log:
             header.append("Response Scale     : original (log fit; bias-adjusted mean)")
         return "\n".join(header + lines[1:])
@@ -585,6 +927,58 @@ def _make_result(estimator, fitted):
             None if estimator.future_exog is None else estimator.future_exog.copy()
         ),
         _log_transform=estimator.log,
+        _model_data=estimator._model_data.copy(),
+        _ardl_model=estimator._model,
+        _error_order=None,
+        _error_seasonal_order=(0, 0, 0, 0),
+    )
+
+
+def _make_error_result(estimator, error_result):
+    """Build an ARDL result backed by a manually specified SARIMA error."""
+    hold_back = int(estimator._model.hold_back)
+    fitted_values = np.full(len(estimator.data), np.nan, dtype=float)
+    prediction = error_result._statsmodels_result.get_prediction(
+        start=0,
+        end=error_result.nobs - 1,
+    )
+    means, _, _ = _prediction_arrays(prediction, 0.05, log=estimator.log)
+    burn = error_result.likelihood_burn
+    fitted_values[hold_back + burn :] = means[burn:]
+    model = estimator._model
+    return ARDLResult(
+        model_type="ARDL",
+        params=dict(error_result.params),
+        std_errors=dict(error_result.std_errors),
+        p_values=dict(error_result.p_values),
+        aic=float(error_result.aic),
+        bic=float(error_result.bic),
+        log_likelihood=float(error_result.log_likelihood),
+        residuals=np.asarray(error_result.residuals, dtype=float).copy(),
+        fitted_values=fitted_values,
+        nobs=len(estimator.data),
+        data=estimator.data.copy(),
+        _parameter_covariance=(
+            None
+            if error_result._parameter_covariance is None
+            else error_result._parameter_covariance.copy()
+        ),
+        _parameter_names=tuple(error_result._parameter_names),
+        _ar_lags=tuple(model.ar_lags or ()),
+        _distributed_lags=_normalize_lag_mapping(model.dl_lags),
+        _hold_back=hold_back,
+        _dates=None if estimator.dates is None else estimator.dates.copy(),
+        _exog=None if estimator.exog is None else estimator.exog.copy(),
+        _exog_names=estimator.exog_names,
+        _default_future_exog=(
+            None if estimator.future_exog is None else estimator.future_exog.copy()
+        ),
+        _log_transform=estimator.log,
+        _model_data=estimator._model_data.copy(),
+        _ardl_model=model,
+        _error_result=error_result,
+        _error_order=estimator.error_order,
+        _error_seasonal_order=estimator.error_seasonal_order,
     )
 
 
@@ -621,6 +1015,16 @@ class ARDL(BaseModel):
     log : bool, default False
         Fit the response on the natural-log scale and return bias-adjusted
         prediction means on the original scale.
+    error_order : tuple or None, default None
+        Optional manually specified SARIMA error order ``(p, d, q)``. When
+        omitted, the original conditional OLS ARDL path is used.
+    error_seasonal_order : tuple, default ``(0, 0, 0, 0)``
+        Manually specified seasonal SARIMA error order ``(P, D, Q, s)``.
+        It requires ``error_order`` to be specified.
+    error_enforce_stationarity : bool, default True
+        Whether the SARIMA error AR polynomial is constrained to be stationary.
+    error_enforce_invertibility : bool, default True
+        Whether the SARIMA error MA polynomial is constrained to be invertible.
 
     Examples
     --------
@@ -649,6 +1053,10 @@ class ARDL(BaseModel):
         hold_back=None,
         missing="drop",
         log=False,
+        error_order=None,
+        error_seasonal_order=(0, 0, 0, 0),
+        error_enforce_stationarity=True,
+        error_enforce_invertibility=True,
     ):
         prepared = _prepare_inputs(
             data,
@@ -673,7 +1081,48 @@ class ARDL(BaseModel):
         self.seasonal = _validate_bool("seasonal", seasonal)
         self.period = period
         self.hold_back = hold_back
+        (
+            self.error_order,
+            self.error_seasonal_order,
+        ) = _normalise_error_orders(error_order, error_seasonal_order)
+        self.error_enforce_stationarity = _validate_bool(
+            "error_enforce_stationarity",
+            error_enforce_stationarity,
+        )
+        self.error_enforce_invertibility = _validate_bool(
+            "error_enforce_invertibility",
+            error_enforce_invertibility,
+        )
         self._model = self._build_model()
+
+    def _build_error_model(self):
+        """Build the SARIMAX backend over the effective ARDL design."""
+        hold_back = int(self._model.hold_back)
+        index = (
+            self.dates[hold_back:]
+            if self.dates is not None
+            else pd.RangeIndex(len(self._model._y))
+        )
+        response = pd.Series(
+            np.asarray(self._model._y, dtype=float),
+            index=index,
+            name="y",
+        )
+        design = pd.DataFrame(
+            np.asarray(self._model._x, dtype=float),
+            index=index,
+            columns=self._model.exog_names,
+        )
+        return SARIMAX(
+            response,
+            exog=design,
+            order=self.error_order,
+            seasonal_order=self.error_seasonal_order,
+            trend="n",
+            enforce_stationarity=self.error_enforce_stationarity,
+            enforce_invertibility=self.error_enforce_invertibility,
+            missing="raise",
+        )
 
     def _build_model(self):
         index = self.dates if self.dates is not None else pd.RangeIndex(len(self.data))
@@ -691,7 +1140,17 @@ class ARDL(BaseModel):
             missing="none",
         )
 
-    def fit(self, *, cov_type="nonrobust", cov_kwds=None, use_t=True):
+    def fit(
+        self,
+        *,
+        cov_type="nonrobust",
+        cov_kwds=None,
+        use_t=True,
+        error_method="bfgs",
+        error_maxiter=500,
+        error_cov_type="oim",
+        error_require_convergence=True,
+    ):
         """Estimate the configured ARDL using conditional maximum likelihood.
 
         Parameters
@@ -702,6 +1161,14 @@ class ARDL(BaseModel):
             Additional covariance-estimator options.
         use_t : bool, default True
             Whether inference uses the Student t distribution.
+        error_method : str, default ``"bfgs"``
+            Optimizer used for the SARIMA error maximum likelihood fit.
+        error_maxiter : int, default 500
+            Positive optimizer iteration limit for the SARIMA error fit.
+        error_cov_type : str, default ``"oim"``
+            Covariance estimator used for the SARIMA error fit.
+        error_require_convergence : bool, default True
+            Whether a non-converged SARIMA error fit raises ``RuntimeError``.
 
         Returns
         -------
@@ -717,12 +1184,27 @@ class ARDL(BaseModel):
         >>> ARDL(y, 1, x, 0, trend="n").fit().effective_nobs > 0
         True
         """
-        fitted = self._model.fit(
-            cov_type=cov_type,
-            cov_kwds=cov_kwds,
-            use_t=_validate_bool("use_t", use_t),
-        )
-        result = _make_result(self, fitted)
+        if self.error_order is None:
+            fitted = self._model.fit(
+                cov_type=cov_type,
+                cov_kwds=cov_kwds,
+                use_t=_validate_bool("use_t", use_t),
+            )
+            result = _make_result(self, fitted)
+        else:
+            error_method = _normalise_fit_method(error_method)
+            error_maxiter = _normalise_maxiter(error_maxiter)
+            error_cov_type = _normalise_cov_type(error_cov_type)
+            error_require_convergence = _normalise_require_convergence(
+                error_require_convergence
+            )
+            error_result = self._build_error_model().fit(
+                method=error_method,
+                maxiter=error_maxiter,
+                cov_type=error_cov_type,
+                require_convergence=error_require_convergence,
+            )
+            result = _make_error_result(self, error_result)
         self.result_ = result
         return result
 
