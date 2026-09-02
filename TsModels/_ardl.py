@@ -367,9 +367,9 @@ class ARDLResult(BaseModelResult):
     _exog_names: tuple[str, ...] = ()
     _default_future_exog: pd.DataFrame | None = None
     _log_transform: bool = False
-    _model_data: np.ndarray | None = None
-    _ardl_model: object = None
-    _error_result: object = None
+    _model_data: np.ndarray | None = field(default=None, repr=False)
+    _ardl_model: object = field(default=None, repr=False)
+    _error_result: object = field(default=None, repr=False)
     _error_order: tuple | None = None
     _error_seasonal_order: tuple = (0, 0, 0, 0)
 
