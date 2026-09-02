@@ -43,7 +43,7 @@ TsModels/
 ├── _vecm.py            # VECM + VECMResult — 向量误差修正模型
 ├── _auto.py            # AutoSARIMAX + AutoGARCH + AutoModelResult
 ├── _backcast.py        # BackcastResult + 反向时间样本前估计
-├── _intervention.py    # EventSpec + PolicyEffectResult — 政策干预分析
+├── _intervention.py    # EventSpec + build_event_matrix + PolicyEffectResult — 政策干预分析
 ├── _compare.py         # compare_models — Stata 风格对比表格
 ├── _outlier.py         # OutlierDetector + OutlierDetectorResult（AO/LS/IO 异常检测）
 ├── tests/
@@ -154,6 +154,28 @@ result = SARIMAX(y, exog=exog, exog_operators=operators).fit()
 | `.standardized_residuals` | 标准化残差 `residuals / np.std(residuals, ddof=0)`；不另行减均值，多变量结果按方程分别计算 |
 
 ## 模型专属方法
+
+### 日期干预路径
+
+`EventSpec` 用于声明按观测日期映射的 pulse、step 或 temporary 干预，
+`build_event_matrix()` 将它们生成可直接检查的 0/1（或事件研究）设计列。
+temporary 的起止日期均包含在路径内；`date_rule="exact"` 可用于要求冲击日期
+必须存在于指定观测日历。
+
+```python
+import pandas as pd
+from Ts.TsModels import EventSpec, build_event_matrix
+
+dates = pd.date_range("2025-01-01", periods=6, freq="MS")
+event = EventSpec(
+    "policy",
+    ["2025-02-15"],
+    kind="temporary",
+    end_date="2025-04-20",
+)
+matrix, metadata = build_event_matrix(dates, [event])
+# matrix["event__policy"] == [0, 1, 1, 1, 0, 0]
+```
 
 | 模型 | 方法 | 说明 |
 |------|------|------|
