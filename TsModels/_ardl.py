@@ -25,6 +25,7 @@ from Ts.TsModels._sarimax import (
     _normalise_require_convergence,
     _normalise_sarimax_inputs,
     _normalise_seasonal_order,
+    _validate_datetime_index,
 )
 
 
@@ -560,7 +561,10 @@ class ARDLResult(BaseModelResult):
         future_index = None
         if future_bound is not None:
             if future_dates is not None:
-                future_index = pd.DatetimeIndex(future_dates)
+                future_index = _validate_datetime_index(
+                    future_dates,
+                    "future_dates",
+                )
             else:
                 frequency = self._dates.freq or pd.infer_freq(self._dates)
                 if frequency is None:
