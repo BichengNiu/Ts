@@ -10,6 +10,7 @@
 - 可审计、可复用参数的 Box-Cox 幂变换；
 - 时间序列统计摘要与诊断图；
 - 用于非季节 ARMA 阶数识别的扩展自相关函数（EACF）。
+- 使用经典重标极差法估计赫斯特指数。
 
 `TsUtils` 只负责进入模型前的数据处理与识别诊断，不估计预测模型。本版本不提供
 X-12/X-13 或其他季节调整接口；STL 只做分解，不等同于官方统计口径的季节调整。
@@ -27,6 +28,7 @@ from Ts.TsUtils import (
     calendar_table,
     difference,
     eacf,
+    hurst_exponent,
     interpolate_missing,
     InterpolationResult,
     seasonal_dummies,
@@ -40,6 +42,22 @@ from Ts.TsUtils import (
 公共接口的参数、返回值和可执行样例均已写入 docstring。在 IPython/Jupyter
 中输入 `?boxcox`（或 `boxcox?`），也可在 Python 中调用 `help(boxcox)`
 查看完整帮助。
+
+## 赫斯特指数
+
+`hurst_exponent()` 使用经典重标极差（R/S）方法估计序列的长期持续性：在多个
+2 的幂次分块上计算平均 R/S，随后对数回归的斜率即为赫斯特指数。
+
+```python
+from Ts.TsUtils import hurst_exponent
+
+hurst = hurst_exponent(series)
+```
+
+函数默认删除缺失值，不进行插值；设置 `missing="raise"` 可以改为严格拒绝缺失
+观测。至少需要 20 个有效观测，常数序列不定义赫斯特指数。`H < 0.5`、`H ≈ 0.5`
+和 `H > 0.5` 分别是反持续、弱依赖和持续性的描述性提示，不是统计检验结论。
+短样本或存在结构变化时，估计值可能不稳定。
 
 ## EACF 阶数识别
 

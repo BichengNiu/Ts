@@ -16,13 +16,14 @@ APIs from their corresponding subpackages.
 Quick start
 -----------
 >>> from Ts import (
-...     ADFTest, AutoSARIMAX, SARIMAX, STL, eacf,
+...     ADFTest, AutoSARIMAX, SARIMAX, STL, eacf, hurst_exponent,
 ...     calendar_table, interpolate_missing, seasonal_dummies,
 ... )
 >>> from Ts.TsPlots import plot_series, plot_scatter, plot_acf, plot_pacf
 >>> from Ts.TsSims import simulate_sarima, simulate_garch
 >>> from Ts.TsUtils import (
-...     STL, calendar_table, eacf, interpolate_missing, seasonal_dummies,
+...     STL, calendar_table, eacf, hurst_exponent, interpolate_missing,
+...     seasonal_dummies,
 ... )
 >>> from Ts.TsModels import ARDL, AutoARDL, SARIMAX, GARCH, AutoSARIMAX, AutoGARCH
 >>> from Ts.TsMetrics import Holdout, RollingOrigin, evaluate_forecasts, rmse
@@ -48,6 +49,7 @@ from .TsUtils import (
     calendar_table,
     difference,
     eacf,
+    hurst_exponent,
     interpolate_missing,
     seasonal_dummies,
 )
@@ -171,6 +173,7 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "difference",
     "eacf",
     "EACFResult",
+    "hurst_exponent",
     "interpolate_missing",
     "InterpolationResult",
     "seasonal_dummies",
