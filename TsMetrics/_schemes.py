@@ -172,6 +172,7 @@ class RollingOrigin:
     window: str = "expanding"
     window_size: int | None = None
     gap: int = 0
+    max_origins: int | None = None
 
     def __post_init__(self):
         """Normalise and validate the scheme independently of sample length."""
