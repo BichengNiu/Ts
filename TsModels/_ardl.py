@@ -1099,6 +1099,43 @@ class ARDL(BaseModel):
         )
         self._model = self._build_model()
 
+    def _clone_for_evaluation(self, data, exog=None, *, dates=None):
+        """Rebuild the ARDL design for one isolated evaluation window."""
+        return type(self)(
+            data,
+            lags=self.lags,
+            exog=exog,
+            order=self.order,
+            trend=self.trend,
+            dates=dates,
+            exog_names=self.exog_names if exog is not None else None,
+            causal=self.causal,
+            seasonal=self.seasonal,
+            period=self.period,
+            hold_back=self.hold_back,
+            missing="raise",
+            log=self.log,
+            error_order=self.error_order,
+            error_seasonal_order=self.error_seasonal_order,
+            error_enforce_stationarity=self.error_enforce_stationarity,
+            error_enforce_invertibility=self.error_enforce_invertibility,
+        )
+
+    def _evaluation_predict_kwargs(self, start, stop):
+        """Return the observed explanatory path for one historical window."""
+        kwargs = {}
+        if self.exog is not None:
+            future_exog = self.exog.iloc[start:stop].copy()
+            if len(future_exog) != stop - start:
+                raise ValueError("future exog does not cover the evaluation window")
+            kwargs["future_exog"] = future_exog
+        if self.dates is not None:
+            future_dates = self.dates[start:stop]
+            if len(future_dates) != stop - start:
+                raise ValueError("future dates do not cover the evaluation window")
+            kwargs["future_dates"] = future_dates.copy()
+        return kwargs
+
     def _build_error_model(self):
         """Build the SARIMAX backend over the effective ARDL design."""
         hold_back = int(self._model.hold_back)

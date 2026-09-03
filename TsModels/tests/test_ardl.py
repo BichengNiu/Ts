@@ -10,6 +10,7 @@ from statsmodels.tsa.ardl import ARDL as StatsmodelsARDL
 from statsmodels.tsa.ardl import ardl_select_order
 
 from Ts.TsModels import ARDL, AutoARDL, AutoARDLResult, ARDLResult
+from Ts.TsMetrics import RollingOrigin, evaluate_forecasts
 
 
 def _sample(n: int = 100) -> tuple[pd.Series, pd.DataFrame]:
@@ -121,6 +122,30 @@ def test_manual_ardl_supports_sarima_error_structure_and_forecast():
     assert np.isfinite(prediction.lower).all()
     assert np.isfinite(prediction.upper).all()
     assert prediction.is_oos.tolist() == [True] * 3
+
+
+def test_ardl_supports_leakage_free_rolling_evaluation():
+    """历史回测逐窗口重建 ARDL，并显式传递观测外生路径。"""
+    y, x = _sample(40)
+    model = ARDL(
+        y,
+        lags=1,
+        exog=x[["x1"]],
+        order={"x1": 1},
+        trend="c",
+        missing="raise",
+    )
+
+    report = evaluate_forecasts(
+        {"ardl": model},
+        scheme=RollingOrigin(initial_window=20, horizon=1),
+        future_exog="observed",
+    )
+
+    result = report.results["ardl"]
+    assert not result.failures
+    assert result.mean.shape == (20, 1)
+    assert np.isfinite(result.actual).all()
 
 
 def test_ardl_without_error_order_keeps_ols_path():
