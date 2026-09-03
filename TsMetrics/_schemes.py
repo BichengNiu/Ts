@@ -148,6 +148,9 @@ class RollingOrigin:
         Forecast periods scored at each origin.
     step : int, default 1
         Distance between consecutive forecast origins.
+    max_origins : int, optional
+        Maximum number of most recent complete forecast origins to return.
+        By default all complete origins are returned.
     window : {"expanding", "rolling"}, default "expanding"
         Training-window update rule.
     window_size : int, optional
@@ -165,6 +168,7 @@ class RollingOrigin:
     initial_window: int
     horizon: int = 1
     step: int = 1
+    max_origins: int | None = None
     window: str = "expanding"
     window_size: int | None = None
     gap: int = 0
@@ -178,6 +182,9 @@ class RollingOrigin:
         )
         horizon = validate_positive_int("horizon", self.horizon)
         step = validate_positive_int("step", self.step)
+        max_origins = self.max_origins
+        if max_origins is not None:
+            max_origins = validate_positive_int("max_origins", max_origins)
         gap = validate_int("gap", self.gap, minimum=0)
         if self.window not in {"expanding", "rolling"}:
             raise ValueError("window must be either 'expanding' or 'rolling'")
@@ -198,6 +205,7 @@ class RollingOrigin:
         object.__setattr__(self, "initial_window", initial_window)
         object.__setattr__(self, "horizon", horizon)
         object.__setattr__(self, "step", step)
+        object.__setattr__(self, "max_origins", max_origins)
         object.__setattr__(self, "gap", gap)
         object.__setattr__(self, "window_size", window_size)
 
@@ -235,6 +243,8 @@ class RollingOrigin:
                 "sample does not contain one complete forecast after the "
                 "initial window and gap"
             )
+        if self.max_origins is not None:
+            origins = origins[-self.max_origins :]
         splits = []
         for split_number, origin in enumerate(origins):
             train_stop = int(origin) - self.gap

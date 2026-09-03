@@ -74,6 +74,20 @@ def test_rolling_origin_generates_only_complete_expanding_windows():
     assert all(split.window == "expanding" for split in splits)
 
 
+def test_rolling_origin_can_limit_results_to_the_most_recent_origins():
+    splits = RollingOrigin(
+        initial_window=10,
+        horizon=2,
+        max_origins=2,
+    ).split(20, None)
+
+    assert [split.target_indices.tolist() for split in splits] == [
+        [17, 18],
+        [18, 19],
+    ]
+    assert [split.split for split in splits] == [0, 1]
+
+
 def test_rolling_origin_keeps_a_fixed_training_window():
     splits = RollingOrigin(
         initial_window=12,
@@ -119,6 +133,7 @@ def test_rolling_origin_labels_splits_with_dates():
         ({"initial_window": 9}, ValueError, "initial_window"),
         ({"initial_window": 10, "horizon": 0}, ValueError, "horizon"),
         ({"initial_window": 10, "step": False}, TypeError, "step"),
+        ({"initial_window": 10, "max_origins": 0}, ValueError, "max_origins"),
         ({"initial_window": 10, "gap": -1}, ValueError, "gap"),
         ({"initial_window": 10, "window": "random"}, ValueError, "window"),
         (
