@@ -6,7 +6,8 @@
 
 ```python
 from Ts.TsMetrics import (
-    mae, mse, rmse, mape, smape, theil_u1, compute_metrics,
+    mae, mse, rmse, mpe, mape, smape, theil_u1, compute_metrics,
+    directional_accuracy, relative_win_rate, trend_correlation,
     Holdout, RollingOrigin,
     ForecastEvaluationResult, ForecastComparisonResult,
     evaluate_forecasts,
@@ -27,11 +28,24 @@ from Ts.TsMetrics import (
 | `mae` | 平均绝对误差 | 越小越好 |
 | `mse` | 均方误差 | 越小越好 |
 | `rmse` | 均方根误差 | 越小越好 |
+| `mpe` | 平均有符号百分比误差 | 越接近 0 越好；正值表示高估 |
 | `mape` | 平均绝对百分比误差 | 越小越好；实际值为零的项不参与 |
 | `smape` | 对称平均绝对百分比误差 | 越小越好 |
 | `theil_u1` | Theil U1 不平等系数 | 越小越好 |
 
-`compute_metrics(actual, predicted)` 一次返回全部指标和有效配对数 `n`。
+`compute_metrics(actual, predicted)` 一次返回全部误差指标和有效配对数 `n`。
+其中 `mpe`、`mape` 会排除实际值为零的项。
+
+方向性指标单独计算，不参与误差指标排名：
+
+```python
+directional_accuracy(actual_change, predicted_change)
+relative_win_rate(actual, predicted, baseline)
+trend_correlation(actual, predicted)
+```
+
+`directional_accuracy` 返回方向命中率；`relative_win_rate` 返回模型严格优于基准的期次比例；
+`trend_correlation` 返回 Pearson 相关系数。相关性描述共同变化，不替代绝对误差指标。
 
 ## 固定留出评估
 

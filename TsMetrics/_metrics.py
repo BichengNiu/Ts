@@ -6,6 +6,15 @@ import numpy as np
 
 
 ERROR_METRIC_NAMES = ("mae", "mse", "rmse", "mape", "smape", "theil_u1")
+AUXILIARY_METRIC_NAMES = ("mpe",)
+
+
+def _validate_nan_policy(nan_policy):
+    """Validate the common finite-pair policy."""
+    if nan_policy not in {"omit", "raise"}:
+        raise ValueError(
+            f"nan_policy must be either 'omit' or 'raise', got {nan_policy!r}"
+        )
 
 
 def _validate_rank_metric(rank_by):
@@ -26,10 +35,7 @@ def _paired_values(actual, predicted, nan_policy):
             "actual and predicted must have the same shape, got "
             f"{actual_array.shape} and {predicted_array.shape}"
         )
-    if nan_policy not in {"omit", "raise"}:
-        raise ValueError(
-            f"nan_policy must be either 'omit' or 'raise', got {nan_policy!r}"
-        )
+    _validate_nan_policy(nan_policy)
 
     actual_flat = actual_array.ravel()
     predicted_flat = predicted_array.ravel()
@@ -228,6 +234,45 @@ def mape(actual, predicted, *, nan_policy="omit"):
     return _mape_values(actual_values, predicted_values)
 
 
+def mpe(actual, predicted, *, nan_policy="omit"):
+    """Return mean percentage error in percentage points.
+
+    The signed error is ``(predicted - actual) / actual``. Positive values
+    indicate systematic overprediction. Pairs whose actual value is zero are
+    excluded because their percentage error is undefined.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Mean signed percentage error in percentage points, or NaN when no
+        non-zero actual remains.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import mpe
+    >>> round(mpe([100, 200], [110, 170]), 6)
+    -2.5
+    """
+    actual_values, predicted_values = _paired_values(
+        actual,
+        predicted,
+        nan_policy,
+    )
+    nonzero = actual_values != 0.0
+    if not np.any(nonzero):
+        return float("nan")
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        relative_errors = predicted_values[nonzero] / actual_values[nonzero] - 1.0
+    return float(np.mean(relative_errors) * 100.0)
+
+
 def smape(actual, predicted, *, nan_policy="omit"):
     """Return symmetric mean absolute percentage error.
 
@@ -291,11 +336,185 @@ def theil_u1(actual, predicted, *, nan_policy="omit"):
     return _theil_u1_values(actual_values, predicted_values)
 
 
+def directional_accuracy(
+    actual,
+    predicted,
+    reference=None,
+    *,
+    nan_policy="omit",
+):
+    """Return the proportion of matching forecast and actual directions.
+
+    When ``reference`` is omitted, *actual* and *predicted* are interpreted as
+    already-computed changes. When it is provided, the directions are
+    ``actual - reference`` and ``predicted - reference``. Equal zero changes
+    count as a matching direction; a zero change matches a non-zero change
+    only when both signs are equal.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned actual changes and predicted changes, or aligned levels when
+        ``reference`` is supplied.
+    reference : array-like, optional
+        Common level from which actual and predicted changes are measured.
+        It must have the same shape as *actual* and *predicted*.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop non-finite direction pairs or reject them.
+
+    Returns
+    -------
+    float
+        Direction hit rate in the closed interval [0, 1], or NaN when no
+        valid pair remains.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import directional_accuracy
+    >>> directional_accuracy([1, -1, 0], [2, -3, 0])
+    1.0
+    """
+    actual_array = np.asarray(actual, dtype=float)
+    predicted_array = np.asarray(predicted, dtype=float)
+    if actual_array.shape != predicted_array.shape:
+        raise ValueError(
+            "actual and predicted must have the same shape, got "
+            f"{actual_array.shape} and {predicted_array.shape}"
+        )
+    _validate_nan_policy(nan_policy)
+    if reference is None:
+        actual_change = actual_array.ravel()
+        predicted_change = predicted_array.ravel()
+        finite = np.isfinite(actual_change) & np.isfinite(predicted_change)
+    else:
+        reference_array = np.asarray(reference, dtype=float)
+        if reference_array.shape != actual_array.shape:
+            raise ValueError(
+                "reference must have the same shape as actual and predicted, "
+                f"got {reference_array.shape} and {actual_array.shape}"
+            )
+        actual_flat = actual_array.ravel()
+        predicted_flat = predicted_array.ravel()
+        reference_flat = reference_array.ravel()
+        actual_change = actual_flat - reference_flat
+        predicted_change = predicted_flat - reference_flat
+        finite = (
+            np.isfinite(actual_flat)
+            & np.isfinite(predicted_flat)
+            & np.isfinite(reference_flat)
+        )
+    if nan_policy == "raise" and not np.all(finite):
+        raise ValueError("direction inputs contain non-finite values")
+    if not np.any(finite):
+        return float("nan")
+    return float(
+        np.mean(
+            np.sign(actual_change[finite])
+            == np.sign(predicted_change[finite])
+        )
+    )
+
+
+def relative_win_rate(actual, predicted, baseline, *, nan_policy="omit"):
+    """Return the share of periods where a forecast beats a baseline.
+
+    A win is a strict reduction in absolute error compared with *baseline*.
+    Ties remain in the denominator but are not counted as wins.
+
+    Parameters
+    ----------
+    actual, predicted, baseline : array-like
+        Aligned observed values, model forecasts, and baseline forecasts with
+        identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop non-finite triples or reject them.
+
+    Returns
+    -------
+    float
+        Strict win rate in [0, 1], or NaN when no valid triple remains.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import relative_win_rate
+    >>> relative_win_rate([10, 10], [9, 12], [8, 13])
+    1.0
+    """
+    actual_array = np.asarray(actual, dtype=float)
+    predicted_array = np.asarray(predicted, dtype=float)
+    baseline_array = np.asarray(baseline, dtype=float)
+    if not (
+        actual_array.shape == predicted_array.shape == baseline_array.shape
+    ):
+        raise ValueError(
+            "actual, predicted, and baseline must have the same shape"
+        )
+    _validate_nan_policy(nan_policy)
+    actual_flat = actual_array.ravel()
+    predicted_flat = predicted_array.ravel()
+    baseline_flat = baseline_array.ravel()
+    finite = (
+        np.isfinite(actual_flat)
+        & np.isfinite(predicted_flat)
+        & np.isfinite(baseline_flat)
+    )
+    if nan_policy == "raise" and not np.all(finite):
+        raise ValueError("actual, predicted, and baseline contain non-finite values")
+    if not np.any(finite):
+        return float("nan")
+    with np.errstate(over="ignore", invalid="ignore"):
+        model_error = np.abs(predicted_flat[finite] - actual_flat[finite])
+        baseline_error = np.abs(baseline_flat[finite] - actual_flat[finite])
+    return float(np.mean(model_error < baseline_error))
+
+
+def trend_correlation(actual, predicted, *, nan_policy="omit"):
+    """Return Pearson correlation for paired actual and forecast paths.
+
+    The result describes co-movement, not absolute accuracy. A constant path
+    has undefined correlation and returns NaN.
+
+    Parameters
+    ----------
+    actual, predicted : array-like
+        Aligned observed and forecast values with identical shapes.
+    nan_policy : {"omit", "raise"}, default "omit"
+        Drop paired non-finite values or reject them.
+
+    Returns
+    -------
+    float
+        Pearson correlation in [-1, 1], or NaN when fewer than two valid
+        variable pairs remain.
+
+    Examples
+    --------
+    >>> from Ts.TsMetrics import trend_correlation
+    >>> trend_correlation([1, 2, 3], [2, 4, 6])
+    1.0
+    """
+    actual_values, predicted_values = _paired_values(
+        actual,
+        predicted,
+        nan_policy,
+    )
+    if actual_values.size < 2:
+        return float("nan")
+    actual_centered = actual_values - np.mean(actual_values)
+    predicted_centered = predicted_values - np.mean(predicted_values)
+    denominator = np.sqrt(
+        np.sum(actual_centered**2) * np.sum(predicted_centered**2)
+    )
+    if denominator == 0.0 or not np.isfinite(denominator):
+        return float("nan")
+    return float(np.sum(actual_centered * predicted_centered) / denominator)
+
+
 def compute_metrics(actual, predicted, *, nan_policy="omit"):
     """Compute the canonical point-forecast metric set.
 
-    Returns MAE, MSE, RMSE, MAPE, sMAPE, Theil U1, and the number of finite
-    actual/prediction pairs used by the common error metrics.
+    Returns MAE, MSE, RMSE, MPE, MAPE, sMAPE, Theil U1, and the number of
+    finite actual/prediction pairs used by the common error metrics.
 
     Parameters
     ----------
@@ -307,8 +526,8 @@ def compute_metrics(actual, predicted, *, nan_policy="omit"):
     Returns
     -------
     dict
-        Keys ``mae``, ``mse``, ``rmse``, ``mape``, ``smape``, ``theil_u1``,
-        and ``n``.
+        Keys ``mae``, ``mse``, ``rmse``, ``mpe``, ``mape``, ``smape``,
+        ``theil_u1``, and ``n``.
 
     Examples
     --------
@@ -328,6 +547,7 @@ def compute_metrics(actual, predicted, *, nan_policy="omit"):
             "mae": float("nan"),
             "mse": float("nan"),
             "rmse": float("nan"),
+            "mpe": float("nan"),
             "mape": float("nan"),
             "smape": float("nan"),
             "theil_u1": float("nan"),
@@ -343,6 +563,7 @@ def compute_metrics(actual, predicted, *, nan_policy="omit"):
         "mae": _mean_or_nan(absolute_errors),
         "mse": _mean_or_nan(squared_errors),
         "rmse": _root_mean_square(errors),
+        "mpe": mpe(actual_values, predicted_values, nan_policy="raise"),
         "mape": _mape_values(actual_values, predicted_values),
         "smape": _smape_values(actual_values, predicted_values),
         "theil_u1": _theil_u1_values(actual_values, predicted_values),

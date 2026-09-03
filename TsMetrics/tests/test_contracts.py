@@ -8,7 +8,11 @@ from Ts.TsMetrics import (
     ForecastEvaluationResult,
     Holdout,
     RollingOrigin,
+    directional_accuracy,
     evaluate_forecasts,
+    mpe,
+    relative_win_rate,
+    trend_correlation,
 )
 
 
@@ -18,14 +22,22 @@ def test_unified_types_are_exported_from_package_root():
         ForecastEvaluationResult as RootEvaluation,
         Holdout as RootHoldout,
         RollingOrigin as RootRolling,
+        directional_accuracy as RootDirectionalAccuracy,
         evaluate_forecasts as root_evaluate,
+        mpe as RootMPE,
+        relative_win_rate as RootRelativeWinRate,
+        trend_correlation as RootTrendCorrelation,
     )
 
     assert RootComparison is ForecastComparisonResult
     assert RootEvaluation is ForecastEvaluationResult
     assert RootHoldout is Holdout
     assert RootRolling is RollingOrigin
+    assert RootDirectionalAccuracy is directional_accuracy
     assert root_evaluate is evaluate_forecasts
+    assert RootMPE is mpe
+    assert RootRelativeWinRate is relative_win_rate
+    assert RootTrendCorrelation is trend_correlation
 
 
 def test_legacy_evaluation_names_are_not_public():

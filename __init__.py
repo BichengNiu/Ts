@@ -108,13 +108,17 @@ from .TsMetrics import (
     Holdout,
     RollingOrigin,
     compute_metrics,
+    directional_accuracy,
     evaluate_forecasts,
     mae,
     mape,
     mse,
+    mpe,
+    relative_win_rate,
     rmse,
     smape,
     theil_u1,
+    trend_correlation,
 )
 
 # ---------------------------------------------------------------------------
@@ -226,6 +230,10 @@ __all__ = [  # noqa: RUF022 - public API is grouped by subpackage
     "mape",
     "smape",
     "theil_u1",
+    "mpe",
+    "directional_accuracy",
+    "relative_win_rate",
+    "trend_correlation",
     "compute_metrics",
     "Holdout",
     "RollingOrigin",
