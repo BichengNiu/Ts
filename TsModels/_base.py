@@ -682,7 +682,7 @@ class BaseModelResult:
         import matplotlib.pyplot as plt
 
         from Ts.TsPlots import plot_series
-        from Ts.TsPlots.style import TITLE_FONTSIZE, FIGSIZE, draw_suptitle
+        from Ts.TsPlots.style import FIGSIZE, draw_suptitle
 
         if title is None:
             title = f"{self.model_type}: Actual vs Fitted"
@@ -1113,11 +1113,20 @@ class BaseModel(ABC):
         cloned = copy.copy(self)
         cloned.data = np.array(data, dtype=float, copy=True)
         cloned.result_ = None
+        if hasattr(cloned, "_model_data"):
+            model_data = cloned.data
+            if bool(getattr(cloned, "log", False)):
+                model_data = np.log(model_data)
+            cloned._model_data = np.array(model_data, dtype=float, copy=True)
         if hasattr(cloned, "dropped_positions"):
             cloned.dropped_positions = ()
         if hasattr(cloned, "exog"):
             cloned.exog = (
-                None if exog is None else np.array(exog, dtype=float, copy=True)
+                None
+                if exog is None
+                else exog.copy()
+                if hasattr(exog, "copy")
+                else np.array(exog, dtype=float, copy=True)
             )
         if hasattr(cloned, "dates"):
             cloned.dates = None if dates is None else dates.copy()

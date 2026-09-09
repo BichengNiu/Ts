@@ -180,6 +180,7 @@ matrix, metadata = build_event_matrix(dates, [event])
 | 模型 | 方法 | 说明 |
 |------|------|------|
 | `SARIMAX` / `SARIMAXResult` | `.predict(start, end, dynamic, alpha)` | 样本内预测与未来预测；性能评估由 `TsMetrics` 负责 |
+| | `.resolve_future_dates(steps, future_dates=None)` | 校验并解析 SARIMAX 未来预测日历，供组合模型安全复用 |
 | | `TimeSeriesOperator` / `exog_operators` | 按外生变量声明 log、lag、普通差分和季节差分；未来路径保持原始尺度 |
 | | `.parameter_correlation(parameters=None)` | SARIMA/SARIMAX、外生变量、事件与 RDL 的已估参数相关矩阵；固定为零的稀疏滞后不进入矩阵 |
 | | `.plot_parameter_correlation(...)` | 参数相关矩阵热图；可按参数名筛选 |

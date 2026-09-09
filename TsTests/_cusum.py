@@ -91,11 +91,11 @@ class CUSUMTestResult(BaseTestResult):
         from Ts.TsPlots.style import (
             BLACK,
             DARK_RED,
+            FigureLifecycle,
             ZERO_LINE_COLOR,
-            _FigureContext,
         )
 
-        context = _FigureContext(ax=ax)
+        context = FigureLifecycle(ax=ax)
         ax = context.ax
         limit = self.critical_values[level]
         ax.plot(

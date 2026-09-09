@@ -1033,11 +1033,13 @@ def _finalize_facet_figure(
     )
 
 
-class _FigureContext:
-    """Shared figure/axes manager for plot_series and plot_scatter.
+class FigureLifecycle:
+    """Own figure creation, styling, and final layout for one public plot.
 
-    Encapsulates the common boilerplate: figure creation, title handling,
-    axis labels, legend drawing, unit labels, tight_layout, and note rendering.
+    Plot implementations add marks and axis-specific behavior, then call
+    :meth:`finalize` exactly once.  Keeping this lifecycle in one object makes
+    the returned ``(fig, ax)`` contract and layout ordering consistent across
+    the plotting package and result plots.
     """
 
     def __init__(self, ax=None, figsize=None):

@@ -109,11 +109,11 @@ class ChowTestResult(BaseTestResult):
             BLACK,
             DARK_BLUE,
             DARK_RED,
+            FigureLifecycle,
             GRAY,
-            _FigureContext,
         )
 
-        context = _FigureContext(ax=ax)
+        context = FigureLifecycle(ax=ax)
         ax = context.ax
         ax.plot(
             self.time_index,

@@ -93,6 +93,11 @@ class TimeSeriesOperator:
         -------
         str
             Fitted parameter name with transformation prefixes.
+
+        Examples
+        --------
+        >>> TimeSeriesOperator(log=True, lag=1).transformed_name("sales")
+        'L.log.sales'
         """
         prefixes = []
         if self.log:

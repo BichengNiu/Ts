@@ -1780,6 +1780,36 @@ class SARIMAXResult(BaseModelResult):
             freq=frequency,
         )[1:]
 
+    def resolve_future_dates(self, steps, future_dates=None):
+        """Return the validated future calendar used by forecasts.
+
+        This public adapter keeps downstream composite models from reaching
+        into SARIMAX's private date-resolution implementation.
+
+        Parameters
+        ----------
+        steps : int
+            Number of future periods to resolve.
+        future_dates : datetime-like sequence, optional
+            Explicit future calendar. When omitted, the fitted frequency is
+            used when it can be inferred.
+
+        Returns
+        -------
+        pandas.DatetimeIndex or None
+            Validated future dates, or ``None`` for an undated model.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from Ts.TsModels import SARIMAX
+        >>> index = pd.date_range("2000-01-01", periods=20, freq="MS")
+        >>> result = SARIMAX(pd.Series(range(20), index=index)).fit()
+        >>> len(result.resolve_future_dates(2))
+        2
+        """
+        return self._resolve_future_dates(steps, future_dates)
+
     def _future_design(self, ordinary_exog, future_dates):
         frames = []
         if ordinary_exog is not None and self._static_exog_names:
@@ -1861,7 +1891,9 @@ class SARIMAXResult(BaseModelResult):
         alpha,
         future_design,
         future_inputs=None,
+        response_log=None,
     ):
+        log = self.log if response_log is None else bool(response_log)
         start, end = window.start, window.end
         mean = np.full(window.size, np.nan)
         lower = np.full(window.size, np.nan)
@@ -1877,7 +1909,7 @@ class SARIMAXResult(BaseModelResult):
                 in_mean, in_lower, in_upper = _prediction_arrays(
                     pred_in,
                     alpha,
-                    log=self.log,
+                    log=log,
                 )
                 mean[:n_in] = in_mean
                 lower[:n_in] = in_lower
@@ -1898,7 +1930,7 @@ class SARIMAXResult(BaseModelResult):
             fc_mean, fc_lower, fc_upper = _prediction_arrays(
                 fc,
                 alpha,
-                log=self.log,
+                log=log,
             )
             forecast_slice = slice(window.forecast_skip, None)
             mean[n_in:] = fc_mean[forecast_slice]
@@ -1913,7 +1945,7 @@ class SARIMAXResult(BaseModelResult):
             mean, lower, upper = _prediction_arrays(
                 pred,
                 alpha,
-                log=self.log,
+                log=log,
             )
 
         _full_lower = None
@@ -1925,7 +1957,7 @@ class SARIMAXResult(BaseModelResult):
             _, full_lower, full_upper = _prediction_arrays(
                 full_pred,
                 alpha,
-                log=self.log,
+                log=log,
             )
             _full_lower = self._mask_state_initialization(full_lower)
             _full_upper = self._mask_state_initialization(full_upper)
@@ -1951,6 +1983,7 @@ class SARIMAXResult(BaseModelResult):
         *,
         future_exog=None,
         future_dates=None,
+        response_log=None,
     ):
         """Return predictions under one or more exogenous scenarios.
 
@@ -1974,6 +2007,10 @@ class SARIMAXResult(BaseModelResult):
         future_dates : datetime-like sequence, optional
             Exact forecast dates, required for array future inputs on dated
             models when they cannot be inferred.
+        response_log : bool, optional
+            Override the response-scale transformation for a composite model
+            whose backend was fitted on a pre-transformed response. When
+            omitted, use the transformation configured on this result.
 
         Returns
         -------
@@ -1994,6 +2031,11 @@ class SARIMAXResult(BaseModelResult):
         """
         if self._statsmodels_result is None:
             raise RuntimeError("No fitted statsmodels result available")
+        if response_log is not None and not isinstance(
+            response_log,
+            (bool, np.bool_),
+        ):
+            raise TypeError("response_log must be a boolean or None")
 
         start, end = self._resolve_prediction_bounds(
             start,
@@ -2012,6 +2054,7 @@ class SARIMAXResult(BaseModelResult):
                 dynamic=dynamic,
                 alpha=alpha,
                 future_design=None,
+                response_log=response_log,
             )
 
         resolved_dates = self._resolve_future_dates(
@@ -2051,6 +2094,7 @@ class SARIMAXResult(BaseModelResult):
                     expected_future_index,
                 ),
                 future_inputs=ordinary_exog,
+                response_log=response_log,
             )
         if len(predictions) == 1:
             return next(iter(predictions.values()))

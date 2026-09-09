@@ -78,7 +78,7 @@ import pandas as pd
 
 from .style import (
     _ensure_fonts,
-    _FigureContext,
+    FigureLifecycle,
     _resolve_colors,
     _validate_label_count,
     _validate_max_ticks,
@@ -175,7 +175,7 @@ def _draw_bars(
     if not x_offset:
         draw_positions = positions
     elif np.issubdtype(positions.dtype, np.datetime64):
-        draw_positions = positions + np.timedelta64(int(round(x_offset)), "D")
+        draw_positions = positions + np.timedelta64(round(x_offset), "D")
     else:
         draw_positions = positions.astype(float) + x_offset
     if horizontal:
@@ -321,7 +321,7 @@ def _resolve_bar_input(data, x, y, group):
         ]
         if not series:
             raise ValueError("The dict contains no series to plot.")
-        return _align_series(series, x) + ("Category", "Value")
+        return (*_align_series(series, x), "Category", "Value")
 
     if y is not None:
         raise TypeError("y requires a DataFrame.")
@@ -339,7 +339,7 @@ def _resolve_bar_input(data, x, y, group):
             f"Unsupported data type/shape: {type(data)!r}. Pass a Series, a "
             "DataFrame, a dict of series, or a 1D/2D array."
         )
-    return _align_series(series, x) + ("Category", "Value")
+    return (*_align_series(series, x), "Category", "Value")
 
 
 def _category_tick_labels(categories, max_ticks):
@@ -574,7 +574,7 @@ def plot_bar(
         ]
 
     _ensure_fonts()
-    ctx = _FigureContext(ax=ax)
+    ctx = FigureLifecycle(ax=ax)
     fig, ax = ctx.fig, ctx.ax
 
     # Category-position reference shading (vertical mode only).

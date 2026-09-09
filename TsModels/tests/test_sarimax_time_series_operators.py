@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from Ts.TsModels import AutoSARIMAX, SARIMAX, TimeSeriesOperator
+from Ts.TsMetrics import RollingOrigin, evaluate_forecasts
 
 
 def _operator_fixture(n=80):
@@ -173,6 +174,36 @@ def test_auto_sarimax_reuses_operator_configuration_for_candidates():
     ).fit()
 
     assert result.best_result.exog_operators == operators
+
+
+def test_auto_sarimax_operator_configuration_supports_rolling_evaluation():
+    """Automatic candidates preserve raw operator inputs per evaluation window."""
+    y, exog, operators = _operator_fixture()
+    model = AutoSARIMAX(
+        y,
+        exog=exog,
+        p=(0, 0),
+        d=(0, 0),
+        q=(0, 0),
+        P=(0, 0),
+        D=(0, 0),
+        Q=(0, 0),
+        trend="n",
+        exog_operators=operators,
+        maxiter=100,
+        n_jobs=1,
+    )
+
+    report = evaluate_forecasts(
+        {"auto": model},
+        scheme=RollingOrigin(initial_window=40, horizon=1, step=20),
+        future_exog="observed",
+    )
+
+    result = report.results["auto"]
+    assert not result.failures
+    assert result.mean.shape == (2, 1)
+    assert np.isfinite(result.actual).all()
 
 
 def test_innovation_irf_and_root_diagnostics_delegate_to_statsmodels():

@@ -124,6 +124,41 @@ def test_manual_ardl_supports_sarima_error_structure_and_forecast():
     assert prediction.is_oos.tolist() == [True] * 3
 
 
+def test_ardl_log_sarima_error_returns_original_scale_predictions():
+    """SARIMA-error predictions keep ARDL's original-scale log contract."""
+    y, x = _sample()
+    positive = y.abs() + 2.0
+    result = ARDL(
+        positive,
+        lags=1,
+        exog=x[["x1"]],
+        order=0,
+        trend="c",
+        missing="raise",
+        log=True,
+        error_order=(0, 0, 0),
+    ).fit(error_method="bfgs", error_maxiter=100)
+
+    future_dates = pd.date_range(positive.index[-1], periods=3, freq="MS")[1:]
+    prediction = result.predict(
+        start=len(positive),
+        end=len(positive) + 1,
+        future_exog=pd.DataFrame(
+            {"x1": [0.1, 0.2]},
+            index=future_dates[:2],
+        ),
+    )
+
+    assert np.isfinite(result.fitted_values[2:]).all()
+    assert np.isfinite(prediction.mean).all()
+    assert np.isfinite(prediction.lower).all()
+    assert np.isfinite(prediction.upper).all()
+    assert (result.fitted_values[2:] > 0).all()
+    assert (prediction.mean > 0).all()
+    assert (prediction.lower > 0).all()
+    assert (prediction.upper > 0).all()
+
+
 def test_ardl_supports_leakage_free_rolling_evaluation():
     """历史回测逐窗口重建 ARDL，并显式传递观测外生路径。"""
     y, x = _sample(40)
@@ -145,6 +180,31 @@ def test_ardl_supports_leakage_free_rolling_evaluation():
     result = report.results["ardl"]
     assert not result.failures
     assert result.mean.shape == (20, 1)
+    assert np.isfinite(result.actual).all()
+
+
+def test_auto_ardl_supports_leakage_free_rolling_evaluation():
+    """Automatic ARDL rebuilds its transformed response per evaluation window."""
+    y, x = _sample(40)
+    model = AutoARDL(
+        y,
+        maxlag=1,
+        exog=x[["x1"]],
+        maxorder=1,
+        trend="c",
+        missing="raise",
+        n_jobs=1,
+    )
+
+    report = evaluate_forecasts(
+        {"auto_ardl": model},
+        scheme=RollingOrigin(initial_window=20, horizon=1, step=5),
+        future_exog="observed",
+    )
+
+    result = report.results["auto_ardl"]
+    assert not result.failures
+    assert result.mean.shape == (4, 1)
     assert np.isfinite(result.actual).all()
 
 

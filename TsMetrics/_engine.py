@@ -10,14 +10,16 @@ from Ts.TsUtils._validation import validate_alpha
 
 from ._evaluation import (
     evaluation_actual,
-    expected_forecast_shape,
-    fit_and_forecast,
-    model_data,
     model_series_names,
     training_dates,
     training_exog,
-    validate_fit_kwargs,
     validate_model_protocol,
+)
+from Ts.TsModels._forecast_execution import (
+    expected_forecast_shape,
+    fit_and_forecast,
+    model_data,
+    validate_fit_kwargs,
 )
 from ._metrics import _validate_rank_metric
 from ._periods import validated_model_dates

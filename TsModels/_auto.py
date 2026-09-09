@@ -34,10 +34,13 @@ from Ts.TsModels._garch_base import (
     _validate_vol_options,
 )
 from Ts.TsModels._parallel import (
-    _map_candidates,
-    _resolve_n_jobs,
     _resolve_sarimax_candidate_schedule,
     _validate_n_jobs,
+)
+from Ts.TsModels._selection import (
+    finalize_candidate_search,
+    run_candidate_search,
+    run_grid_search,
 )
 
 _SUPPORTED_CRITERIA = frozenset({"aic", "bic", "hqic", "aicc"})
@@ -959,48 +962,20 @@ class _BaseAutoModel(BaseModel):
             (best_result, best_order, candidate_results, candidate_orders,
             n_attempted, search_messages)
         """
-        import warnings
-
-        best_result = None
-        best_order = None
-        best_value = float("inf")
-        candidate_results = []
-        candidate_orders = []
-
-        n_attempted = 0
-        search_messages = []
-        for order in orders:
-            n_attempted += 1
-            with warnings.catch_warnings(record=True) as caught_warnings:
-                warnings.simplefilter("always")
-                try:
-                    model = build_model(order)
-                    result = model.fit(**(fit_kwargs or {}))
-                    value = _get_criterion_value(result, criterion)
-                except Exception as error:
-                    search_messages.append(f"{order}: {type(error).__name__}: {error}")
-                    continue
-            search_messages.extend(
-                f"{order}: {warning.category.__name__}: {warning.message}"
-                for warning in caught_warnings
-            )
-            candidate_results.append(result)
-            candidate_orders.append(order)
-            if value < best_value:
-                best_value = value
-                best_result = result
-                best_order = order
-
-        if best_result is None:
-            raise RuntimeError("No model converged during grid search")
-
+        search = run_grid_search(
+            orders,
+            build_model,
+            criterion,
+            _get_criterion_value,
+            fit_kwargs=fit_kwargs,
+        )
         return (
-            best_result,
-            best_order,
-            candidate_results,
-            candidate_orders,
-            n_attempted,
-            search_messages,
+            search.best_result,
+            search.best_order,
+            search.candidate_results,
+            search.candidate_orders,
+            search.n_attempted,
+            search.search_messages,
         )
 
     @staticmethod
@@ -1142,36 +1117,55 @@ class AutoSARIMAX(_BaseAutoModel):
         enforce_distributed_lag_stability=True,
     ):
         from Ts.TsModels._sarimax import (
-            SARIMAX,
+            _combined_design,
+            _normalise_distributed_lags,
             _normalise_cov_type,
             _normalise_fit_method,
+            _normalise_log,
             _normalise_maxiter,
+            _normalise_sarimax_inputs,
+            _validate_events,
         )
 
-        prototype = SARIMAX(
+        inputs = _normalise_sarimax_inputs(
             data,
-            order=(0, 0, 0),
-            seasonal_order=(0, 0, 0, 0),
-            trend=trend,
-            enforce_stationarity=enforce_stationarity,
-            enforce_invertibility=enforce_invertibility,
             dates=dates,
             exog=exog,
             exog_names=exog_names,
             exog_operators=exog_operators,
-            events=events,
             missing=missing,
-            log=log,
-            distributed_lags=distributed_lags,
-            enforce_distributed_lag_stability=(enforce_distributed_lag_stability),
         )
 
-        raw_operator_input = bool(prototype.exog_operators)
-        candidate_data = prototype._raw_data if raw_operator_input else prototype.data
+        log = _normalise_log(log)
+        if len(inputs.endog) < 10:
+            raise ValueError(f"Need at least 10 observations, got {len(inputs.endog)}")
+        if log and np.any(inputs.endog <= 0.0):
+            raise ValueError("log transformation requires strictly positive data")
+        event_specs = _validate_events(events, inputs.dates)
+        distributed_lags = _normalise_distributed_lags(distributed_lags, inputs)
+        if inputs.exog_operators and distributed_lags:
+            raise ValueError(
+                "exog_operators cannot be combined with distributed_lags"
+            )
+        _combined_design(
+            inputs,
+            event_specs,
+            trend,
+            distributed_lag_names=tuple(distributed_lags),
+        )
+        if not isinstance(enforce_distributed_lag_stability, (bool, np.bool_)):
+            raise TypeError("enforce_distributed_lag_stability must be boolean")
+
+        raw_operator_input = bool(inputs.exog_operators)
+        candidate_data = inputs.raw_endog if raw_operator_input else inputs.endog
+        candidate_dates = inputs.raw_dates if raw_operator_input else inputs.dates
+        candidate_exog = (
+            inputs.raw_exog_history if raw_operator_input else inputs.exog
+        )
         self.data = self._validate_params(candidate_data, criterion, method)
         self.missing = missing
-        self.dropped_positions = prototype.dropped_positions
-        self.log = prototype.log
+        self.dropped_positions = inputs.dropped_positions
+        self.log = log
         self.fit_method = _normalise_fit_method(fit_method)
         self.maxiter = _normalise_maxiter(maxiter)
         self.cov_type = _normalise_cov_type(cov_type)
@@ -1180,24 +1174,23 @@ class AutoSARIMAX(_BaseAutoModel):
         self.method = method
         self.dates = (
             None
-            if (prototype._raw_dates if raw_operator_input else prototype.dates) is None
-            else (prototype._raw_dates if raw_operator_input else prototype.dates).copy()
+            if candidate_dates is None
+            else candidate_dates.copy()
         )
         self.exog = (
             None
-            if (prototype._raw_exog_history if raw_operator_input else prototype.exog)
-            is None
-            else (prototype._raw_exog_history if raw_operator_input else prototype.exog).copy()
+            if candidate_exog is None
+            else candidate_exog.copy()
         )
-        self.exog_names = prototype.exog_names
+        self.exog_names = inputs.exog_names
         self.future_exog = (
-            None if prototype.future_exog is None else prototype.future_exog.copy()
+            None if inputs.future_exog is None else inputs.future_exog.copy()
         )
-        self.events = prototype.events
-        self.exog_operators = prototype.exog_operators
-        self.distributed_lags = prototype.distributed_lags
-        self.enforce_distributed_lag_stability = (
-            prototype.enforce_distributed_lag_stability
+        self.events = event_specs
+        self.exog_operators = dict(inputs.exog_operators)
+        self.distributed_lags = distributed_lags
+        self.enforce_distributed_lag_stability = bool(
+            enforce_distributed_lag_stability
         )
 
         self.p_range = self._validate_range(p, "p")
@@ -1243,7 +1236,11 @@ class AutoSARIMAX(_BaseAutoModel):
             method=self.method,
             dates=dates,
             exog=exog,
-            exog_names=self.exog_names if exog is not None else None,
+            exog_names=(
+                self.exog_names
+                if exog is not None and not isinstance(exog, pd.DataFrame)
+                else None
+            ),
             exog_operators=self.exog_operators,
             events=self.events,
             enforce_stationarity=self.enforce_stationarity,
@@ -1385,64 +1382,52 @@ class AutoSARIMAX(_BaseAutoModel):
             )
             for order_pair in orders
         ]
-        outcomes = _map_candidates(
+        search = run_candidate_search(
             tasks,
             _fit_sarimax_candidate,
             n_jobs=schedule.worker_count,
             n_tasks=len(tasks),
+            candidate_key=lambda task, outcome: outcome.order_pair,
+            candidate_result=lambda outcome: outcome.result,
+            criterion_value=lambda result: _get_criterion_value(
+                result,
+                self.criterion,
+            ),
+            messages=lambda outcome: outcome.messages,
             progress_callback=progress_callback,
             inner_max_num_threads=1 if schedule.is_parallel else None,
         )
 
-        best_result = None
-        best_order_pair = None
-        best_task = None
-        best_value = float("inf")
-        candidate_results = []
-        candidate_orders = []
-        search_messages = []
-        for task, outcome in zip(tasks, outcomes, strict=True):
-            if outcome.result is None:
-                search_messages.extend(outcome.messages)
-                continue
-            search_messages.extend(outcome.messages)
-            candidate_results.append(outcome.result)
-            candidate_orders.append(outcome.order_pair)
-            value = _get_criterion_value(outcome.result, self.criterion)
-            if value < best_value:
-                best_value = value
-                best_result = outcome.result
-                best_order_pair = outcome.order_pair
-                best_task = task
-
-        if best_result is None or best_order_pair is None or best_task is None:
-            raise RuntimeError("No model converged during grid search")
-
+        refit_callback = None
         if compact_results:
-            full_outcome = _fit_sarimax_candidate(
-                replace(best_task, compact_result=False)
-            )
-            if full_outcome.result is None:
-                raise RuntimeError(
-                    "The selected SARIMAX candidate could not be refit "
-                    "after parallel selection"
+            def refit_selected(task):
+                outcome = _fit_sarimax_candidate(
+                    replace(task, compact_result=False)
                 )
-            best_result = full_outcome.result
-            search_messages.extend(full_outcome.messages)
+                return outcome.result, outcome.messages
 
-        n_attempted = len(outcomes)
+            refit_callback = refit_selected
 
-        criterion_values = [
-            _get_criterion_value(r, self.criterion) for r in candidate_results
-        ]
+        lifecycle = finalize_candidate_search(
+            search,
+            refit_selected=refit_callback,
+            metadata_factory=schedule.metadata,
+            elapsed_seconds=perf_counter() - search_started,
+        )
+        candidate_results = search.candidate_results
+        candidate_orders = search.candidate_keys
+        criterion_values = search.criterion_values
+        best_order_pair = search.best_key
+        best_task = search.candidate_tasks[search.best_index]
+        best_result = lifecycle.selected_result
+        search_messages = lifecycle.search_messages
+        n_attempted = search.n_attempted
 
         # Extract nonseasonal order for reporting
         best_order = best_order_pair[0]
         flat_orders = [o[0] for o in candidate_orders]
         seasonal_orders = [o[1] for o in candidate_orders]
 
-        search_metadata = schedule.metadata()
-        search_metadata["elapsed_seconds"] = perf_counter() - search_started
         auto_result = AutoModelResult.from_search(
             best_result=best_result,
             best_order=best_order,
@@ -1455,7 +1440,7 @@ class AutoSARIMAX(_BaseAutoModel):
             best_seasonal_order=best_order_pair[1] if self.s > 0 else None,
             candidate_seasonal_orders=seasonal_orders if self.s > 0 else None,
             search_messages=search_messages,
-            search_metadata=search_metadata,
+            search_metadata=lifecycle.search_metadata,
             candidate_model_kwargs=(
                 best_task.model_kwargs if compact_results else None
             ),

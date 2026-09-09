@@ -1158,3 +1158,34 @@ class TestAutoSARIMAXExogenous:
                 d=(0, 0),
                 q=(0, 0),
             )
+
+
+def test_selection_ranking_skips_nonfinite_criteria():
+    """Automatic selection never chooses NaN over a finite candidate."""
+    from Ts.TsModels._selection import rank_candidates, select_best_candidate
+
+    candidates = [(0, 0, 0), (1, 0, 0), (2, 0, 0)]
+    values = [float("nan"), 10.0, 12.0]
+
+    best, index = select_best_candidate(candidates, values)
+    ranked = rank_candidates(candidates, values)
+
+    assert best == candidates[1]
+    assert index == 1
+    assert ranked[0] == (candidates[1], 10.0)
+
+
+def test_auto_sarimax_reuses_sarimax_design_validation():
+    """Automatic SARIMAX rejects the same unidentified design as SARIMAX."""
+    from Ts.TsModels import AutoSARIMAX
+
+    with pytest.raises(ValueError, match=r"constant.*trend"):
+        AutoSARIMAX(
+            np.arange(20.0),
+            exog=np.ones((20, 1)),
+            exog_names=["constant"],
+            p=(0, 0),
+            d=(0, 0),
+            q=(0, 0),
+            trend="c",
+        )

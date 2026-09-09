@@ -14,7 +14,8 @@ from statsmodels.tsa.ardl import ARDL as StatsmodelsARDL
 
 from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
 from Ts.TsModels._base import _resolve_prediction_window
-from Ts.TsModels._parallel import _map_candidates, _validate_n_jobs
+from Ts.TsModels._parallel import _validate_n_jobs
+from Ts.TsModels._selection import rank_candidates, run_candidate_search
 from Ts.TsModels._sarimax import (
     SARIMAX,
     _normalise_cov_type,
@@ -480,8 +481,10 @@ class ARDLResult(BaseModelResult):
         if not self.ar_lags:
             return np.array([], dtype=float)
         coefficients = [1.0]
-        for lag in range(1, max(self.ar_lags) + 1):
-            coefficients.append(-self.params.get(f"y.L{lag}", 0.0))
+        coefficients.extend(
+            -self.params.get(f"y.L{lag}", 0.0)
+            for lag in range(1, max(self.ar_lags) + 1)
+        )
         return np.roots(coefficients)
 
     @property
@@ -594,89 +597,6 @@ class ARDLResult(BaseModelResult):
 
         return position(start, "start"), position(end, "end")
 
-    def _build_error_future_design(self, steps, future_exog, future_dates):
-        """Build future ARDL lag columns for the SARIMA error backend."""
-        if self._error_result is None or self._ardl_model is None:
-            raise RuntimeError("SARIMA error state is unavailable")
-        future_inputs = None
-        if self.exog_names:
-            future_inputs = self._normalise_future_exog(steps, future_exog)
-        elif future_exog is not None:
-            raise ValueError(
-                "future_exog is invalid because the model has no explanatory inputs"
-            )
-
-        index = (
-            future_dates.copy()
-            if future_dates is not None
-            else pd.RangeIndex(steps)
-        )
-        columns = tuple(self._error_result.exog_names)
-        future_design = pd.DataFrame(index=index, columns=columns, dtype=float)
-
-        deterministics = getattr(self._ardl_model, "_deterministics", None)
-        if deterministics is not None:
-            if future_dates is None:
-                deterministic = deterministics.out_of_sample(steps)
-            else:
-                deterministic = deterministics.out_of_sample(
-                    steps,
-                    forecast_index=future_dates,
-                )
-            for name in deterministic.columns:
-                if name in future_design.columns:
-                    future_design[name] = np.asarray(deterministic[name], dtype=float)
-
-        historical_response = np.asarray(self._model_data, dtype=float)
-        response_path = np.full(self.nobs + steps, np.nan, dtype=float)
-        response_path[: self.nobs] = historical_response
-        exog_path = None
-        if self._exog is not None:
-            exog_path = np.vstack(
-                [
-                    self._exog.to_numpy(dtype=float),
-                    future_inputs.to_numpy(dtype=float),
-                ]
-            )
-
-        lag_columns = {
-            f"y.L{lag}": ("response", lag)
-            for lag in self.ar_lags
-        }
-        for name, lags in self.distributed_lags.items():
-            for lag in lags:
-                lag_columns[f"{name}.L{lag}"] = (name, lag)
-
-        for step in range(steps):
-            for column, (source, lag) in lag_columns.items():
-                if column not in future_design.columns:
-                    continue
-                source_position = self.nobs + step - lag
-                if source == "response":
-                    value = response_path[source_position]
-                else:
-                    if exog_path is None:
-                        raise RuntimeError("fitted explanatory input history is missing")
-                    value = exog_path[source_position, self.exog_names.index(source)]
-                future_design.loc[index[step], column] = value
-
-            partial_design = future_design.iloc[: step + 1].copy()
-            future_prediction = self._error_result.predict(
-                start=self._error_result.nobs,
-                end=self._error_result.nobs + step,
-                dynamic=False,
-                alpha=0.05,
-                future_exog=partial_design,
-                future_dates=(
-                    None if future_dates is None else future_dates[: step + 1]
-                ),
-            )
-            response_path[self.nobs + step] = float(future_prediction.mean[-1])
-
-        if not np.all(np.isfinite(future_design.to_numpy(dtype=float))):
-            raise RuntimeError("future ARDL design contains non-finite values")
-        return future_design
-
     def _predict_with_error(
         self,
         window,
@@ -686,71 +606,15 @@ class ARDLResult(BaseModelResult):
         future_exog,
         future_dates,
     ):
-        """Predict through the SARIMA error result and remap to ARDL positions."""
-        mean = np.full(window.size, np.nan, dtype=float)
-        lower = np.full(window.size, np.nan, dtype=float)
-        upper = np.full(window.size, np.nan, dtype=float)
+        """Delegate SARIMA-error recursion to the dedicated bridge."""
+        from Ts.TsModels._ardl_error import _ARDLSARIMAErrorBridge
 
-        if window.in_sample_size:
-            valid_start = max(window.start, self.hold_back)
-            valid_end = min(window.end, self.nobs - 1)
-            if valid_start <= valid_end:
-                prediction = self._error_result.predict(
-                    start=valid_start - self.hold_back,
-                    end=valid_end - self.hold_back,
-                    dynamic=dynamic,
-                    alpha=alpha,
-                )
-                destination = valid_start - window.start
-                size = valid_end - valid_start + 1
-                mean[destination : destination + size] = prediction.mean[:size]
-                lower[destination : destination + size] = prediction.lower[:size]
-                upper[destination : destination + size] = prediction.upper[:size]
-
-        if window.has_forecast:
-            resolved_dates = self._error_result._resolve_future_dates(
-                window.forecast_steps,
-                future_dates,
-            )
-            future_design = self._build_error_future_design(
-                window.forecast_steps,
-                future_exog,
-                resolved_dates,
-            )
-            prediction = self._error_result.predict(
-                start=self._error_result.nobs,
-                end=self._error_result.nobs + window.forecast_steps - 1,
-                dynamic=dynamic,
-                alpha=alpha,
-                future_exog=future_design,
-                future_dates=resolved_dates,
-            )
-            destination = window.in_sample_size
-            source = window.forecast_skip
-            mean[destination:] = prediction.mean[source:]
-            lower[destination:] = prediction.lower[source:]
-            upper[destination:] = prediction.upper[source:]
-
-        full = self._error_result.predict(
-            start=0,
-            end=self._error_result.nobs - 1,
+        return _ARDLSARIMAErrorBridge(self).predict(
+            window,
+            dynamic=dynamic,
             alpha=alpha,
-        )
-        full_lower = np.full(self.nobs, np.nan, dtype=float)
-        full_upper = np.full(self.nobs, np.nan, dtype=float)
-        if full._full_lower is not None:
-            full_lower[self.hold_back :] = full._full_lower
-            full_upper[self.hold_back :] = full._full_upper
-        return PredictResult(
-            mean=mean,
-            lower=lower,
-            upper=upper,
-            is_oos=np.arange(window.start, window.end + 1) >= self.nobs,
-            _full_data=self.data,
-            _full_fitted=self.fitted_values,
-            _full_lower=full_lower,
-            _full_upper=full_upper,
-            _start=window.start,
+            future_exog=future_exog,
+            future_dates=future_dates,
         )
 
     def predict(
@@ -942,11 +806,13 @@ def _make_error_result(estimator, error_result):
     """Build an ARDL result backed by a manually specified SARIMA error."""
     hold_back = int(estimator._model.hold_back)
     fitted_values = np.full(len(estimator.data), np.nan, dtype=float)
-    prediction = error_result._statsmodels_result.get_prediction(
+    prediction = error_result.predict(
         start=0,
         end=error_result.nobs - 1,
+        alpha=0.05,
+        response_log=estimator.log,
     )
-    means, _, _ = _prediction_arrays(prediction, 0.05, log=estimator.log)
+    means = prediction.mean
     burn = error_result.likelihood_burn
     fitted_values[hold_back + burn :] = means[burn:]
     model = estimator._model
@@ -1108,7 +974,11 @@ class ARDL(BaseModel):
             order=self.order,
             trend=self.trend,
             dates=dates,
-            exog_names=self.exog_names if exog is not None else None,
+            exog_names=(
+                self.exog_names
+                if exog is not None and not isinstance(exog, pd.DataFrame)
+                else None
+            ),
             causal=self.causal,
             seasonal=self.seasonal,
             period=self.period,
@@ -1514,6 +1384,21 @@ class AutoARDL(BaseModel):
             }
         return _validate_nonnegative_int("maxorder", maxorder)
 
+    def _evaluation_predict_kwargs(self, start, stop):
+        """Return the observed explanatory path for one historical window."""
+        kwargs = {}
+        if self.exog is not None:
+            future_exog = self.exog.iloc[start:stop].copy()
+            if len(future_exog) != stop - start:
+                raise ValueError("future exog does not cover the evaluation window")
+            kwargs["future_exog"] = future_exog
+        if self.dates is not None:
+            future_dates = self.dates[start:stop]
+            if len(future_dates) != stop - start:
+                raise ValueError("future dates do not cover the evaluation window")
+            kwargs["future_dates"] = future_dates.copy()
+        return kwargs
+
     def fit(
         self,
         *,
@@ -1570,19 +1455,20 @@ class AutoARDL(BaseModel):
             var_names,
             search_method=self.search_method,
         )
-        evaluated = _map_candidates(
+        criterion_index = {"aic": 0, "bic": 1}[self.criterion]
+        search = run_candidate_search(
             tasks,
             _compute_ardl_ics,
             n_jobs=self.n_jobs,
             n_tasks=n_tasks,
+            candidate_key=lambda _task, outcome: outcome[0],
+            candidate_result=lambda outcome: outcome[1],
+            criterion_value=lambda values: values[criterion_index],
             progress_callback=progress_callback,
         )
-        ics = dict(evaluated)
-        criterion_index = {"aic": 0, "bic": 1}[self.criterion]
-        selected_key = min(
-            ics,
-            key=lambda key: ics[key][criterion_index],
-        )
+        candidate_keys = search.candidate_keys
+        candidate_values = search.criterion_values
+        selected_key = search.best_key
         selected_model = StatsmodelsARDL(
             response,
             selected_key[0],
@@ -1624,13 +1510,9 @@ class AutoARDL(BaseModel):
         best._default_future_exog = (
             None if self.future_exog is None else self.future_exog.copy()
         )
-        scores = sorted(
-            ics.items(),
-            key=lambda item: item[1][criterion_index],
-        )
+        scores = rank_candidates(candidate_keys, candidate_values)
         rows = []
-        for key, values in scores:
-            score = values[criterion_index]
+        for key, score in scores:
             specification = key
             target_order, input_orders = specification
             rows.append(

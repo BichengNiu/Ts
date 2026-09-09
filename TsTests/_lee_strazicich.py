@@ -329,9 +329,9 @@ class LeeStrazicichTwoBreakTestResult(BaseTestResult):
         >>> result = LeeStrazicichTwoBreakTest(data, model="A", lags=0).fit()
         >>> fig, ax = result.plot_test()
         """
-        from Ts.TsPlots.style import BLACK, DARK_RED, _FigureContext
+        from Ts.TsPlots.style import BLACK, DARK_RED, FigureLifecycle
 
-        context = _FigureContext(ax=ax)
+        context = FigureLifecycle(ax=ax)
         ax = context.ax
         ax.plot(
             self.time_index,

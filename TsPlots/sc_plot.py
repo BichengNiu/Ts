@@ -41,7 +41,7 @@ import pandas as pd
 
 from .style import (
     _ensure_fonts,
-    _FigureContext,
+    FigureLifecycle,
     _resolve_colors,
     _validate_label_count,
     _validate_positive_step,
@@ -317,7 +317,7 @@ def plot_scatter(
         series = [(labels[i], xv, yv) for i, (_, xv, yv) in enumerate(series)]
 
     _ensure_fonts()
-    ctx = _FigureContext(ax=ax)
+    ctx = FigureLifecycle(ax=ax)
     fig, ax = ctx.fig, ctx.ax
 
     draw_shade(ax, shade, shade_color, shade_alpha)

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from Ts.TsMetrics._evaluation import (
+from Ts.TsModels._forecast_execution import (
     expected_forecast_shape,
     model_data,
     prediction_arrays,

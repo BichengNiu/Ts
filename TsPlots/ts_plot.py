@@ -52,7 +52,7 @@ import pandas as pd
 
 from .style import (
     _ensure_fonts,
-    _FigureContext,
+    FigureLifecycle,
     _resolve_colors,
     _validate_label_count,
     _validate_max_ticks,
@@ -67,10 +67,8 @@ from .style import (
     YEAR_RULER_FONTSIZE,
     YEAR_RULER_TICK_PAD,
     PANEL_TITLE_PAD,
-    TITLE_PAD,
     TIGHT_PAD,
     FIGSIZE,
-    TITLE_FONTSIZE,
     AXIS_LABEL_FONTSIZE,
     BAR_EDGE_COLOR,
     ZORDER_LINE,
@@ -607,7 +605,6 @@ def _plot_one_series(
         return line
 
     fmt = f".{value_decimals}f"
-    n_points = len(values)
     for point_index, (x_value, y_value) in enumerate(
         zip(x_values, values, strict=False)
     ):
@@ -1428,7 +1425,7 @@ def plot_series(
         return fig, axes
 
     _ensure_fonts()
-    ctx = _FigureContext(ax=ax, figsize=figsize)
+    ctx = FigureLifecycle(ax=ax, figsize=figsize)
     fig, ax = ctx.fig, ctx.ax
 
     resolved_groups = _resolve_axis_groups(
@@ -1529,7 +1526,7 @@ def plot_series(
         display_labels = list(series)
 
     right_axis_titles = {1: second_axis_title, 2: third_axis_title}
-    for group_index, (group_labels, right_axis) in enumerate(
+    for group_index, (_group_labels, right_axis) in enumerate(
         zip(resolved_groups[1:], right_axes, strict=True),
         start=1,
     ):
