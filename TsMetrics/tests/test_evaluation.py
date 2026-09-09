@@ -449,3 +449,79 @@ def test_structural_protocol_is_supported_without_inheritance():
     )
     assert report.results["duck"].mean.shape == (1, 2)
     assert report.parameter_table(model="duck").empty
+
+
+def test_structural_protocol_can_use_the_single_execution_seam():
+    class Duck:
+        _evaluation_target_name = "observed"
+
+        def __init__(self, data):
+            self.data = np.asarray(data, dtype=float)
+            self.fit_options = []
+
+        def _forecast_for_evaluation(
+            self,
+            train_data,
+            *,
+            exog=None,
+            dates=None,
+            horizon,
+            alpha,
+            fit_kwargs=None,
+            evaluation_start=None,
+            evaluation_stop=None,
+        ):
+            del exog, dates, alpha, evaluation_start, evaluation_stop
+            self.fit_options.append(dict(fit_kwargs or {}))
+            mean = np.full(horizon, np.mean(train_data))
+            return "DUCK", (), (mean, mean - 0.5, mean + 0.5)
+
+        def _evaluation_actual(self, observed, train_data):
+            del train_data
+            return np.asarray(observed)
+
+        def _validate_evaluation(self, context):
+            del context
+
+    duck = Duck(np.arange(12.0))
+    report = evaluate_forecasts(
+        {"duck": duck},
+        scheme=Holdout(train=(0, 9), test=(10, 11)),
+        fit_kwargs={"custom_option": "accepted by the seam"},
+    )
+    assert report.results["duck"].mean.shape == (1, 2)
+    assert duck.fit_options == [{"custom_option": "accepted by the seam"}]
+
+
+@pytest.mark.parametrize(
+    ("output", "message"),
+    [
+        (("", (), (np.zeros(2), None, None)), "model_type"),
+        (("DUCK", (), (np.zeros(1), None, None)), "mean forecast has shape"),
+        (("DUCK", (), (np.zeros(2), np.zeros(2), None)), "both be set"),
+        (("DUCK", ("invalid",), (np.zeros(2), None, None)), "mappings"),
+    ],
+)
+def test_structural_protocol_validates_its_output_contract(output, message):
+    class Duck:
+        _evaluation_target_name = "observed"
+
+        def __init__(self, data):
+            self.data = np.asarray(data, dtype=float)
+
+        def _forecast_for_evaluation(self, train_data, **kwargs):
+            del train_data, kwargs
+            return output
+
+        def _evaluation_actual(self, observed, train_data):
+            del train_data
+            return np.asarray(observed)
+
+        def _validate_evaluation(self, context):
+            del context
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        evaluate_forecasts(
+            {"duck": Duck(np.arange(12.0))},
+            scheme=Holdout(train=(0, 9), test=(10, 11)),
+        )

@@ -128,8 +128,10 @@ report = evaluate_forecasts(
 
 ## 拟合参数与失败策略
 
-`fit_kwargs` 是传给每个模型、每个拆分的统一拟合参数。引擎会在第一次拟合之前验证所有模型
-是否接受这些参数，避免比较执行到一半才发现某个模型不支持优化器。
+`fit_kwargs` 是传给每个模型、每个拆分的统一拟合参数。对旧的
+`clone/fit/predict` 协议，引擎会在第一次拟合之前验证所有模型是否接受这些参数；实现
+`_forecast_for_evaluation` 的模型由该 seam 自己解释和校验参数。这样自定义模型不必额外
+暴露一个与自身执行逻辑无关的 `fit()` 方法。
 
 - `on_error="raise"`：任一拆分失败时立即抛出异常；
 - `on_error="record"`：整个失败拆分保留为 NaN，并写入 `report.failures`。

@@ -6,7 +6,8 @@ TsTests) so that scalar and small-array validation stays in one place.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from inspect import Parameter, signature
 from numbers import Real
 
 import numpy as np
@@ -136,6 +137,48 @@ def optional_array(values):
     if values is None:
         return None
     return np.array(values, dtype=float, copy=True)
+
+
+def validate_fit_kwargs(
+    model,
+    fit_kwargs,
+    *,
+    model_name=None,
+    validate_signature=True,
+):
+    """Copy fit keywords and optionally validate a model ``fit`` signature."""
+    if fit_kwargs is None:
+        return {}
+    if not isinstance(fit_kwargs, Mapping):
+        raise TypeError("fit_kwargs must be a mapping or None")
+    if not all(isinstance(name, str) and name for name in fit_kwargs):
+        raise TypeError("fit_kwargs names must be non-empty strings")
+    if not validate_signature:
+        return dict(fit_kwargs)
+    fit = getattr(model, "fit", None)
+    if not callable(fit):
+        raise TypeError("model must provide fit()")
+    try:
+        parameters = signature(fit).parameters.values()
+    except (TypeError, ValueError) as error:
+        label = type(model).__name__ if model_name is None else repr(model_name)
+        raise TypeError(
+            f"model {label} does not expose an inspectable fit() supporting method"
+        ) from error
+
+    parameters = tuple(parameters)
+    accepts_kwargs = any(
+        parameter.kind == Parameter.VAR_KEYWORD for parameter in parameters
+    )
+    accepted_names = {parameter.name for parameter in parameters}
+    unsupported = [
+        name for name in fit_kwargs if name not in accepted_names and not accepts_kwargs
+    ]
+    if unsupported:
+        label = type(model).__name__ if model_name is None else repr(model_name)
+        names = ", ".join(repr(name) for name in unsupported)
+        raise TypeError(f"model {label} does not support fit keyword(s): {names}")
+    return dict(fit_kwargs)
 
 
 def as_1d_float(data, *, name="data"):

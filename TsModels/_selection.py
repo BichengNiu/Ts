@@ -9,7 +9,7 @@ criterion with stable first-in-order tie handling.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from typing import Callable, Generic, Iterable, Mapping, Sequence, TypeVar
 
@@ -64,6 +64,63 @@ class CandidateSearchLifecycle(Generic[Task, Candidate, Result]):
     selected_result: Result
     search_messages: list[str]
     search_metadata: dict[str, object]
+
+
+@dataclass
+class SelectionMetadata:
+    """Model-family-neutral record of one completed candidate selection."""
+
+    best_result: object
+    best_order: object
+    candidate_results: list
+    candidate_orders: list
+    criterion_values: list[float]
+    selection_criterion: str
+    search_method: str
+    n_attempted: int | None = None
+    best_seasonal_order: object = None
+    candidate_seasonal_orders: list = field(default_factory=list)
+    search_messages: list[str] = field(default_factory=list)
+    search_metadata: dict[str, object] = field(default_factory=dict)
+
+    @classmethod
+    def from_values(
+        cls,
+        *,
+        best_result,
+        best_order,
+        candidate_results,
+        candidate_orders,
+        criterion_values,
+        selection_criterion,
+        search_method,
+        n_attempted=None,
+        best_seasonal_order=None,
+        candidate_seasonal_orders=None,
+        search_messages=None,
+        search_metadata=None,
+    ):
+        """Create a detached metadata snapshot from a search outcome."""
+        return cls(
+            best_result=best_result,
+            best_order=best_order,
+            candidate_results=list(candidate_results),
+            candidate_orders=list(candidate_orders),
+            criterion_values=list(criterion_values),
+            selection_criterion=selection_criterion,
+            search_method=search_method,
+            n_attempted=n_attempted,
+            best_seasonal_order=best_seasonal_order,
+            candidate_seasonal_orders=(
+                []
+                if candidate_seasonal_orders is None
+                else list(candidate_seasonal_orders)
+            ),
+            search_messages=[] if search_messages is None else list(search_messages),
+            search_metadata=(
+                {} if search_metadata is None else dict(search_metadata)
+            ),
+        )
 
 
 def finalize_candidate_search(
@@ -271,6 +328,7 @@ __all__ = [
     "CandidateSearchLifecycle",
     "CandidateSearchResult",
     "GridSearchResult",
+    "SelectionMetadata",
     "finalize_candidate_search",
     "rank_candidates",
     "run_candidate_search",

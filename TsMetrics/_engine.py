@@ -7,19 +7,17 @@ from collections.abc import Mapping
 import numpy as np
 
 from Ts.TsUtils._validation import validate_alpha
+from Ts.TsUtils._validation import validate_fit_kwargs
+from Ts.TsUtils._forecast import expected_forecast_shape
 
 from ._evaluation import (
     evaluation_actual,
+    evaluation_data,
+    forecast_for_evaluation,
     model_series_names,
     training_dates,
     training_exog,
     validate_model_protocol,
-)
-from Ts.TsModels._forecast_execution import (
-    expected_forecast_shape,
-    fit_and_forecast,
-    model_data,
-    validate_fit_kwargs,
 )
 from ._metrics import _validate_rank_metric
 from ._periods import validated_model_dates
@@ -39,7 +37,7 @@ def _validated_models(models):
     items = list(models.items())
     metadata = {}
     for name, model in items:
-        data = model_data(model)
+        data = evaluation_data(model)
         target = validate_model_protocol(model, "evaluate_forecasts")
         dates = validated_model_dates(model, data)
         series_names = model_series_names(model, data)
@@ -86,10 +84,15 @@ def _validated_request(
         raise ValueError("on_error must be either 'raise' or 'record'")
     validated_fit_kwargs = {}
     for name, model in items:
+        has_custom_execution = callable(
+            getattr(model, "_forecast_for_evaluation", None)
+        )
+        has_fit = callable(getattr(model, "fit", None))
         validated_fit_kwargs[name] = validate_fit_kwargs(
             model,
             fit_kwargs,
             model_name=name,
+            validate_signature=not has_custom_execution or has_fit,
         )
 
     exogenous = {
@@ -142,16 +145,17 @@ def _evaluate_one_model(
         bridge_horizon = target_stop - train_stop
         bridge_shape = expected_forecast_shape(data, bridge_horizon)
         try:
-            model_type, parameters, forecast = fit_and_forecast(
+            model_type, parameters, forecast = forecast_for_evaluation(
                 model,
                 train_data,
-                training_exog(model, train_start, train_stop),
-                training_dates(dates, train_start, train_stop),
-                model._evaluation_predict_kwargs(train_stop, target_stop),
-                bridge_horizon,
-                alpha,
-                bridge_shape,
-                fit_kwargs,
+                exog=training_exog(model, train_start, train_stop),
+                dates=training_dates(dates, train_start, train_stop),
+                horizon=bridge_horizon,
+                alpha=alpha,
+                fit_kwargs=fit_kwargs,
+                evaluation_start=train_stop,
+                evaluation_stop=target_stop,
+                expected_shape=bridge_shape,
             )
             bridge_mean, bridge_lower, bridge_upper = forecast
             offset = target_start - train_stop
@@ -231,7 +235,9 @@ def evaluate_forecasts(
     alpha : float, default 0.05
         Significance level requested for forecast intervals.
     fit_kwargs : mapping, optional
-        Keywords forwarded to every estimator ``fit()`` call.
+        Keywords forwarded to every estimator's evaluation execution seam.
+        Legacy clone/fit/predict estimators are prevalidated against ``fit()``;
+        custom ``_forecast_for_evaluation`` estimators own their interpretation.
     on_error : {"raise", "record"}, default "raise"
         Whether a failed split raises or is retained as an all-NaN row.
     future_exog : {"observed"}, optional

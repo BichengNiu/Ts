@@ -187,6 +187,22 @@ class TestAutoModelResult:
         assert auto_result.params["ar.L1"] == 0.7
         assert len(auto_result.residuals) == 200
 
+    def test_selection_metadata_is_the_canonical_composed_record(self, auto_result):
+        """Selection facts are owned by the shared metadata record."""
+        from Ts.TsModels._selection import SelectionMetadata
+
+        assert isinstance(auto_result.selection, SelectionMetadata)
+        assert auto_result.selection.best_order == auto_result.best_order
+        assert auto_result.selection.candidate_orders == auto_result.candidate_orders
+        assert auto_result.selection.criterion_values == auto_result.criterion_values
+
+    def test_selection_view_tracks_compatibility_field_updates(self, auto_result):
+        """The metadata view cannot diverge from legacy dataclass fields."""
+        from dataclasses import replace
+
+        changed = replace(auto_result, best_order=(0, 0, 0))
+        assert changed.selection.best_order == (0, 0, 0)
+
     def test_summary_has_selection_info(self, auto_result):
         """summary() shows best order, criterion, candidate count."""
         text = auto_result.summary()

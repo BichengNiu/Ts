@@ -1137,6 +1137,39 @@ class BaseModel(ABC):
         del start, stop
         return {}
 
+    def _forecast_for_evaluation(
+        self,
+        train_data,
+        *,
+        exog=None,
+        dates=None,
+        horizon,
+        alpha,
+        fit_kwargs=None,
+        evaluation_start,
+        evaluation_stop,
+    ):
+        """Execute one isolated evaluation forecast through the model seam.
+
+        The metrics package only needs this one model-facing operation.  Clone
+        semantics, fitting, prediction normalization, and model-specific
+        forecast context remain owned by the model package.
+        """
+        from ._forecast_execution import expected_forecast_shape, fit_and_forecast
+
+        train_array = np.asarray(train_data, dtype=float)
+        return fit_and_forecast(
+            self,
+            train_array,
+            exog,
+            dates,
+            self._evaluation_predict_kwargs(evaluation_start, evaluation_stop),
+            horizon,
+            alpha,
+            expected_forecast_shape(train_array, horizon),
+            fit_kwargs,
+        )
+
     def _evaluation_actual(self, observed, train_data):
         """Return the observable target used to score forecasts."""
         del train_data

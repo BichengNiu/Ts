@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..TsPlots import plot_acf, plot_pacf
-from ..TsPlots.style import (
-    FIGSIZE,
-    TITLE_FONTSIZE,
-    TIGHT_PAD,
-    _ensure_fonts,
-)
 from ._validation import validate_alpha, validate_positive_int
+
+# Kept as module attributes so callers and tests can replace the plotters
+# without forcing TsPlots to load during a text-only summary import.
+plot_acf = None
+plot_pacf = None
 
 _TEMPORAL_INDEXES = (
     pd.DatetimeIndex,
@@ -211,6 +208,8 @@ class TimeSeriesSummary:
     @staticmethod
     def _mark_unavailable(axes, message) -> None:
         """Mark all correlogram panels unavailable without fabricating values."""
+        from ..TsPlots.style import TITLE_FONTSIZE
+
         for axis, title in zip(axes.flat, _PANEL_TITLES, strict=True):
             axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
             axis.text(
@@ -239,6 +238,8 @@ class TimeSeriesSummary:
     def _plot_panel(values, axis, plotter, *, nlags, alpha, title) -> None:
         """Draw one existing correlogram or mark a constant series."""
         if values.nunique() <= 1:
+            from ..TsPlots.style import TITLE_FONTSIZE
+
             axis.set_title(title, fontsize=TITLE_FONTSIZE, fontweight="normal")
             axis.text(
                 0.5,
@@ -276,6 +277,17 @@ class TimeSeriesSummary:
         >>> axes.shape
         (2, 2)
         """
+        global plot_acf, plot_pacf
+
+        import matplotlib.pyplot as plt
+
+        if plot_acf is None or plot_pacf is None:
+            from ..TsPlots import plot_acf as _plot_acf, plot_pacf as _plot_pacf
+
+            plot_acf = _plot_acf
+            plot_pacf = _plot_pacf
+        from ..TsPlots.style import FIGSIZE, TIGHT_PAD, _ensure_fonts
+
         _ensure_fonts()
         figure, axes = plt.subplots(2, 2, figsize=FIGSIZE)
         self.figure_ = figure

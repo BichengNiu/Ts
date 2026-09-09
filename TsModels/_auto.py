@@ -38,6 +38,7 @@ from Ts.TsModels._parallel import (
     _validate_n_jobs,
 )
 from Ts.TsModels._selection import (
+    SelectionMetadata,
     finalize_candidate_search,
     run_candidate_search,
     run_grid_search,
@@ -250,6 +251,10 @@ class AutoModelResult(BaseModelResult):
     search_metadata : dict
         Immutable execution facts for the completed candidate schedule, such
         as mode, worker count, elapsed seconds and the scheduling reason.
+    selection : SelectionMetadata
+        Composed candidate-selection record.  The legacy metadata attributes
+        remain available as snapshots for compatibility; selection is the
+        canonical state used by this result container.
     model_type, params, std_errors, p_values : see BaseModelResult
     aic, bic, log_likelihood, residuals, fitted_values, nobs, data : see BaseModelResult
         Shared fields copied from the selected result.
@@ -284,6 +289,29 @@ class AutoModelResult(BaseModelResult):
     _candidate_fit_kwargs: dict | None = field(default=None, repr=False)
 
     @property
+    def selection(self):
+        """Return a metadata view derived from the compatibility fields."""
+        return SelectionMetadata.from_values(
+            best_result=self.best_result,
+            best_order=self.best_order,
+            candidate_results=self.candidate_results,
+            candidate_orders=self.candidate_orders,
+            criterion_values=self.criterion_values,
+            selection_criterion=self.selection_criterion,
+            search_method=self.search_method,
+            n_attempted=self.n_attempted,
+            best_seasonal_order=self.best_seasonal_order,
+            candidate_seasonal_orders=self.candidate_seasonal_orders,
+            search_messages=self.search_messages,
+            search_metadata=self.search_metadata,
+        )
+
+    @property
+    def _selected_result(self):
+        """Return the selected model result from the metadata view."""
+        return self.selection.best_result
+
+    @property
     def criterion_table(self) -> pd.DataFrame:
         """Return all information-criterion values for successful candidates.
 
@@ -295,7 +323,8 @@ class AutoModelResult(BaseModelResult):
             seasonal candidates were searched, and the remaining columns are
             ``aic``, ``bic``, ``hqic``, and ``aicc``. Lower values are better.
         """
-        has_seasonal_orders = bool(self.candidate_seasonal_orders)
+        selection = self.selection
+        has_seasonal_orders = bool(selection.candidate_seasonal_orders)
         columns = ["order"]
         if has_seasonal_orders:
             columns.append("seasonal_order")
@@ -303,11 +332,11 @@ class AutoModelResult(BaseModelResult):
 
         rows = []
         for index, (order, candidate) in enumerate(
-            zip(self.candidate_orders, self.candidate_results, strict=True)
+            zip(selection.candidate_orders, selection.candidate_results, strict=True)
         ):
             row = {"order": order}
             if has_seasonal_orders:
-                row["seasonal_order"] = self.candidate_seasonal_orders[index]
+                row["seasonal_order"] = selection.candidate_seasonal_orders[index]
             row.update(
                 {
                     criterion: _get_criterion_value(candidate, criterion)
@@ -429,18 +458,19 @@ class AutoModelResult(BaseModelResult):
 
     def _refit_candidate(self, index: int) -> BaseModelResult:
         """Return a complete result for a selected candidate order."""
-        if not 0 <= index < len(self.candidate_results):
+        selection = self.selection
+        if not 0 <= index < len(selection.candidate_results):
             raise IndexError(f"candidate index out of range: {index}")
         if self._candidate_model_kwargs is None:
-            return self.candidate_results[index]
+            return selection.candidate_results[index]
 
         from Ts.TsModels._sarimax import SARIMAX
 
         model_kwargs = dict(self._candidate_model_kwargs)
-        model_kwargs["order"] = self.candidate_orders[index]
+        model_kwargs["order"] = selection.candidate_orders[index]
         model_kwargs["seasonal_order"] = (
-            self.candidate_seasonal_orders[index]
-            if index < len(self.candidate_seasonal_orders)
+            selection.candidate_seasonal_orders[index]
+            if index < len(selection.candidate_seasonal_orders)
             else (0, 0, 0, 0)
         )
         fit_kwargs = dict(self._candidate_fit_kwargs or {})
@@ -465,24 +495,25 @@ class AutoModelResult(BaseModelResult):
         >>> isinstance(result.summary(), str)
         True
         """
-        n_ok = len(self.candidate_results)
-        n_total = n_ok if self.n_attempted is None else self.n_attempted
+        selection = self.selection
+        n_ok = len(selection.candidate_results)
+        n_total = n_ok if selection.n_attempted is None else selection.n_attempted
 
         lines = [
             f"Auto {self.model_type} Model Selection Result",
             "=" * 60,
-            f"Search Method      : {self.search_method}",
-            f"Selection Criterion: {self.selection_criterion.upper()}",
-            f"Best Order         : {self.best_order}",
+            f"Search Method      : {selection.search_method}",
+            f"Selection Criterion: {selection.selection_criterion.upper()}",
+            f"Best Order         : {selection.best_order}",
             f"Models Evaluated   : {n_ok}/{n_total} successful",
-            f"Search Diagnostics : {len(self.search_messages)}",
-            f"Best {self.selection_criterion.upper():>6s}        : {_get_criterion_value(self, self.selection_criterion):.4f}",
+            f"Search Diagnostics : {len(selection.search_messages)}",
+            f"Best {selection.selection_criterion.upper():>6s}        : {_get_criterion_value(self, selection.selection_criterion):.4f}",
             "",
             "Best Model Details:",
             "-" * 60,
         ]
-        if self.best_seasonal_order is not None:
-            lines.insert(5, f"Best Seasonal Order: {self.best_seasonal_order}")
+        if selection.best_seasonal_order is not None:
+            lines.insert(5, f"Best Seasonal Order: {selection.best_seasonal_order}")
         if self.log:
             details_index = lines.index("Best Model Details:")
             lines.insert(
@@ -517,9 +548,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.predict(start=60, end=62).mean.shape
         (3,)
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        return self.best_result.predict(**kwargs)
+        return self._selected_result.predict(**kwargs)
 
     def parameter_correlation(self, parameters=None):
         """Return parameter correlations from the selected best model.
@@ -544,9 +575,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.parameter_correlation().shape[0] == len(result.params)
         True
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        return self.best_result.parameter_correlation(parameters=parameters)
+        return self._selected_result.parameter_correlation(parameters=parameters)
 
     def plot_parameter_correlation(
         self,
@@ -586,9 +617,9 @@ class AutoModelResult(BaseModelResult):
         >>> result = AutoGARCH(data, p=(1, 1), q=(1, 1)).fit()
         >>> fig, ax = result.plot_parameter_correlation(annotate=False)
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        return self.best_result.plot_parameter_correlation(
+        return self._selected_result.plot_parameter_correlation(
             parameters=parameters,
             annotate=annotate,
             decimals=decimals,
@@ -599,23 +630,23 @@ class AutoModelResult(BaseModelResult):
     @property
     def log(self):
         """Whether the selected model used a log-transformed response."""
-        if self.best_result is None:
+        if self._selected_result is None:
             return False
-        return bool(getattr(self.best_result, "log", False))
+        return bool(getattr(self._selected_result, "log", False))
 
     @property
     def level_intercept(self):
         """Delegate the fitted-response constant of the selected model."""
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        return getattr(self.best_result, "level_intercept", None)
+        return getattr(self._selected_result, "level_intercept", None)
 
     @property
     def unconditional_log_variance(self):
         """Delegate the selected model's stationary log-response variance."""
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        return getattr(self.best_result, "unconditional_log_variance", None)
+        return getattr(self._selected_result, "unconditional_log_variance", None)
 
     def level_intercept_inference(self, alpha=0.05):
         """Delegate fitted-response constant inference to the selected model.
@@ -642,9 +673,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.level_intercept_inference()["estimate"] == result.level_intercept
         True
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        method = getattr(self.best_result, "level_intercept_inference", None)
+        method = getattr(self._selected_result, "level_intercept_inference", None)
         if method is None:
             raise TypeError(
                 "level_intercept_inference is only available for "
@@ -655,17 +686,17 @@ class AutoModelResult(BaseModelResult):
     @property
     def distributed_lags(self):
         """Delegate structured rational distributed-lag results."""
-        if self.best_result is None:
+        if self._selected_result is None:
             return {}
-        return getattr(self.best_result, "distributed_lags", {})
+        return getattr(self._selected_result, "distributed_lags", {})
 
     @property
     def distributed_lag_coefficients(self):
         """Delegate the complete transfer-polynomial coefficient table."""
-        if self.best_result is None:
+        if self._selected_result is None:
             return pd.DataFrame()
         return getattr(
-            self.best_result,
+            self._selected_result,
             "distributed_lag_coefficients",
             pd.DataFrame(),
         )
@@ -673,9 +704,9 @@ class AutoModelResult(BaseModelResult):
     @property
     def steady_state_gains(self):
         """Delegate per-input steady-state gains."""
-        if self.best_result is None:
+        if self._selected_result is None:
             return pd.DataFrame()
-        return getattr(self.best_result, "steady_state_gains", pd.DataFrame())
+        return getattr(self._selected_result, "steady_state_gains", pd.DataFrame())
 
     def weights(self, steps):
         """Delegate rational distributed-lag impulse weights.
@@ -706,9 +737,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.weights(3).shape
         (3, 1)
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        method = getattr(self.best_result, "weights", None)
+        method = getattr(self._selected_result, "weights", None)
         if method is None:
             raise TypeError("weights is only available for AutoSARIMAX RDL results")
         return method(steps)
@@ -740,9 +771,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.feedback_test(1).input_names
         ('x',)
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        method = getattr(self.best_result, "feedback_test", None)
+        method = getattr(self._selected_result, "feedback_test", None)
         if method is None:
             raise TypeError("selected model does not support feedback testing")
         return method(lags, inputs=inputs, **kwargs)
@@ -786,9 +817,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.residual_ccf_test({"x": input_model}, lags=3).input_names
         ('x',)
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        method = getattr(self.best_result, "residual_ccf_test", None)
+        method = getattr(self._selected_result, "residual_ccf_test", None)
         if method is None:
             raise TypeError(
                 "residual_ccf_test is only available for AutoSARIMAX RDL results"
@@ -838,9 +869,9 @@ class AutoModelResult(BaseModelResult):
         >>> result = AutoModelResult.from_search(best, (0, 0, 0), [best], [(0, 0, 0)], [best.aic], "aic", "grid")
         >>> fig, ax = result.plot_impulse_response(3)
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        method = getattr(self.best_result, "plot_impulse_response", None)
+        method = getattr(self._selected_result, "plot_impulse_response", None)
         if method is None:
             raise TypeError("selected model does not support RDL impulse responses")
         return method(
@@ -869,8 +900,8 @@ class AutoModelResult(BaseModelResult):
         >>> result.long_run_equilibrium() is None
         False
         """
-        if self.best_result is not None:
-            return self.best_result.long_run_equilibrium()
+        if self._selected_result is not None:
+            return self._selected_result.long_run_equilibrium()
         return None
 
     def cycle_period(self, *, seasonal=False):
@@ -894,9 +925,9 @@ class AutoModelResult(BaseModelResult):
         >>> result.cycle_period().component
         'nonseasonal'
         """
-        if self.best_result is None:
+        if self._selected_result is None:
             raise RuntimeError("No best_result available")
-        method = getattr(self.best_result, "cycle_period", None)
+        method = getattr(self._selected_result, "cycle_period", None)
         if method is None:
             raise TypeError("cycle_period is only available for AutoSARIMAX results")
         return method(seasonal=seasonal)
@@ -1119,12 +1150,14 @@ class AutoSARIMAX(_BaseAutoModel):
         from Ts.TsModels._sarimax import (
             _combined_design,
             _normalise_distributed_lags,
+            _normalise_sarimax_inputs,
+            _validate_events,
+        )
+        from Ts.TsModels._options import (
             _normalise_cov_type,
             _normalise_fit_method,
             _normalise_log,
             _normalise_maxiter,
-            _normalise_sarimax_inputs,
-            _validate_events,
         )
 
         inputs = _normalise_sarimax_inputs(

@@ -11,16 +11,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from Ts.TsPlots import plot_series
-from Ts.TsPlots.style import (
-    GRAY,
-    AXIS_LABEL_FONTSIZE,
-    TITLE_FONTSIZE,
-    FIGSIZE,
-    draw_legend,
-    draw_suptitle,
-    style_axes,
-)
 from ._base import BaseSimResult
 
 
@@ -149,6 +139,16 @@ class SimGARCHResult(BaseSimResult):
         (2,)
         """
         import matplotlib.pyplot as plt
+        from Ts.TsPlots import plot_series
+        from Ts.TsPlots.style import (
+            GRAY,
+            AXIS_LABEL_FONTSIZE,
+            TITLE_FONTSIZE,
+            FIGSIZE,
+            draw_legend,
+            draw_suptitle,
+            style_axes,
+        )
 
         model_type = self.model_type
         if title is None:

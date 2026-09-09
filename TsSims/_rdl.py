@@ -9,7 +9,6 @@ from numbers import Integral, Real
 import numpy as np
 import pandas as pd
 
-from Ts.TsModels import RationalLagResult, RationalLagSpec
 from Ts.TsUtils._validation import validate_sample
 
 from ._base import BaseSimResult
@@ -99,6 +98,8 @@ class RDLInputSpec:
     @property
     def model_spec(self):
         """Return the matching immutable estimator specification."""
+        from Ts.TsModels import RationalLagSpec
+
         return RationalLagSpec(
             numerator=tuple(self.numerator),
             denominator=tuple(self.denominator),
@@ -107,6 +108,8 @@ class RDLInputSpec:
         )
 
     def _result(self, name):
+        from Ts.TsModels import RationalLagResult
+
         return RationalLagResult(
             name=name,
             spec=self.model_spec,

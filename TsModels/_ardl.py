@@ -16,17 +16,16 @@ from Ts.TsModels._base import BaseModel, BaseModelResult, PredictResult
 from Ts.TsModels._base import _resolve_prediction_window
 from Ts.TsModels._parallel import _validate_n_jobs
 from Ts.TsModels._selection import rank_candidates, run_candidate_search
-from Ts.TsModels._sarimax import (
-    SARIMAX,
+from Ts.TsModels._sarimax import SARIMAX, _normalise_sarimax_inputs
+from Ts.TsModels._intervention import _validate_datetime_index
+from Ts.TsModels._options import (
     _normalise_cov_type,
     _normalise_fit_method,
     _normalise_log,
     _normalise_maxiter,
     _normalise_order,
     _normalise_require_convergence,
-    _normalise_sarimax_inputs,
     _normalise_seasonal_order,
-    _validate_datetime_index,
 )
 
 

@@ -42,6 +42,7 @@ Examples
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 import matplotlib.pyplot as plt
@@ -735,6 +736,201 @@ def _lift_line_axes_above_bar_axes(ax, right_axes, axis_by_label, bar_series) ->
         axis.patch.set_visible(False)
 
 
+@dataclass(frozen=True)
+class _SeriesPlotPlan:
+    """Immutable rendering inputs resolved from the public plot contract."""
+
+    x_values: np.ndarray
+    series: dict
+    default_xlabel: str
+    colors: list
+    series_styles: dict
+    facet: bool
+    sharex: bool
+    sharey: bool
+    facet_rows: int | None
+    facet_cols: int | None
+    auto_dual_y: bool
+    scale_ratio_threshold: float
+    max_y_axes: int
+    year_ruler: bool
+    grid_axis: str
+    legend_cols: int | None
+    grid_linewidth: float
+    bar_series: tuple[str, ...]
+    units: Mapping[str, str | None] | None
+    legend_labels: list | None
+    ytitle_position: str
+    xtitle_loc: str
+    axis_groups: Mapping[str, object] | None
+    second_axis_vars: list[str] | None
+    third_axis_vars: list[str] | None
+    log_vars: list[str] | None
+    vlines: object
+    resolved_bar_width: float
+
+    def axis_unit(self, axis_labels) -> str | None:
+        """Return the single unit shared by an axis, if one is supplied."""
+        if self.units is None:
+            return None
+        axis_units = {
+            str(self.units[label]).strip()
+            for label in axis_labels
+            if label in self.units
+            and self.units[label] is not None
+            and str(self.units[label]).strip()
+        }
+        if len(axis_units) > 1:
+            raise ValueError(
+                "series sharing one y-axis must use the same unit; "
+                f"labels={list(axis_labels)}, units={sorted(axis_units)}"
+            )
+        return next(iter(axis_units), None)
+
+
+def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
+    """Resolve and validate all input-dependent plot decisions before drawing."""
+    if y is not None and not isinstance(data, pd.DataFrame):
+        raise TypeError("y requires a DataFrame input; use x for explicit values")
+    x_values, series, default_xlabel = _resolve_input(data, x, y)
+    colors = _resolve_colors(options["colors"], len(series))
+    series_styles = _resolve_series_styles(options["series_styles"], series)
+    facet = _validate_bool("facet", options["facet"])
+    sharex = _validate_bool("sharex", options["sharex"])
+    sharey = _validate_bool("sharey", options["sharey"])
+    facet_rows = options["facet_rows"]
+    facet_cols = options["facet_cols"]
+    if facet_rows is not None and (not isinstance(facet_rows, int) or facet_rows < 1):
+        raise ValueError("facet_rows must be a positive integer or None")
+    if facet_cols is not None and (not isinstance(facet_cols, int) or facet_cols < 1):
+        raise ValueError("facet_cols must be a positive integer or None")
+    auto_dual_y = _validate_bool("auto_dual_y", options["auto_dual_y"])
+    scale_ratio_threshold = _validate_positive_step(
+        "scale_ratio_threshold",
+        options["scale_ratio_threshold"],
+    )
+    max_y_axes = _validate_max_ticks(options["max_y_axes"], name="max_y_axes")
+    year_ruler = _validate_bool("year_ruler", options["year_ruler"])
+    grid_axis = options["grid_axis"]
+    if grid_axis not in ("both", "x", "y"):
+        raise ValueError(
+            f"grid_axis={grid_axis!r} is not valid. Choose from: 'both', 'x', 'y'"
+        )
+    legend_cols = options["legend_cols"]
+    if legend_cols is not None and (
+        not isinstance(legend_cols, int) or legend_cols < 1
+    ):
+        raise ValueError("legend_cols must be a positive integer or None")
+    grid_linewidth = _validate_positive_step(
+        "grid_linewidth",
+        options["grid_linewidth"],
+    )
+
+    raw_bar_series = options["bar_series"]
+    if raw_bar_series is None:
+        bar_series = []
+    else:
+        bar_series = (
+            [raw_bar_series]
+            if isinstance(raw_bar_series, str)
+            else list(raw_bar_series)
+        )
+        unknown = sorted(set(bar_series) - set(series))
+        if unknown:
+            raise ValueError(
+                f"bar_series labels must be plotted series; unknown={unknown}"
+            )
+
+    labels = options["labels"]
+    if labels is not None:
+        labels = _validate_label_count("labels", labels, len(series))
+        series = {labels[i]: value for i, value in enumerate(series.values())}
+
+    units = options["units"]
+    if units is not None:
+        if not isinstance(units, Mapping):
+            raise TypeError("units must be a mapping from series labels to units")
+        unknown_units = sorted(set(units) - set(series))
+        if unknown_units:
+            raise ValueError(
+                "units contains unknown series labels: "
+                f"{unknown_units}; available: {list(series)}"
+            )
+
+    legend_labels = _validate_label_count(
+        "legend_labels",
+        options["legend_labels"],
+        len(series),
+    )
+    ytitle_position = options["ytitle_position"]
+    if ytitle_position not in ("top", "side"):
+        raise ValueError(
+            f"ytitle_position={ytitle_position!r} is not valid. "
+            "Choose 'top' or 'side'."
+        )
+    xtitle_loc = options["xtitle_loc"]
+    if xtitle_loc not in ("left", "center", "right"):
+        raise ValueError(
+            f"xtitle_loc={xtitle_loc!r} is not valid. "
+            "Choose 'left', 'center' or 'right'."
+        )
+
+    axis_groups = options["axis_groups"]
+    if axis_groups is not None and facet and len(series) >= 2:
+        raise ValueError("axis_groups requires facet=False for multiple series")
+    second_axis_vars = options["second_axis_vars"]
+    third_axis_vars = options["third_axis_vars"]
+    if (
+        facet
+        and len(series) >= 2
+        and (second_axis_vars is not None or third_axis_vars is not None)
+    ):
+        raise ValueError(
+            "second_axis_vars and third_axis_vars require facet=False "
+            "for multiple series"
+        )
+
+    log_vars = options["log_vars"]
+    if log_vars is not None:
+        unknown_log_vars = sorted(set(log_vars) - set(series))
+        if unknown_log_vars:
+            raise ValueError(
+                f"log_vars contains unknown series: {unknown_log_vars}; "
+                f"available: {list(series)}"
+            )
+
+    return _SeriesPlotPlan(
+        x_values=x_values,
+        series=series,
+        default_xlabel=default_xlabel,
+        colors=colors,
+        series_styles=series_styles,
+        facet=facet,
+        sharex=sharex,
+        sharey=sharey,
+        facet_rows=facet_rows,
+        facet_cols=facet_cols,
+        auto_dual_y=auto_dual_y,
+        scale_ratio_threshold=scale_ratio_threshold,
+        max_y_axes=max_y_axes,
+        year_ruler=year_ruler,
+        grid_axis=grid_axis,
+        legend_cols=legend_cols,
+        grid_linewidth=grid_linewidth,
+        bar_series=tuple(bar_series),
+        units=units,
+        legend_labels=legend_labels,
+        ytitle_position=ytitle_position,
+        xtitle_loc=xtitle_loc,
+        axis_groups=axis_groups,
+        second_axis_vars=second_axis_vars,
+        third_axis_vars=third_axis_vars,
+        log_vars=log_vars,
+        vlines=_clip_vlines_to_data(options["vlines"], x_values),
+        resolved_bar_width=_resolve_bar_width(x_values, options["bar_width"]),
+    )
+
+
 def plot_series(
     data,
     x=None,
@@ -1108,116 +1304,36 @@ def plot_series(
     >>> len(ax.extra_y_axes)
     0
     """
-    if y is not None and not isinstance(data, pd.DataFrame):
-        raise TypeError("y requires a DataFrame input; use x for explicit values")
-    x_values, series, default_xlabel = _resolve_input(data, x, y)
-    colors = _resolve_colors(colors, len(series))
-    series_styles = _resolve_series_styles(series_styles, series)
-    facet = _validate_bool("facet", facet)
-    sharex = _validate_bool("sharex", sharex)
-    sharey = _validate_bool("sharey", sharey)
-    if facet_rows is not None and (not isinstance(facet_rows, int) or facet_rows < 1):
-        raise ValueError("facet_rows must be a positive integer or None")
-    if facet_cols is not None and (not isinstance(facet_cols, int) or facet_cols < 1):
-        raise ValueError("facet_cols must be a positive integer or None")
-    auto_dual_y = _validate_bool("auto_dual_y", auto_dual_y)
-    scale_ratio_threshold = _validate_positive_step(
-        "scale_ratio_threshold",
-        scale_ratio_threshold,
-    )
-    max_y_axes = _validate_max_ticks(max_y_axes, name="max_y_axes")
-    year_ruler = _validate_bool("year_ruler", year_ruler)
-    if grid_axis not in ("both", "x", "y"):
-        raise ValueError(
-            f"grid_axis={grid_axis!r} is not valid. Choose from: 'both', 'x', 'y'"
-        )
-    if legend_cols is not None and (
-        not isinstance(legend_cols, int) or legend_cols < 1
-    ):
-        raise ValueError("legend_cols must be a positive integer or None")
-    grid_linewidth = _validate_positive_step("grid_linewidth", grid_linewidth)
-
-    if bar_series is None:
-        bar_series = []
-    else:
-        bar_series = (
-            [bar_series] if isinstance(bar_series, str) else list(bar_series)
-        )
-        unknown = sorted(set(bar_series) - set(series))
-        if unknown:
-            raise ValueError(
-                f"bar_series labels must be plotted series; unknown={unknown}"
-            )
-
-    if labels is not None:
-        labels = _validate_label_count("labels", labels, len(series))
-        series = {labels[i]: v for i, v in enumerate(series.values())}
-
-    if units is not None:
-        if not isinstance(units, Mapping):
-            raise TypeError("units must be a mapping from series labels to units")
-        unknown_units = sorted(set(units) - set(series))
-        if unknown_units:
-            raise ValueError(
-                "units contains unknown series labels: "
-                f"{unknown_units}; available: {list(series)}"
-            )
-
-    legend_labels = _validate_label_count("legend_labels", legend_labels, len(series))
-
-    if ytitle_position not in ("top", "side"):
-        raise ValueError(
-            f"ytitle_position={ytitle_position!r} is not valid. "
-            "Choose 'top' or 'side'."
-        )
-
-    if xtitle_loc not in ("left", "center", "right"):
-        raise ValueError(
-            f"xtitle_loc={xtitle_loc!r} is not valid. "
-            "Choose 'left', 'center' or 'right'."
-        )
-
-    if axis_groups is not None and facet and len(series) >= 2:
-        raise ValueError("axis_groups requires facet=False for multiple series")
-    if (
-        facet
-        and len(series) >= 2
-        and (second_axis_vars is not None or third_axis_vars is not None)
-    ):
-        raise ValueError(
-            "second_axis_vars and third_axis_vars require facet=False "
-            "for multiple series"
-        )
-
-    if log_vars is not None:
-        unknown_log_vars = sorted(set(log_vars) - set(series))
-        if unknown_log_vars:
-            raise ValueError(
-                f"log_vars contains unknown series: {unknown_log_vars}; "
-                f"available: {list(series)}"
-            )
-
-    vlines = _clip_vlines_to_data(vlines, x_values)
-    resolved_bar_width = _resolve_bar_width(x_values, bar_width)
-
-    def _axis_unit(axis_labels):
-        """Return the single unit shared by an axis, if one is supplied."""
-
-        if units is None:
-            return None
-        axis_units = {
-            str(units[label]).strip()
-            for label in axis_labels
-            if label in units
-            and units[label] is not None
-            and str(units[label]).strip()
-        }
-        if len(axis_units) > 1:
-            raise ValueError(
-                "series sharing one y-axis must use the same unit; "
-                f"labels={list(axis_labels)}, units={sorted(axis_units)}"
-            )
-        return next(iter(axis_units), None)
+    plan = _resolve_series_plot_plan(data, x, y, locals())
+    x_values = plan.x_values
+    series = plan.series
+    default_xlabel = plan.default_xlabel
+    colors = plan.colors
+    series_styles = plan.series_styles
+    facet = plan.facet
+    sharex = plan.sharex
+    sharey = plan.sharey
+    facet_rows = plan.facet_rows
+    facet_cols = plan.facet_cols
+    auto_dual_y = plan.auto_dual_y
+    scale_ratio_threshold = plan.scale_ratio_threshold
+    max_y_axes = plan.max_y_axes
+    year_ruler = plan.year_ruler
+    grid_axis = plan.grid_axis
+    legend_cols = plan.legend_cols
+    grid_linewidth = plan.grid_linewidth
+    bar_series = plan.bar_series
+    units = plan.units
+    legend_labels = plan.legend_labels
+    ytitle_position = plan.ytitle_position
+    xtitle_loc = plan.xtitle_loc
+    axis_groups = plan.axis_groups
+    second_axis_vars = plan.second_axis_vars
+    third_axis_vars = plan.third_axis_vars
+    log_vars = plan.log_vars
+    vlines = plan.vlines
+    resolved_bar_width = plan.resolved_bar_width
+    _axis_unit = plan.axis_unit
 
     # 时间序列叠加（非分面）场景：同一时间点上有多根柱（多个 bar_series）
     # 时，把各系列的柱按系列顺序并排错开，整组宽度仍约为一个柱位宽。
