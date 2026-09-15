@@ -94,7 +94,12 @@ from .style import (
 )
 
 
-def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
+def _apply_year_ruler_ticks(
+    ax,
+    x_values,
+    max_ticks: int = 12,
+    monthly_ticks: bool = False,
+) -> None:
     """Draw strict month ticks with a year ruler under the x-axis.
 
     Only tick months that are multiples of three and that actually occur in
@@ -111,6 +116,9 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
     max_ticks : int
         Upper bound on the number of month ticks. The default interval of
         three months is widened when the data span would exceed this bound.
+    monthly_ticks : bool
+        Whether to label every month present in the data instead of using the
+        default quarterly month ticks.
     """
     periods = (
         pd.PeriodIndex(pd.to_datetime(x_values), freq="M")
@@ -120,10 +128,13 @@ def _apply_year_ruler_ticks(ax, x_values, max_ticks: int = 12) -> None:
     if periods.empty:
         return
 
-    interval = 3 * max(
-        1, int(np.ceil(len(periods) / 3 / max_ticks))
-    )
-    tick_periods = periods[periods.month % interval == 0]
+    if monthly_ticks:
+        tick_periods = periods
+    else:
+        interval = 3 * max(
+            1, int(np.ceil(len(periods) / 3 / max_ticks))
+        )
+        tick_periods = periods[periods.month % interval == 0]
     tick_dates = tick_periods.to_timestamp(how="end").normalize()
     ax.set_xticks(tick_dates)
     ax.set_xticklabels(
@@ -633,6 +644,7 @@ def _configure_x_axis(
     *,
     max_ticks,
     year_ruler=False,
+    monthly_ticks=False,
 ) -> None:
     """Apply datetime or numeric tick selection to one axes."""
     x_array = np.asarray(x_values)
@@ -642,7 +654,12 @@ def _configure_x_axis(
     is_numeric = np.issubdtype(x_array.dtype, np.number)
 
     if is_datetime and year_ruler:
-        _apply_year_ruler_ticks(ax, x_values, max_ticks=max_ticks)
+        _apply_year_ruler_ticks(
+            ax,
+            x_values,
+            max_ticks=max_ticks,
+            monthly_ticks=monthly_ticks,
+        )
     elif is_numeric:
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
 
@@ -754,6 +771,7 @@ class _SeriesPlotPlan:
     scale_ratio_threshold: float
     max_y_axes: int
     year_ruler: bool
+    monthly_ticks: bool
     grid_axis: str
     legend_cols: int | None
     grid_linewidth: float
@@ -811,6 +829,7 @@ def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
     )
     max_y_axes = _validate_max_ticks(options["max_y_axes"], name="max_y_axes")
     year_ruler = _validate_bool("year_ruler", options["year_ruler"])
+    monthly_ticks = _validate_bool("monthly_ticks", options["monthly_ticks"])
     grid_axis = options["grid_axis"]
     if grid_axis not in ("both", "x", "y"):
         raise ValueError(
@@ -914,6 +933,7 @@ def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
         scale_ratio_threshold=scale_ratio_threshold,
         max_y_axes=max_y_axes,
         year_ruler=year_ruler,
+        monthly_ticks=monthly_ticks,
         grid_axis=grid_axis,
         legend_cols=legend_cols,
         grid_linewidth=grid_linewidth,
@@ -949,6 +969,7 @@ def plot_series(
     series_styles: Mapping[str, Mapping[str, object]] | None = None,
     max_ticks: int = 12,
     year_ruler: bool = False,
+    monthly_ticks: bool = False,
     ymin: float | None = None,
     xmin: float | None = None,
     ytick_count: int | None = None,
@@ -1069,6 +1090,10 @@ def plot_series(
         rotation) plus a year ruler below the x-axis spanning each calendar
         year in the data. The x-limits are padded ten days on both sides.
         Defaults to ``False``.
+    monthly_ticks : bool
+        When ``True`` together with ``year_ruler=True``, label every month
+        present in the data instead of only quarterly month ticks. Defaults
+        to ``False``.
     ymin : float or None
         Lower limit of the y-axis. Defaults to None (automatic); pass a float to set a fixed minimum.
     xmin : float, datetime-like, or None
@@ -1319,6 +1344,7 @@ def plot_series(
     scale_ratio_threshold = plan.scale_ratio_threshold
     max_y_axes = plan.max_y_axes
     year_ruler = plan.year_ruler
+    monthly_ticks = plan.monthly_ticks
     grid_axis = plan.grid_axis
     legend_cols = plan.legend_cols
     grid_linewidth = plan.grid_linewidth
@@ -1470,6 +1496,7 @@ def plot_series(
                 x_values,
                 max_ticks=max_ticks,
                 year_ruler=year_ruler,
+                monthly_ticks=monthly_ticks,
             )
             _thin_x_labels(panel_ax, count=xlabel_count)
             _configure_y_axis(
@@ -1610,6 +1637,7 @@ def plot_series(
         x_values,
         max_ticks=max_ticks,
         year_ruler=year_ruler,
+        monthly_ticks=monthly_ticks,
     )
     _thin_x_labels(ax, count=xlabel_count)
     _configure_y_axis(

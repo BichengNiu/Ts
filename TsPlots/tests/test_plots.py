@@ -979,6 +979,25 @@ class TestPlotSeries:
         assert all(label.get_rotation() == 0 for label in ax.get_xticklabels())
         plt.close(fig)
 
+    def test_year_ruler_can_label_every_month(self):
+        dates = pd.date_range("2025-01-31", periods=6, freq="ME")
+
+        fig, ax = plot_series(
+            pd.Series(range(6), index=dates, name="series"),
+            year_ruler=True,
+            monthly_ticks=True,
+        )
+
+        assert [label.get_text() for label in ax.get_xticklabels()] == [
+            "1月",
+            "2月",
+            "3月",
+            "4月",
+            "5月",
+            "6月",
+        ]
+        plt.close(fig)
+
     def test_vlines_outside_data_range_are_skipped(self):
         fig, ax = plot_series(
             pd.Series(range(10), index=range(10), name="series"),
