@@ -34,6 +34,7 @@ import math
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import is_color_like
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
@@ -736,6 +737,14 @@ def place_ylabel_at_top(ax):
     ax.yaxis.set_label_coords(x, 1.05)
 
 
+def _draw_renderer(fig):
+    """Draw with a concrete canvas before measuring text and legend extents."""
+    if not callable(getattr(fig.canvas, "get_renderer", None)):
+        FigureCanvasAgg(fig)
+    fig.canvas.draw()
+    return fig.canvas.get_renderer()
+
+
 def place_left_title_right_of_ylabel(ax, *, pad_points=8):
     """把左上角图标题移到 y 轴标题（置顶横排）右侧，避免二者重叠。
 
@@ -753,7 +762,7 @@ def place_left_title_right_of_ylabel(ax, *, pad_points=8):
     label = ax.yaxis.get_label()
     if not title.get_text() or not label.get_text():
         return
-    renderer = ax.figure.canvas.get_renderer()
+    renderer = _draw_renderer(ax.figure)
     label_bbox = label.get_window_extent(renderer)
     gap = pad_points * ax.figure.dpi / 72
     x = ax.transAxes.inverted().transform((label_bbox.x1 + gap, 0))[0]
@@ -923,8 +932,7 @@ def draw_note_and_bottom_title(
     )
 
     # 测量图例实际高度，再把底部边距撑到刚好容纳 图例→(标题)→图注 的堆叠。
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
+    renderer = _draw_renderer(fig)
     extent = legend_artist.get_window_extent(renderer)
     inv = fig.transFigure.inverted()
     legend_bottom_frac = inv.transform((extent.x0, extent.y0))[1]
