@@ -560,14 +560,14 @@ class TestPlotSeries:
         assert [t.get_text() for t in ax2.get_legend().get_texts()] == ["a", "b"]
         plt.close(fig2)
 
-        # 显式 legend_labels：按原文使用，不加后缀。
+        # 自定义图例仍须标明轴角色。
         fig3, ax3 = plot_series(
             {"a": [1, 2, 3], "b": [100, 200, 300]},
             facet=False,
             axis_groups={"a": "left", "b": "right"},
             legend_labels=["甲", "乙"],
         )
-        assert [t.get_text() for t in ax3.get_legend().get_texts()] == ["甲", "乙"]
+        assert [t.get_text() for t in ax3.get_legend().get_texts()] == ["甲（左轴）", "乙（右轴）"]
         plt.close(fig3)
 
         # 显式 legend_loc（图例回绘图区内）同样应用（左轴/右轴）后缀。
@@ -582,6 +582,19 @@ class TestPlotSeries:
             "b（右轴）",
         ]
         plt.close(fig4)
+
+    @pytest.mark.parametrize("legend_loc", [None, "upper left"])
+    def test_custom_multi_axis_legend_normalizes_existing_roles(self, legend_loc):
+        fig, axis = plot_series(
+            {"a": [1, 2], "b": [10, 20], "c": [100, 200]},
+            facet=False, second_axis_vars=["b"], third_axis_vars=["c"],
+            legend_labels=["甲（左轴）", "乙(右轴)", "丙（左轴）"],
+            legend_loc=legend_loc,
+        )
+        assert [text.get_text() for text in axis.get_legend().get_texts()] == [
+            "甲（左轴）", "乙（右轴）", "丙（右轴2）",
+        ]
+        plt.close(fig)
 
     def test_single_series_has_no_legend_by_default(self):
         """模板契约：单序列图默认不显示图例（一条线/柱无需图例）。"""

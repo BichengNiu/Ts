@@ -44,6 +44,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+import re
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -1189,8 +1190,8 @@ def plot_series(
     legend_labels : sequence of str, optional
         Override the text of the legend entries. Must match the number of
         series. **双轴（多轴）叠加图默认图例文字统一为「变量名（左轴/右轴）」
-        格式**（单轴图不带括号后缀）；显式传入 ``legend_labels`` 时按原文
-        使用、不加后缀。
+        格式**（单轴图不带括号后缀）；自定义 ``legend_labels`` 同样追加轴角色，
+        已有的轴角色后缀会按实际分轴规范化，避免重复或错误标注。
     legend_loc : str, optional
         图例位置。**不传（默认）时图例绘制在时间轴（x 轴）下方、绘图区外的
         底部边距里**：普通 x 轴时贴在轴标签之下，``year_ruler=True`` 时贴在
@@ -1762,12 +1763,13 @@ def plot_series(
         for group_index, group_labels in enumerate(resolved_groups)
         for label in group_labels
     }
-    if legend_labels is not None:
-        display_labels = list(legend_labels)  # 显式覆盖，不加（左轴/右轴）后缀
-    elif multi_axis:
-        display_labels = [f"{name}（{role_by_label[name]}）" for name in series]
-    else:
-        display_labels = list(series)
+    display_labels = list(legend_labels) if legend_labels is not None else list(series)
+    if multi_axis:
+        display_labels = [
+            re.sub(r"(?:[（(](?:左轴|右轴\d*)[）)]\s*)+$", "", str(text)).rstrip()
+            + f"（{role_by_label[name]}）"
+            for name, text in zip(series, display_labels, strict=True)
+        ]
 
     right_axis_titles = {1: second_axis_title, 2: third_axis_title}
     for group_index, (_group_labels, right_axis) in enumerate(
