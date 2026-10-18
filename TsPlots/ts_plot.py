@@ -166,24 +166,25 @@ def _apply_year_ruler_ticks(
         start_date = year_periods[0].to_timestamp(how="end").normalize()
         end_date = year_periods[-1].to_timestamp(how="end").normalize()
         middle_date = start_date + (end_date - start_date) / 2
-        ax.hlines(
-            year_line_y,
-            start_date,
-            end_date,
-            color=AXIS_GRAY,
-            linewidth=0.8,
-            transform=xaxis_transform,
-            clip_on=False,
-        )
-        ax.vlines(
-            [start_date, end_date],
-            year_line_y - cap_height,
-            year_line_y + cap_height,
-            color=AXIS_GRAY,
-            linewidth=0.8,
-            transform=xaxis_transform,
-            clip_on=False,
-        )
+        if year_ruler_span == 1 or start_year != end_year:
+            ax.hlines(
+                year_line_y,
+                start_date,
+                end_date,
+                color=AXIS_GRAY,
+                linewidth=0.8,
+                transform=xaxis_transform,
+                clip_on=False,
+            )
+            ax.vlines(
+                [start_date, end_date],
+                year_line_y - cap_height,
+                year_line_y + cap_height,
+                color=AXIS_GRAY,
+                linewidth=0.8,
+                transform=xaxis_transform,
+                clip_on=False,
+            )
         ax.text(
             middle_date,
             year_line_y,
@@ -1142,6 +1143,7 @@ def plot_series(
         Bands start at the first observed year and the latest observed year
         is always shown separately. For example, 2013–2026 with a span of 3
         shows 2013–2015, 2016–2018, 2019–2021, 2022–2024, 2025, 2026.
+        With grouped bands, single-year labels have no ruler lines or end caps.
         Defaults to 1 (one labelled band per year).
     ymin : float or None
         Lower limit of the y-axis. Defaults to None (automatic); pass a float to set a fixed minimum.
