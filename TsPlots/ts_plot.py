@@ -203,12 +203,12 @@ def _fit_year_ruler_labels(ax) -> None:
     boxes = [label.get_bbox_patch().get_window_extent(renderer) for label in labels]
     scale = min(
         ((right.x0 + right.x1 - left.x0 - left.x1) / 2)
-        / ((left.width + right.width) / 2 + 2)
+        / ((left.width + right.width) / 2 + 6)
         for left, right in zip(boxes, boxes[1:])
     )
     if scale < 1:
         for label in labels:
-            label.set_fontsize(label.get_fontsize() * scale * 0.97)
+            label.set_fontsize(label.get_fontsize() * scale * 0.95)
         _draw_renderer(ax.figure)
 
 

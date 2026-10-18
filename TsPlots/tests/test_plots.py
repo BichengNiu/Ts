@@ -1017,7 +1017,7 @@ class TestPlotSeries:
             labels = [t for t in axis.texts if t.get_gid() == "ts-year-ruler-label"]
             assert [t.get_text() for t in labels] == [f"{y}年" for y in range(2013, 2027)]
             boxes = [t.get_bbox_patch().get_window_extent(renderer) for t in labels]
-            assert all(a.x1 + 1 < b.x0 for a, b in zip(boxes, boxes[1:]))
+            assert all(a.x1 + 5 < b.x0 for a, b in zip(boxes, boxes[1:]))
             assert all(fig.bbox.x0 <= box.x0 and box.x1 <= fig.bbox.x1 for box in boxes)
         plt.close(fig)
 
