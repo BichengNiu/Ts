@@ -36,6 +36,10 @@ from Ts.TsPlots import (
 
 依赖：`matplotlib`、`numpy`、`pandas`、`statsmodels`（均为标准数据分析环境）。
 
+通过 `ax=` 传入直接由 `matplotlib.figure.Figure()` 创建的坐标轴也可用于无界面
+渲染：布局测量会为缺少渲染器的基础画布绑定 Agg 画布，再计算标题和底部图例
+的位置。已有可测量的画布保持不变，返回图仍支持 `savefig()` 导出。
+
 ---
 
 ## `plot_series` — 时间序列折线图
