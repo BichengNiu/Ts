@@ -996,11 +996,29 @@ class TestPlotSeries:
         labels = [label.get_text() for label in ax.get_xticklabels()]
         assert "3月" in labels and "12月" in labels
         assert all("2025" not in label for label in labels)
-        assert " 2025年 " in {
+        assert "2025年" in {
             text.get_text() for text in ax.texts
         }
-        assert " 2026年 " in {text.get_text() for text in ax.texts}
+        assert "2026年" in {text.get_text() for text in ax.texts}
         assert all(label.get_rotation() == 0 for label in ax.get_xticklabels())
+        plt.close(fig)
+
+    @pytest.mark.parametrize("facet", [False, True])
+    def test_long_quarterly_year_ruler_keeps_all_years_unobscured(self, facet):
+        dates = pd.date_range("2013-03-31", "2026-06-30", freq="QE")
+        frame = pd.DataFrame({"a": np.arange(len(dates)) + 1,
+                              "b": (np.arange(len(dates)) + 1) * 1000}, index=dates)
+        fig, axes = plot_series(
+            frame, facet=facet, year_ruler=True, figsize=(9.4, 6.2),
+        )
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        for axis in np.atleast_1d(axes):
+            labels = [t for t in axis.texts if t.get_gid() == "ts-year-ruler-label"]
+            assert [t.get_text() for t in labels] == [f"{y}年" for y in range(2013, 2027)]
+            boxes = [t.get_bbox_patch().get_window_extent(renderer) for t in labels]
+            assert all(a.x1 + 1 < b.x0 for a, b in zip(boxes, boxes[1:]))
+            assert all(fig.bbox.x0 <= box.x0 and box.x1 <= fig.bbox.x1 for box in boxes)
         plt.close(fig)
 
     def test_year_ruler_can_label_every_month(self):

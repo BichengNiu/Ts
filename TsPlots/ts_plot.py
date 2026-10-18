@@ -53,6 +53,7 @@ import pandas as pd
 
 from .style import (
     _ensure_fonts,
+    _draw_renderer,
     FigureLifecycle,
     _resolve_colors,
     _validate_label_count,
@@ -174,12 +175,13 @@ def _apply_year_ruler_ticks(
         ax.text(
             middle_date,
             year_line_y,
-            f" {year}年 ",
+            f"{year}年",
             ha="center",
             va="center",
             fontsize=YEAR_RULER_FONTSIZE,
             color=AXIS_TEXT_GRAY,
-            backgroundcolor=WHITE,
+            bbox={"facecolor": WHITE, "edgecolor": "none", "boxstyle": "square,pad=0.02"},
+            gid="ts-year-ruler-label",
             transform=xaxis_transform,
             clip_on=False,
         )
@@ -190,6 +192,24 @@ def _apply_year_ruler_ticks(
         first_date.to_pydatetime() - margin,
         last_date.to_pydatetime() + margin,
     )
+
+
+def _fit_year_ruler_labels(ax) -> None:
+    """Keep all year labels visible after the final axes layout is measured."""
+    labels = [text for text in ax.texts if text.get_gid() == "ts-year-ruler-label"]
+    if len(labels) < 2:
+        return
+    renderer = _draw_renderer(ax.figure)
+    boxes = [label.get_bbox_patch().get_window_extent(renderer) for label in labels]
+    scale = min(
+        ((right.x0 + right.x1 - left.x0 - left.x1) / 2)
+        / ((left.width + right.width) / 2 + 2)
+        for left, right in zip(boxes, boxes[1:])
+    )
+    if scale < 1:
+        for label in labels:
+            label.set_fontsize(label.get_fontsize() * scale * 0.97)
+        _draw_renderer(ax.figure)
 
 
 def _resolve_bar_width(x_values, bar_width) -> float:
@@ -1091,7 +1111,9 @@ def plot_series(
         When ``True``, draw strict month ticks (only months that are multiples
         of three and that occur in the data, labelled as ``3月`` with no
         rotation) plus a year ruler below the x-axis spanning each calendar
-        year in the data. The x-limits are padded ten days on both sides.
+        year in the data. Year-label padding is compact and the font shrinks
+        when needed to prevent adjacent labels from obscuring each other.
+        The x-limits are padded ten days on both sides.
         Defaults to ``False``.
     monthly_ticks : bool
         When ``True`` together with ``year_ruler=True``, label every month
@@ -1589,6 +1611,9 @@ def plot_series(
                 note_prefix=note_prefix,
                 legend=bottom_legend,
             )
+        if year_ruler:
+            for panel_ax in axes:
+                _fit_year_ruler_labels(panel_ax)
         return fig, axes
 
     _ensure_fonts()
@@ -1783,4 +1808,6 @@ def plot_series(
         fig.subplots_adjust(right=right_margin)
 
     _lift_line_axes_above_bar_axes(ax, right_axes, axis_by_label, bar_series)
+    if year_ruler:
+        _fit_year_ruler_labels(ax)
     return fig, ax

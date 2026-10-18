@@ -72,7 +72,7 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `ytitle` | str | `None` | y 轴标签；**不传时轴标题只显示单位**（`unit` 给出则显示「（单位：XX）」，否则不显示）；显式传入时使用之（有 `unit` 则单位追加在末尾） |
 | `unit` | str | `None` | y 轴单位，显示为「（单位：XX）」；默认作为主 y 轴与所有右侧双轴的轴标题，不再自动拼接变量名 |
 | `ymin` | float / None | `None` | y 轴下限；`None` 为自动 |
-| `year_ruler` | bool | `False` | 月度数据的严格 locator：只标数据中实际出现的 3 的倍数月份（标签为「3月」，不旋转），并在 x 轴下方为每个出现的年份绘制年度标尺；x 轴两端各留 10 天 |
+| `year_ruler` | bool | `False` | 月度数据的严格 locator：只标数据中实际出现的 3 的倍数月份（标签为「3月」，不旋转），并在 x 轴下方为每个出现的年份绘制年度标尺；年份背景紧凑，长历史按最终布局缩小字号以保留全部年份且互不遮挡；x 轴两端各留 10 天 |
 | `xtick_step` | int | `None` | 数值 x 轴刻度间隔 |
 | `max_ticks` | int | `12` | 自动刻度上限 |
 | `linewidth` | float | `3` | 线宽 |
