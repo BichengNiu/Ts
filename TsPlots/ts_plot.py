@@ -559,6 +559,7 @@ def _plot_one_series(
     bar_alpha=1.0,
     bar_face_color=None,
     bar_x_offset=0.0,
+    bar_bottom=None,
 ):
     """Draw one series, either as a bar chart or as a line.
 
@@ -585,6 +586,7 @@ def _plot_one_series(
             alpha=bar_alpha,
             label=label,
             x_offset=bar_x_offset,
+            bottom=bar_bottom,
         )
 
     linestyle = style.get(
@@ -1025,6 +1027,7 @@ def plot_series(
     unit: str | None = None,
     units: Mapping[str, str | None] | None = None,
     bar_series: str | list[str] | None = None,
+    bar_stacked: bool = False,
     bar_width: float | None = None,
     bar_edge_color: str | None = BAR_EDGE_COLOR,
     bar_edge_linewidth: float = 0.6,
@@ -1271,7 +1274,13 @@ def plot_series(
         Labels of series to draw as bars instead of lines. Bars inherit their
         face colour from ``colors`` (or the palette) and are drawn on the
         axis assigned by ``axis_groups``/``auto_dual_y``; the containing axes
-        is forced to start at zero. Defaults to None (all series are lines).
+        starts at zero unless ``bar_stacked=True`` preserves signed stacks.
+        Defaults to None (all series are lines).
+    bar_stacked : bool
+        Stack bar series at each timestamp instead of placing them side by
+        side. Positive and negative values accumulate separately on each
+        assigned axis; missing values do not change either stack. Requires
+        ``facet=False`` and at least one ``bar_series``. Defaults to False.
     bar_width : float, optional
         Bar width in data units. For datetime axes the unit is days. When
         None, the width is 60% of the median spacing between consecutive x
@@ -1349,6 +1358,9 @@ def plot_series(
     legend_cols = plan.legend_cols
     grid_linewidth = plan.grid_linewidth
     bar_series = plan.bar_series
+    bar_stacked = _validate_bool("bar_stacked", bar_stacked)
+    if bar_stacked and (facet or not bar_series):
+        raise ValueError("bar_stacked requires facet=False and bar_series")
     units = plan.units
     legend_labels = plan.legend_labels
     ytitle_position = plan.ytitle_position
@@ -1364,8 +1376,9 @@ def plot_series(
     # 时间序列叠加（非分面）场景：同一时间点上有多根柱（多个 bar_series）
     # 时，把各系列的柱按系列顺序并排错开，整组宽度仍约为一个柱位宽。
     # 单柱或柱线混合（仅一根柱）时完全不偏移，保持原行为。
-    _n_bars = len(bar_series) if (not facet) else 0
+    _n_bars = len(bar_series) if (not facet and not bar_stacked) else 0
     _bar_offsets = {}
+    stack_totals = {}
     if _n_bars > 1:
         _bar_step = resolved_bar_width / _n_bars
         for _i, _lbl in enumerate(bar_series):
@@ -1389,6 +1402,16 @@ def plot_series(
             hline_linewidth,
         )
         is_bar = label in bar_series
+        bottom = None
+        if is_bar and bar_stacked:
+            values = np.asarray(values, dtype=float)
+            positive, negative = stack_totals.setdefault(
+                target_ax, (np.zeros(len(values)), np.zeros(len(values)))
+            )
+            bottom = np.where(values >= 0, positive, negative).copy()
+            finite = np.where(np.isfinite(values), values, 0.0)
+            positive += np.maximum(finite, 0)
+            negative += np.minimum(finite, 0)
         return _plot_one_series(
             target_ax,
             x_values,
@@ -1412,6 +1435,7 @@ def plot_series(
             bar_alpha=bar_alpha,
             bar_face_color=bar_face_color,
             bar_x_offset=_bar_offsets.get(label, 0.0),
+            bar_bottom=bottom,
         )
 
     if facet and len(series) >= 2:
@@ -1607,8 +1631,9 @@ def plot_series(
         for label in log_vars:
             axis_by_label[label].set_yscale("log")
 
-    for label in bar_series:
-        axis_by_label[label].set_ylim(bottom=0)
+    if not bar_stacked:
+        for label in bar_series:
+            axis_by_label[label].set_ylim(bottom=0)
 
     ax.set_xlabel(
         xtitle if xtitle is not None else default_xlabel,

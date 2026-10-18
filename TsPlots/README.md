@@ -84,7 +84,8 @@ fig, result = plot_series(data, x=None, y=None, *, facet=True, ...)
 | `show_values` | bool | `False` | 是否在每个数据点标注数值；标注自动放在局部极小值上方、局部极大值下方，避免与相邻线段重叠 |
 | `value_decimals` | int | `1` | 数值标注小数位数 |
 | `vlines` | float / list | `None` | 垂直参考线位置；落在数据范围之外的位置自动跳过 |
-| `bar_series` | str / list | `None` | 以柱状图绘制的系列标签；其余系列仍为折线。柱色继承 `colors`，所在轴强制从 0 起 |
+| `bar_series` | str / list | `None` | 以柱状图绘制的系列标签；其余系列仍为折线。柱色继承 `colors` |
+| `bar_stacked` | bool | `False` | 非分面时将柱形按时间点堆叠；各轴的正负值分别累计，缺失值不参与累计，保留负向坐标范围 |
 | `bar_width` | float | `None` | 柱宽（数据单位；日期轴单位为天）。`None` 时取相邻 x 间距中位数的 60% |
 | `bar_edge_color` | str | `BAR_EDGE_COLOR` | 柱边框色；默认浅灰（`BAR_EDGE_COLOR`），显式传 `None` 时与柱同色 |
 | `bar_edge_linewidth` | float | `0.6` | 柱边框线宽 |
@@ -330,8 +331,18 @@ fig, ax = plot_bar(data, x=None, y=None, *, group=None, horizontal=False, stacke
 
 针对离散分类的通用柱状图：支持多系列在分类槽内**并列**（分组柱图）、**堆叠**、
 **横向**（分类在 y 轴）三种布局，以及柱顶数值标注、分类刻度抽稀和统一 TsPlots 样式。
-`plot_series` 的 `bar_series` 一次只能在同一 x 位置画一个柱系列，因此分类并列/堆叠
-柱图应使用本函数。
+时间序列柱线混合图使用 `plot_series(..., facet=False, bar_series=[...])`，
+默认并列，增加 `bar_stacked=True` 则按同轴正负值分别堆叠；分类柱图使用本函数。
+
+```python
+fig, ax = plot_series(
+    {"非油拉动": [3, -2, 4], "石油拉动": [1, -1, -2], "产量同比": [5, -3, 2]},
+    facet=False,
+    bar_series=["非油拉动", "石油拉动"],
+    bar_stacked=True,
+    axis_groups={"非油拉动": "pull", "石油拉动": "pull", "产量同比": "production"},
+)
+```
 
 ### 接受的输入格式
 

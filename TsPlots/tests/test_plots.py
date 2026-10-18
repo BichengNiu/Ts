@@ -604,6 +604,30 @@ class TestPlotSeries:
         assert ax3.get_legend() is not None
         plt.close(fig3)
 
+    def test_stacked_time_series_bars_keep_separate_signs_and_missing_values(self):
+        frame = pd.DataFrame(
+            {"a": [2, -3, 4, np.nan], "b": [1, -2, -1, 5],
+             "line": [1, 2, -2, 1]},
+            index=pd.date_range("2025-03-31", periods=4, freq="QE"),
+        )
+        fig, ax = plot_series(
+            frame, facet=False, bar_series=["a", "b"], bar_stacked=True,
+            bar_width=40, axis_groups={name: "left" for name in frame},
+        )
+        first, second = ax.containers
+        assert [patch.get_y() for patch in second] == [2, -3, 0, 0]
+        assert [patch.get_height() for patch in second] == [1, -2, -1, 5]
+        assert [patch.get_x() for patch in first] == [patch.get_x() for patch in second]
+        assert all(patch.get_width() == 40 for patch in second)
+        assert ax.get_ylim()[0] < -5
+        assert len(ax.lines) == 1
+        plt.close(fig)
+
+    @pytest.mark.parametrize("options", [{}, {"facet": True, "bar_series": ["a"]}])
+    def test_stacked_bars_require_overlay_and_bar_series(self, options):
+        with pytest.raises(ValueError, match="bar_stacked requires"):
+            plot_series({"a": [1, 2]}, bar_stacked=True, **options)
+
     def test_multiple_bar_series_are_side_by_side(self):
         """模板契约：同一时间点存在多根柱（多个 bar_series）时并排错开。"""
         # 双 bar 系列分居左右轴：同一时间点上两根柱 x 起点不同（并排而非重叠），
