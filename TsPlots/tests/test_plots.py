@@ -1053,6 +1053,23 @@ class TestPlotSeries:
         with pytest.raises((TypeError, ValueError), match="year_ruler_span"):
             plot_series([1, 2], year_ruler_span=span)
 
+    @pytest.mark.parametrize("facet", [False, True])
+    def test_year_ruler_can_label_quarters(self, facet):
+        dates = pd.date_range("2025-03-31", periods=6, freq="QE")
+        frame = pd.DataFrame({"a": range(6), "b": range(6)}, index=dates)
+        fig, axes = plot_series(frame, facet=facet, year_ruler=True, quarterly_ticks=True)
+        visible = [axis for axis in np.atleast_1d(axes) if axis.get_xticklabels()]
+        assert visible
+        for axis in visible:
+            assert [label.get_text() for label in axis.get_xticklabels()] == [
+                "Q1", "Q2", "Q3", "Q4", "Q1", "Q2",
+            ]
+        plt.close(fig)
+
+    def test_month_and_quarter_tick_modes_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="monthly_ticks and quarterly_ticks"):
+            plot_series([1, 2], monthly_ticks=True, quarterly_ticks=True)
+
     def test_year_ruler_can_label_every_month(self):
         dates = pd.date_range("2025-01-31", periods=6, freq="ME")
 

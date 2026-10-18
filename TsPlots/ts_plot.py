@@ -100,6 +100,7 @@ def _apply_year_ruler_ticks(
     x_values,
     max_ticks: int = 12,
     monthly_ticks: bool = False,
+    quarterly_ticks: bool = False,
     year_ruler_span: int = 1,
 ) -> None:
     """Draw strict month ticks with a year ruler under the x-axis.
@@ -121,6 +122,9 @@ def _apply_year_ruler_ticks(
     monthly_ticks : bool
         Whether to label every month present in the data instead of using the
         default quarterly month ticks.
+    quarterly_ticks : bool
+        Label the selected ticks as Q1 through Q4 instead of month names.
+        Requires quarterly data and cannot be combined with monthly_ticks.
     year_ruler_span : int
         Years per ruler band. The latest observed year is always separate.
     """
@@ -142,7 +146,8 @@ def _apply_year_ruler_ticks(
     tick_dates = tick_periods.to_timestamp(how="end").normalize()
     ax.set_xticks(tick_dates)
     ax.set_xticklabels(
-        [f"{period.month}月" for period in tick_periods],
+        [f"Q{period.quarter}" if quarterly_ticks else f"{period.month}月"
+         for period in tick_periods],
         rotation=0,
         ha="center",
         fontsize=YEAR_RULER_FONTSIZE,
@@ -680,6 +685,7 @@ def _configure_x_axis(
     max_ticks,
     year_ruler=False,
     monthly_ticks=False,
+    quarterly_ticks=False,
     year_ruler_span=1,
 ) -> None:
     """Apply datetime or numeric tick selection to one axes."""
@@ -695,6 +701,7 @@ def _configure_x_axis(
             x_values,
             max_ticks=max_ticks,
             monthly_ticks=monthly_ticks,
+            quarterly_ticks=quarterly_ticks,
             year_ruler_span=year_ruler_span,
         )
     elif is_numeric:
@@ -809,6 +816,7 @@ class _SeriesPlotPlan:
     max_y_axes: int
     year_ruler: bool
     monthly_ticks: bool
+    quarterly_ticks: bool
     year_ruler_span: int
     grid_axis: str
     legend_cols: int | None
@@ -869,6 +877,9 @@ def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
     year_ruler = _validate_bool("year_ruler", options["year_ruler"])
     year_ruler_span = _validate_max_ticks(options["year_ruler_span"], name="year_ruler_span")
     monthly_ticks = _validate_bool("monthly_ticks", options["monthly_ticks"])
+    quarterly_ticks = _validate_bool("quarterly_ticks", options["quarterly_ticks"])
+    if monthly_ticks and quarterly_ticks:
+        raise ValueError("monthly_ticks and quarterly_ticks cannot both be True")
     grid_axis = options["grid_axis"]
     if grid_axis not in ("both", "x", "y"):
         raise ValueError(
@@ -973,6 +984,7 @@ def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
         max_y_axes=max_y_axes,
         year_ruler=year_ruler,
         monthly_ticks=monthly_ticks,
+        quarterly_ticks=quarterly_ticks,
         year_ruler_span=year_ruler_span,
         grid_axis=grid_axis,
         legend_cols=legend_cols,
@@ -1010,6 +1022,7 @@ def plot_series(
     max_ticks: int = 12,
     year_ruler: bool = False,
     monthly_ticks: bool = False,
+    quarterly_ticks: bool = False,
     year_ruler_span: int = 1,
     ymin: float | None = None,
     xmin: float | None = None,
@@ -1138,6 +1151,11 @@ def plot_series(
         When ``True`` together with ``year_ruler=True``, label every month
         present in the data instead of only quarterly month ticks. Defaults
         to ``False``.
+    quarterly_ticks : bool
+        When ``True`` with ``year_ruler=True``, label the selected quarter-end
+        ticks as Q1, Q2, Q3 and Q4 instead of month names. Use for quarterly
+        data; cannot be combined with ``monthly_ticks=True``. Tick thinning
+        still follows ``xlabel_count``. Defaults to ``False``.
     year_ruler_span : int
         Number of calendar years in each ruler band when ``year_ruler=True``.
         Bands start at the first observed year and the latest observed year
@@ -1402,6 +1420,7 @@ def plot_series(
     max_y_axes = plan.max_y_axes
     year_ruler = plan.year_ruler
     monthly_ticks = plan.monthly_ticks
+    quarterly_ticks = plan.quarterly_ticks
     year_ruler_span = plan.year_ruler_span
     grid_axis = plan.grid_axis
     legend_cols = plan.legend_cols
@@ -1570,6 +1589,7 @@ def plot_series(
                 max_ticks=max_ticks,
                 year_ruler=year_ruler,
                 monthly_ticks=monthly_ticks,
+                quarterly_ticks=quarterly_ticks,
                 year_ruler_span=year_ruler_span,
             )
             _thin_x_labels(panel_ax, count=xlabel_count)
@@ -1716,6 +1736,7 @@ def plot_series(
         max_ticks=max_ticks,
         year_ruler=year_ruler,
         monthly_ticks=monthly_ticks,
+        quarterly_ticks=quarterly_ticks,
         year_ruler_span=year_ruler_span,
     )
     _thin_x_labels(ax, count=xlabel_count)
