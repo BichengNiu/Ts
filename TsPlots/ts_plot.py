@@ -100,6 +100,7 @@ def _apply_year_ruler_ticks(
     x_values,
     max_ticks: int = 12,
     monthly_ticks: bool = False,
+    year_ruler_span: int = 1,
 ) -> None:
     """Draw strict month ticks with a year ruler under the x-axis.
 
@@ -120,6 +121,8 @@ def _apply_year_ruler_ticks(
     monthly_ticks : bool
         Whether to label every month present in the data instead of using the
         default quarterly month ticks.
+    year_ruler_span : int
+        Years per ruler band. The latest observed year is always separate.
     """
     periods = (
         pd.PeriodIndex(pd.to_datetime(x_values), freq="M")
@@ -149,8 +152,17 @@ def _apply_year_ruler_ticks(
     year_line_y = -0.18
     cap_height = 0.018
     xaxis_transform = ax.get_xaxis_transform()
-    for year in periods.year.unique():
-        year_periods = periods[periods.year == year]
+    first_year, latest_year = int(periods.year.min()), int(periods.year.max())
+    bands = [(start, min(start + year_ruler_span - 1, latest_year - 1))
+             for start in range(first_year, latest_year, year_ruler_span)]
+    bands.append((latest_year, latest_year))
+    for start_year, end_year in bands:
+        year_periods = periods[(periods.year >= start_year) & (periods.year <= end_year)]
+        if year_periods.empty:
+            continue
+        label = str(start_year) if start_year == end_year else f"{start_year}–{end_year}"
+        if year_ruler_span == 1:
+            label += "年"
         start_date = year_periods[0].to_timestamp(how="end").normalize()
         end_date = year_periods[-1].to_timestamp(how="end").normalize()
         middle_date = start_date + (end_date - start_date) / 2
@@ -175,10 +187,10 @@ def _apply_year_ruler_ticks(
         ax.text(
             middle_date,
             year_line_y,
-            f"{year}年",
+            label,
             ha="center",
             va="center",
-            fontsize=YEAR_RULER_FONTSIZE,
+            fontsize=YEAR_RULER_FONTSIZE if year_ruler_span == 1 else ANNOTATION_FONTSIZE,
             color=AXIS_TEXT_GRAY,
             bbox={"facecolor": WHITE, "edgecolor": "none", "boxstyle": "square,pad=0.02"},
             gid="ts-year-ruler-label",
@@ -667,6 +679,7 @@ def _configure_x_axis(
     max_ticks,
     year_ruler=False,
     monthly_ticks=False,
+    year_ruler_span=1,
 ) -> None:
     """Apply datetime or numeric tick selection to one axes."""
     x_array = np.asarray(x_values)
@@ -681,6 +694,7 @@ def _configure_x_axis(
             x_values,
             max_ticks=max_ticks,
             monthly_ticks=monthly_ticks,
+            year_ruler_span=year_ruler_span,
         )
     elif is_numeric:
         ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks))
@@ -794,6 +808,7 @@ class _SeriesPlotPlan:
     max_y_axes: int
     year_ruler: bool
     monthly_ticks: bool
+    year_ruler_span: int
     grid_axis: str
     legend_cols: int | None
     grid_linewidth: float
@@ -851,6 +866,7 @@ def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
     )
     max_y_axes = _validate_max_ticks(options["max_y_axes"], name="max_y_axes")
     year_ruler = _validate_bool("year_ruler", options["year_ruler"])
+    year_ruler_span = _validate_max_ticks(options["year_ruler_span"], name="year_ruler_span")
     monthly_ticks = _validate_bool("monthly_ticks", options["monthly_ticks"])
     grid_axis = options["grid_axis"]
     if grid_axis not in ("both", "x", "y"):
@@ -956,6 +972,7 @@ def _resolve_series_plot_plan(data, x, y, options) -> _SeriesPlotPlan:
         max_y_axes=max_y_axes,
         year_ruler=year_ruler,
         monthly_ticks=monthly_ticks,
+        year_ruler_span=year_ruler_span,
         grid_axis=grid_axis,
         legend_cols=legend_cols,
         grid_linewidth=grid_linewidth,
@@ -992,6 +1009,7 @@ def plot_series(
     max_ticks: int = 12,
     year_ruler: bool = False,
     monthly_ticks: bool = False,
+    year_ruler_span: int = 1,
     ymin: float | None = None,
     xmin: float | None = None,
     ytick_count: int | None = None,
@@ -1119,6 +1137,12 @@ def plot_series(
         When ``True`` together with ``year_ruler=True``, label every month
         present in the data instead of only quarterly month ticks. Defaults
         to ``False``.
+    year_ruler_span : int
+        Number of calendar years in each ruler band when ``year_ruler=True``.
+        Bands start at the first observed year and the latest observed year
+        is always shown separately. For example, 2013–2026 with a span of 3
+        shows 2013–2015, 2016–2018, 2019–2021, 2022–2024, 2025, 2026.
+        Defaults to 1 (one labelled band per year).
     ymin : float or None
         Lower limit of the y-axis. Defaults to None (automatic); pass a float to set a fixed minimum.
     xmin : float, datetime-like, or None
@@ -1376,6 +1400,7 @@ def plot_series(
     max_y_axes = plan.max_y_axes
     year_ruler = plan.year_ruler
     monthly_ticks = plan.monthly_ticks
+    year_ruler_span = plan.year_ruler_span
     grid_axis = plan.grid_axis
     legend_cols = plan.legend_cols
     grid_linewidth = plan.grid_linewidth
@@ -1543,6 +1568,7 @@ def plot_series(
                 max_ticks=max_ticks,
                 year_ruler=year_ruler,
                 monthly_ticks=monthly_ticks,
+                year_ruler_span=year_ruler_span,
             )
             _thin_x_labels(panel_ax, count=xlabel_count)
             _configure_y_axis(
@@ -1688,6 +1714,7 @@ def plot_series(
         max_ticks=max_ticks,
         year_ruler=year_ruler,
         monthly_ticks=monthly_ticks,
+        year_ruler_span=year_ruler_span,
     )
     _thin_x_labels(ax, count=xlabel_count)
     _configure_y_axis(

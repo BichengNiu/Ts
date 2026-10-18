@@ -1021,6 +1021,31 @@ class TestPlotSeries:
             assert all(fig.bbox.x0 <= box.x0 and box.x1 <= fig.bbox.x1 for box in boxes)
         plt.close(fig)
 
+    @pytest.mark.parametrize("facet", [False, True])
+    def test_three_year_ruler_bands_keep_latest_year_separate(self, facet):
+        dates = pd.date_range("2013-03-31", "2026-06-30", freq="QE")
+        frame = pd.DataFrame({"a": np.arange(len(dates)),
+                              "b": np.arange(len(dates)) * 1000}, index=dates)
+        fig, axes = plot_series(
+            frame, facet=facet, year_ruler=True, year_ruler_span=3,
+            figsize=(9.4, 6.2),
+        )
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        for axis in np.atleast_1d(axes):
+            labels = [t for t in axis.texts if t.get_gid() == "ts-year-ruler-label"]
+            assert [t.get_text() for t in labels] == [
+                "2013–2015", "2016–2018", "2019–2021", "2022–2024", "2025", "2026",
+            ]
+            boxes = [t.get_bbox_patch().get_window_extent(renderer) for t in labels]
+            assert all(left.x1 < right.x0 for left, right in zip(boxes, boxes[1:]))
+        plt.close(fig)
+
+    @pytest.mark.parametrize("span", [0, -1, 1.5, True, None])
+    def test_year_ruler_rejects_invalid_band_span(self, span):
+        with pytest.raises((TypeError, ValueError), match="year_ruler_span"):
+            plot_series([1, 2], year_ruler_span=span)
+
     def test_year_ruler_can_label_every_month(self):
         dates = pd.date_range("2025-01-31", periods=6, freq="ME")
 
