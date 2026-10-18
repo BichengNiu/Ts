@@ -1039,6 +1039,13 @@ class TestPlotSeries:
             ]
             boxes = [t.get_bbox_patch().get_window_extent(renderer) for t in labels]
             assert all(left.x1 < right.x0 for left, right in zip(boxes, boxes[1:]))
+            # Only the four multi-year bands retain a horizontal line and caps.
+            rulers = [collection for collection in axis.collections
+                      if collection.get_transform() == axis.get_xaxis_transform()]
+            assert len(rulers) == 8
+            cutoff = matplotlib.dates.date2num(pd.Timestamp("2025-01-01"))
+            assert all(segment[:, 0].max() < cutoff
+                       for collection in rulers for segment in collection.get_segments())
         plt.close(fig)
 
     @pytest.mark.parametrize("span", [0, -1, 1.5, True, None])
